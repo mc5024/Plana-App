@@ -896,6 +896,7 @@ class GenParams {
     this.hires = const HiresConfig(),
     this.batchCount = 1,
     this.modalMem = const {},
+    this.useCoords = false,
   });
 
   final String model;
@@ -926,6 +927,17 @@ class GenParams {
   final String kreaScheduler;
 
   /// 重绘放大(anima 专属模块;非 anima 或模块隐藏时由剥离层置 enabled=false)。
+  /// 角色定位：`false` = AI 自选（官方 "AI's Choice"），`true` = 用我摆的位置
+  /// （"Custom"）。直接对应请求里的 `v4_prompt.use_coords`。
+  ///
+  /// **默认 false，与官方一致**。为 false 时坐标照发，只是模型不理会 —— 官方
+  /// 也是这么发的，所以这个字段不影响 centers 怎么算。
+  ///
+  /// 早先没有这个开关、恒发 true，「AUTO」是每个角色各自的一个档位；那是我们
+  /// 自己发明的模型，官方没有。存量存档在 [decodeGenerateState] 里迁移成
+  /// `true` + 具体坐标，保证老提示词还能复现出同一张图。
+  final bool useCoords;
+
   final HiresConfig hires;
 
   /// 一次采样出几张(anima / krea 的 `batch_size`)。**一条任务出 N 张**,
@@ -1047,6 +1059,7 @@ class GenParams {
     String? kreaScheduler,
     HiresConfig? hires,
     int? batchCount,
+    bool? useCoords,
     Map<String, ModalSampling>? modalMem,
   }) {
     return GenParams(
@@ -1072,6 +1085,7 @@ class GenParams {
       kreaScheduler: kreaScheduler ?? this.kreaScheduler,
       hires: hires ?? this.hires,
       batchCount: batchCount ?? this.batchCount,
+      useCoords: useCoords ?? this.useCoords,
       modalMem: modalMem ?? this.modalMem,
     );
   }

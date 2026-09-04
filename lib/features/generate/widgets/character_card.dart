@@ -125,6 +125,11 @@ class _CharacterTile extends ConsumerWidget {
     final isV5 = ref.watch(
       generateProvider.select((s) => isNai5Model(s.params.model)),
     );
+    // AUTO 是整张图的档(官方 AI's Choice = use_coords false),不是这张卡的属性:
+    // 坐标一直在,只是模型不理会。同样 select 一下,别让整张卡跟着全局重建。
+    final autoPos = ref.watch(
+      generateProvider.select((s) => !s.params.useCoords),
+    );
     final tokens = totalPromptTokens(
       ref.watch(naiTokenizerProvider).value,
       main: char.positive,
@@ -226,7 +231,7 @@ class _CharacterTile extends ConsumerWidget {
                               Icon(
                                 Icons.grid_on,
                                 size: 15,
-                                color: char.position == null
+                                color: autoPos
                                     ? scheme.onSurfaceVariant
                                     : scheme.primary,
                               ),
@@ -234,10 +239,17 @@ class _CharacterTile extends ConsumerWidget {
                               SizedBox(
                                 width: 48,
                                 child: Text(
-                                  // 网格模型(V4/V4.5)下显示它实际会被吸附到的
-                                  // 那一格:徽章写着 '42,67%'、请求里发的却是
+                                  // AUTO 是整张图的档(use_coords=false):这时
+                                  // 坐标还在,只是模型不理会,徽章统一写 AUTO。
+                                  // 否则网格模型(V4/V4.5)下显示它实际会被吸附到
+                                  // 的那一格 —— 徽章写 '42,67%'、请求里发的却是
                                   // C4 的格心,两边对不上(见 quantizeCenterToGrid)。
-                                  positionChipLabel(char.position, grid: !isV5),
+                                  autoPos
+                                      ? 'AUTO'
+                                      : positionChipLabel(
+                                          char.position,
+                                          grid: !isV5,
+                                        ),
                                   textAlign: TextAlign.center,
                                   style:
                                       mono(
@@ -245,7 +257,7 @@ class _CharacterTile extends ConsumerWidget {
                                         size: 12,
                                         weight: FontWeight.w700,
                                       ).copyWith(
-                                        color: char.position == null
+                                        color: autoPos
                                             ? scheme.onSurfaceVariant
                                             : scheme.primary,
                                       ),

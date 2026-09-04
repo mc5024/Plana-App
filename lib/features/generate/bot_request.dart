@@ -64,7 +64,7 @@ Map<String, dynamic> buildBotParams(
                 },
               ),
           ],
-          useCoords: chars.isNotEmpty,
+          useCoords: s.params.useCoords,
         )
       : s.prompt;
   final tagHints = promptPresetTagHints(presetId);
@@ -111,6 +111,11 @@ Map<String, dynamic> buildBotParams(
           'position': c.position ?? '',
         },
     ],
+    // 角色定位:AI 自选 / 用我摆的位置(官方 use_coords,默认 false)。
+    // ⚠ 服务端 app.py 目前把 v4_prompt.use_coords **硬写成 True** —— 在它跟着
+    //   读这个字段之前,bot 模式下这个开关不生效(表现为选了「AI 自选」仍然按
+    //   坐标出图)。直连模式不受影响。
+    'useCoords': s.params.useCoords,
   };
 
   // 角色参考(CR / Precise Reference):仅 4.5;后端算 secondary = 1 - informationExtracted

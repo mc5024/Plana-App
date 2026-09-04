@@ -12,10 +12,6 @@ import 'package:plana_app/features/generate/nai_request.dart';
 import 'package:plana_app/features/generate/prompt_presets.dart';
 import 'package:plana_app/features/import/image_metadata.dart';
 
-/// 发送层对第 [i] 个 AUTO 角色代入的中心点(与 nai_request 的 _center 同表)。
-Map<String, double> _centerForAuto(int i) =>
-    kAutoCenters[i % kAutoCenters.length];
-
 /// 一份**故意把两个 V5 不支持的开关都打开**的状态:非 karras + Variety+。
 /// 用户切到 V5 之前留下的值就长这样,收口没做好它们就会被带出去。
 GenerateState _state(String model) => GenerateState.initial().copyWith(
@@ -325,49 +321,76 @@ void main() {
       expect(resolveCharacterCenter('C4'), (x: 0.5, y: 0.7));
     });
 
-    // 自家出的图导回来,不该凭空多出一批用户从没摆过的站位。
+    // ── 对齐官方的角色定位模型(2026-09-04)──────────────────────────
     //
-    // AUTO **发出去就没了**:请求和元数据里记的都是 _center 代入的具体坐标
-    // (第一个 0.3,0.5 —— 正压在 B3 格心上)。不认这张自动排布表的话,导入
-    // 回来第一个角色写着 B3、第二个 D3,用户从没点过那两格。
-    group('导入:自动排布的坐标还原成 AUTO', () {
-      ({double x, double y}) at(int i) =>
-          (x: kAutoCenters[i]['x']!, y: kAutoCenters[i]['y']!);
+    // 官方没有「每角色 AUTO」:每个角色**建出来就有具体坐标**,而「要不要按坐标
+    // 出图」是位置区块上的全局二选一(AI's Choice / Custom = `use_coords`),
+    // 默认 false。我们早先恒发 true、用 position==null 表示 AUTO,那是自造的模型。
+    group('新角色的出生位置照官方的候选序挑', () {
+      String posAt(List<String?> taken) =>
+          nextSpawnPosition(taken, freeform: false);
 
-      test('整批落在自动序列上 → 全体 AUTO', () {
-        expect(isAutoCenterLayout([at(0)]), isTrue);
-        expect(isAutoCenterLayout([at(0), at(1)]), isTrue);
-        expect(isAutoCenterLayout([at(0), at(1), at(2), at(3)]), isTrue);
-        // 超过表长按 % 轮换,与发送侧同一套
-        expect(
-          isAutoCenterLayout([for (var i = 0; i < 8; i++) at(i % 6)]),
-          isTrue,
-        );
+      test('第一个落正中,之后由内向外铺开', () {
+        // 官方 lc 表:中间横排由内向外 → 其余按到画面中心的距离铺开。
+        //
+        // ⚠ C4 排在 C2 **前面**看着别扭,但那是照抄官方比较器的必然结果:
+        //   `0.7 - 0.5 = 0.19999999999999996`,比 `0.5 - 0.3 = 0.2` 小一丁点,
+        //   于是下半边先于上半边。官方那句 hypot 相减吃的是同一个浮点误差,
+        //   照着"整齐"的直觉改反而会和官方错开。
+        const want = ['C3', 'B3', 'D3', 'A3', 'E3', 'C4', 'C2', 'D4'];
+        final got = <String?>[];
+        for (var i = 0; i < want.length; i++) {
+          got.add(posAt(got));
+        }
+        expect(got, want);
       });
 
-      test('顺序不对 / 有一位偏了 → 保留站位,不误判', () {
-        expect(isAutoCenterLayout([at(1), at(0)]), isFalse, reason: '换了序就是摆过的');
-        expect(isAutoCenterLayout([at(0), (x: 0.1, y: 0.1)]), isFalse);
-        expect(isAutoCenterLayout([(x: 0.5, y: 0.5)]), isFalse, reason: 'C3 不在表里');
+      test('不挑已经被占的格子', () {
+        expect(posAt(['C3']), 'B3');
+        expect(posAt(['C3', 'B3']), 'D3');
+        // 中间空着就先补中间,不管已有的是谁
+        expect(posAt(['B3', 'D3']), 'C3');
       });
 
-      test('缺坐标 / 空列表 → 不算自动排布', () {
-        expect(isAutoCenterLayout([null]), isFalse);
-        expect(isAutoCenterLayout([at(0), null]), isFalse);
-        expect(isAutoCenterLayout([]), isFalse);
+      test('V5 的自由坐标按距离判占用(< 0.1),不是按格子', () {
+        // 0.52,0.5 离正中只有 0.02,正中算被占了
+        expect(nextSpawnPosition(['0.5200,0.5000'], freeform: true), 'B3');
+        // 离得够远就不算
+        expect(nextSpawnPosition(['0.9000,0.9000'], freeform: true), 'C3');
+      });
+    });
+
+    group('use_coords 是全局开关,默认关', () {
+      test('默认 false —— 与官方一致(早先我们恒发 true)', () {
+        expect(const GenParams().useCoords, isFalse);
       });
 
-      test('JSON 浮点有误差也认', () {
-        expect(isAutoCenterLayout([(x: 0.30000000000000004, y: 0.5)]), isTrue);
-      });
-
-      // 这条是「改了也不会变差」的依据:落在自动序列上的坐标,按 AUTO 重发时
-      // _center 原样代回同一组数 —— 请求逐字节相同,只是徽章老实写 AUTO。
-      test('还原成 AUTO 之后重发,坐标与原来逐位相同', () {
-        for (var i = 0; i < kAutoCenters.length; i++) {
-          final a = at(i);
-          expect(positionOfCenter(a.x, a.y), isNotNull, reason: '本来会被读成格子 id');
-          expect(_centerForAuto(i), {'x': a.x, 'y': a.y});
+      test('发送时照实发,且坐标只认角色自己的(不再按下标代入)', () {
+        final chars = [
+          const CharacterPrompt(id: 'a', name: 'a', positive: 'x', position: 'A1'),
+          const CharacterPrompt(id: 'b', name: 'b', positive: 'y', position: 'E5'),
+        ];
+        for (final on in [false, true]) {
+          final body = buildNaiPayload(
+            GenerateState.initial().copyWith(
+              prompt: '1girl',
+              characters: chars,
+              params: const GenParams().copyWith(
+                model: 'NAI 4.5 Full',
+                useCoords: on,
+              ),
+            ),
+            presetId: 'none',
+          ).body;
+          final v4 = (body['parameters'] as Map)['v4_prompt'] as Map;
+          expect(v4['use_coords'], on);
+          final caps = (v4['caption'] as Map)['char_captions'] as List;
+          expect((caps[0] as Map)['centers'], [
+            {'x': 0.1, 'y': 0.1},
+          ]);
+          expect((caps[1] as Map)['centers'], [
+            {'x': 0.9, 'y': 0.9},
+          ]);
         }
       });
     });

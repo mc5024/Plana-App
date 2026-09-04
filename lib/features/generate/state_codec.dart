@@ -1,7 +1,9 @@
 import 'dart:typed_data';
 
 import '../../core/store/blob_store.dart';
+import 'char_position.dart';
 import 'models.dart';
+import 'nai_request.dart' show kLegacyAutoCenters;
 
 /// GenerateState ⇄ JSON。图片字节不进 JSON——写入 [BlobStore] 后只存
 /// 内容哈希引用;[EncodedState.refs] 汇总本快照引用的全部 blob,
@@ -164,6 +166,7 @@ Future<EncodedState> encodeGenerateState(
             },
         },
       'batchCount': p.batchCount,
+      'useCoords': p.useCoords,
       // 整块常驻(不只在 enabled 时写):同一份 codec 也在存创作页工作区,
       // 只存开着的那份,用户关掉开关重启后调好的倍率/强度就没了。
       'hires': {
@@ -203,6 +206,55 @@ Future<EncodedState> encodeGenerateState(
 
 /// 反序列化。blob 缺失(被清/损坏)时按条目降级:vibe 留编码丢图、
 /// CR 整条跳过、img2img/重绘任务置空——恢复出的状态始终可用。
+/// 存量存档迁移:把老的「每角色 AUTO」翻译成官方那套「全局 use_coords + 具体坐标」。
+///
+/// 2026-09-04 之前:`use_coords` 恒发 `true`,`position == null` 表示 AUTO,发送时
+/// 按**参与出图的角色**的下标从 [kLegacyAutoCenters] 代一个坐标进去。现在改成
+/// 官方模型(全局开关默认 false,角色建出来就带坐标),老存档若不迁移,那些
+/// `null` 会被当成"没坐标"回落到正中 —— 同一份提示词出的图就变了。
+///
+/// 所以迁移**照原样复现**:补回当年会代进去的那个坐标,并把开关钉成 `true`。
+/// 判据是「存档里没有 useCoords 这个键」= 老版本写的;新版存档一律带这个键,
+/// 不会被误迁。
+///
+/// ⚠ 下标必须按当年的口径算 —— 只数 `enabled && positive 非空` 的那些
+/// (见 buildNaiPayload 的 chars 过滤),否则一个禁用的首位角色会让后面全错一格。
+/// 不参与出图的那些补个不冲突的空位即可,它们本来也发不出去。
+({List<CharacterPrompt> characters, bool useCoords})?
+_migrateLegacyPositions(
+  List<CharacterPrompt> characters, {
+  required bool hadUseCoordsKey,
+}) {
+  if (hadUseCoordsKey) return null; // 新存档,不动
+  if (!characters.any((c) => c.position == null)) return null; // 没有 AUTO 可迁
+
+  final out = <CharacterPrompt>[];
+  var sendIndex = 0;
+  for (final c in characters) {
+    if (c.position != null) {
+      out.add(c);
+      continue;
+    }
+    final sends = c.enabled && c.positive.trim().isNotEmpty;
+    if (sends) {
+      final a = kLegacyAutoCenters[sendIndex % kLegacyAutoCenters.length];
+      sendIndex++;
+      out.add(c.copyWith(position: positionOfCenter(a['x'], a['y'])));
+    } else {
+      // 不参与出图:给个不与他人冲突的空位,免得 UI 上一堆角色叠在同一格
+      out.add(
+        c.copyWith(
+          position: nextSpawnPosition(
+            out.map((e) => e.position),
+            freeform: false,
+          ),
+        ),
+      );
+    }
+  }
+  return (characters: out, useCoords: true);
+}
+
 Future<GenerateState> decodeGenerateState(
   Map<String, dynamic> j,
   BlobStore blobs,
@@ -438,8 +490,13 @@ Future<GenerateState> decodeGenerateState(
           .clamp(1, kBatchMax),
       hires: hires,
       modalMem: modalMem,
+      // 老存档没这个键 → 下面 _migrateLegacyPositions 决定给 true 还是 false
+      useCoords: e['useCoords'] as bool? ?? params.useCoords,
     );
   }
+
+  final hadUseCoordsKey =
+      j['params'] is Map && (j['params'] as Map).containsKey('useCoords');
 
   InpaintJob? inpaint;
   if (j['inpaint'] is Map) {
@@ -482,6 +539,17 @@ Future<GenerateState> decodeGenerateState(
       final p = _enumByName(Panel.values, n);
       if (p != null) openPanels.add(p);
     }
+  }
+
+  final migrated = _migrateLegacyPositions(
+    characters,
+    hadUseCoordsKey: hadUseCoordsKey,
+  );
+  if (migrated != null) {
+    characters
+      ..clear()
+      ..addAll(migrated.characters);
+    params = params.copyWith(useCoords: migrated.useCoords);
   }
 
   return GenerateState(

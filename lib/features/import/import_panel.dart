@@ -21,7 +21,7 @@ import '../generate/char_position.dart';
 import '../generate/gen_modules.dart';
 import '../generate/generate_state.dart';
 import '../generate/models.dart';
-import '../generate/nai_request.dart' show isAutoCenterLayout, naiModelId;
+import '../generate/nai_request.dart' show naiModelId;
 import '../generate/prompt_presets.dart';
 import '../generate/widgets/common.dart';
 import '../lora/lora_install_queue.dart';
@@ -79,22 +79,10 @@ Uint8List? _tryB64(String s) {
 /// 坐标串(V5 自由坐标不吸附丢位置)。统一走 [positionOfCenter]。
 String? gridPosOfCenter(double? x, double? y) => positionOfCenter(x, y);
 
-/// 这张图的角色站位 —— 整批都落在自动排布序列上时一律回 AUTO。
-///
-/// AUTO 发出去就变成具体坐标了(见 [isAutoCenterLayout]),不还原的话,自家出的
-/// 图导回来会凭空多出一批用户从没摆过的站位(第一个 B3、第二个 D3……)。
-List<String?> importPositions(List<CharacterMeta> chars) {
-  final centers = [
-    for (final c in chars)
-      c.centerX != null && c.centerY != null
-          ? (x: c.centerX!, y: c.centerY!)
-          : null,
-  ];
-  if (isAutoCenterLayout(centers)) {
-    return List<String?>.filled(chars.length, null);
-  }
-  return [for (final c in chars) positionOfCenter(c.centerX, c.centerY)];
-}
+/// 这张图每个角色的站位。坐标**照实读** —— 它们到底算不算数,由整张图的
+/// `use_coords` 说了算(见 [ImageMetadata.useCoords]),不是靠坐标反推。
+List<String?> importPositions(List<CharacterMeta> chars) =>
+    [for (final c in chars) positionOfCenter(c.centerX, c.centerY)];
 
 /// 创作页吸底栏「导入图片」入口:选图 → 推入全屏导入面板。
 Future<void> openImportPanel(BuildContext context) async {
@@ -886,8 +874,6 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     // 角色(站位跟着角色勾选一起走,不单独设开关)
     if (_inNai && _charChecked.isNotEmpty) {
       final idx = _charChecked.toList()..sort();
-      // 站位按**整张图**判 AUTO,所以先算全量再按勾选取用 ——
-      // 只拿勾中的那几位去比对自动序列,会因为序号错位而判不出来。
       final positions = importPositions(m.characters);
       final chars = [
         for (final i in idx)
@@ -898,6 +884,9 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
           ),
       ];
       notifier.addCharactersFrom(chars, replace: !_charAppend);
+      // AI's Choice / Custom 是整张图的属性,跟着角色一起导。元数据里没有这个
+      // 字段(V3 / 非 NAI 图)时按官方默认 false 落 —— 那种图本来也没有站位可言。
+      notifier.setUseCoords(m.useCoords ?? false);
     }
 
     // 生成设置(NAI 类别、无不支持值)

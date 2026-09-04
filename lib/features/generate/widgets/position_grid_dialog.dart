@@ -55,6 +55,14 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
     for (final c in ref.read(generateProvider).characters) c.id: c.position,
   };
 
+  /// AUTO 是**整张图**的档,不是某个角色的 —— 对应官方位置区块上的
+  /// AI's Choice / Custom(请求里的 `v4_prompt.use_coords`)。
+  ///
+  /// 每个角色始终带着自己的坐标,AUTO 只是让模型别理会它们;所以按下 AUTO
+  /// 不擦任何人的位置,再切回来还是原来那些格子。摆位(点格子 / 拖画布)会
+  /// 自动切成「用我摆的」—— 同官方。
+  late bool _draftUseCoords = ref.read(generateProvider).params.useCoords;
+
   /// 挂在切换条当前选中那颗 chip 上,打开时把它滚进视野。
   final _selectedChipKey = GlobalKey();
 
@@ -75,7 +83,21 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
     });
   }
 
-  void _setPos(String? pos) => setState(() => _draft[_selectedId] = pos);
+  /// 摆位:写当前角色的坐标,并把整张图切成「用我摆的」。
+  void _setPos(String pos) => setState(() {
+    _draft[_selectedId] = pos;
+    _draftUseCoords = true;
+  });
+
+  /// 开 = 全体交给模型排,关 = 收回来按各人摆的坐标发。
+  ///
+  /// 两个方向都不动任何人的坐标 —— 每个角色始终带着自己那份,关掉时原样生效,
+  /// 不用重摆。原先这里只有「打开」一个方向(按钮按下即 AUTO),想关只能去画布上
+  /// 随便摆一下,那是把开关做成了单程票。
+  void _setAuto(bool auto) {
+    Haptics.selection();
+    setState(() => _draftUseCoords = !auto);
+  }
 
   /// 画布局部坐标 → 自由坐标串。
   String _posAt(Offset p, double w, double h) => formatFreeformPosition(
@@ -148,7 +170,10 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
     final tapped = _pending?.pos; // 始终没划开 = 只是点了一下别人的点
     _pending = null;
     setState(() {
-      if (tapped != null) _draft[_selectedId] = tapped;
+      if (tapped != null) {
+        _draft[_selectedId] = tapped;
+        _draftUseCoords = true; // 拖过就是「用我摆的」(同官方)
+      }
       _dragging = false;
     });
   }
@@ -163,6 +188,7 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
         notifier.updateCharacter(id, position: pos);
       }
     });
+    notifier.setUseCoords(_draftUseCoords);
     Navigator.pop(context);
   }
 
@@ -173,7 +199,7 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
     final chars = gen.characters;
     final params = gen.params;
     final isV5 = isNai5Model(params.model);
-    final isAuto = _draft[_selectedId] == null;
+    final isAuto = !_draftUseCoords; // 整张图的档,不是当前角色的
 
     // 主页当前图:比例与出图设置一致时当画布底图
     final sel = ref.watch(galleryProvider).selected;
@@ -240,33 +266,71 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                // 定位区
-                if (isV5)
-                  _canvas(context, chars, params, bgBytes)
-                else
-                  _grid(context, chars),
+                // 定位区。AUTO 开着时这些坐标压根不发出去,所以整块压暗并挡住
+                // 手势 —— 摆得动却不生效是最难受的一种:人会以为自己摆错了,
+                // 反复试。要改先把下面那个开关关掉,那是唯一的入口,也看得见。
+                AnimatedOpacity(
+                  duration: Motion.fast,
+                  opacity: isAuto ? .42 : 1,
+                  child: IgnorePointer(
+                    ignoring: isAuto,
+                    child: isV5
+                        ? _canvas(context, chars, params, bgBytes)
+                        : _grid(context, chars),
+                  ),
+                ),
                 const SizedBox(height: 14),
-                // AUTO(当前角色置为自动)。它是当前角色的一个档位,所以照 app
-                // 里开关的惯例做成选中态:实心 + primary 描边,一眼看出现在是不
-                // 是自动。名字不再复述 —— 上头切换条正标着改的是谁。
-                OutlinedButton.icon(
-                  onPressed: () => _setPos(null),
-                  icon: const Icon(Icons.auto_awesome, size: 16),
-                  label: const Text('自动 (AUTO)'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(42),
-                    backgroundColor: isAuto ? scheme.primaryContainer : null,
-                    foregroundColor: isAuto
-                        ? scheme.onPrimaryContainer
-                        : scheme.onSurfaceVariant,
-                    side: BorderSide(
-                      color: isAuto
-                          ? scheme.primary
-                          : scheme.outline.withValues(alpha: .9),
-                      width: isAuto ? 1.5 : 1,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(21),
+                // AUTO = 整张图交给模型排(官方的 AI's Choice)。管的是**所有
+                // 角色**,不是当前这个 —— 官方那边它本来就是全局档,我们早先
+                // 做成每角色一份,结果是「AUTO」只是个标签,坐标照发。
+                //
+                // 做成开关而不是按钮:它本来就是个二态的东西,按钮只按得下去
+                // (按一下进 AUTO),想退出得跑去画布上随便摆一下才行 —— 那条
+                // 退路在界面上根本看不出来。开关两个方向都在明面上。
+                // 版式照 app 里设置行的惯例:图标 + 标题 + 右侧开关,整行可点。
+                Material(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(21),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => _setAuto(!isAuto),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(16, 2, 10, 2),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(21),
+                        border: Border.all(
+                          color: scheme.outline.withValues(alpha: .9),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.auto_awesome,
+                            size: 16,
+                            color: isAuto ? scheme.primary : scheme.outline,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              '全部自动 (AUTO)',
+                              style: context.texts.bodyMedium!.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: isAuto
+                                    ? scheme.onSurface
+                                    : scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          Switch(
+                            value: isAuto,
+                            onChanged: _setAuto,
+                            // 开关默认要占 48 的点击靶,这一行会被顶得比下面
+                            // 那对按钮还高。整行本来就可点,靶子不缺这一圈。
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -701,7 +765,8 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
             borderRadius: BorderRadius.circular(9),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
-              onTap: () => _setPos(mine ? null : code),
+              // 点自己已经在的那格 = 取消定位 → 全体转 AUTO
+              onTap: () => mine ? _setAuto(true) : _setPos(code),
               child: Center(child: content),
             ),
           ),

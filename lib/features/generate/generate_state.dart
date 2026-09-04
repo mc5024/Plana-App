@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/store/app_stores.dart';
 import '../vibe_library/naiv4vibe_codec.dart' show kModelToEncodingKey;
+import 'char_position.dart';
 import 'gen_modules.dart';
 import 'lora_triggers.dart' show removeLoraTriggersFromPrompt;
 import 'models.dart';
@@ -68,11 +69,26 @@ class GenerateNotifier extends Notifier<GenerateState> {
     ];
   }
 
+  /// 新角色的初始站位。**建的时候就定死**,不是发送时按下标现算 —— 后者会让
+  /// 「删掉前面一个角色」把后面那些一起挪窝,用户什么都没动出图却变了。
+  String _spawnPos([List<CharacterPrompt>? over]) => nextSpawnPosition(
+    (over ?? state.characters).map((c) => c.position),
+    freeform: isNai5Model(state.params.model),
+  );
+
+  /// 角色定位:AI 自选(false)/ 用我摆的位置(true)。对应请求里的
+  /// `v4_prompt.use_coords`,官方默认 false。
+  void setUseCoords(bool v) {
+    if (state.params.useCoords == v) return;
+    state = state.copyWith(params: state.params.copyWith(useCoords: v));
+  }
+
   void addCharacter() {
     if (state.characters.length >= maxCharactersOf(state.params.model)) return;
     final c = CharacterPrompt(
       id: _newId(),
       name: '角色 ${state.characters.length + 1}',
+      position: _spawnPos(),
     );
     state = state.copyWith(characters: [...state.characters, c]);
     openPanel(Panel.characters);
@@ -89,15 +105,19 @@ class GenerateNotifier extends Notifier<GenerateState> {
     if (items.isEmpty) return 0;
     final room = maxCharactersOf(state.params.model) - state.characters.length;
     if (room <= 0) return 0;
-    final add = [
-      for (final it in items.take(room))
+    // 逐个挑位:每加一个都要把它自己算进「已占用」,否则整批全落同一格
+    final add = <CharacterPrompt>[];
+    for (final it in items.take(room)) {
+      add.add(
         CharacterPrompt(
           id: _newId(),
           name: it.name,
           positive: it.positive,
           negative: it.negative,
+          position: _spawnPos([...state.characters, ...add]),
         ),
-    ];
+      );
+    }
     state = state.copyWith(characters: [...state.characters, ...add]);
     openPanel(Panel.characters);
     return add.length;
@@ -170,7 +190,8 @@ class GenerateNotifier extends Notifier<GenerateState> {
           name: '角色 ${base.length + 1}',
           positive: c.positive,
           negative: c.negative,
-          position: c.position,
+          // 导入带来的站位优先;没有(元数据里没坐标)就照官方挑一个空格
+          position: c.position ?? _spawnPos(base),
         ),
       );
     }
@@ -195,6 +216,7 @@ class GenerateNotifier extends Notifier<GenerateState> {
           name: c.name.isNotEmpty ? c.name : '角色 ${base.length + 1}',
           positive: c.positive,
           negative: c.negative,
+          position: _spawnPos(base),
         ),
       );
       added++;

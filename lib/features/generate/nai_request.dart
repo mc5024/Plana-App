@@ -93,12 +93,16 @@ const _samplerMap = <String, String>{
   'DPM++ SDE': 'k_dpmpp_sde',
 };
 
-/// AUTO(未指定站位)角色按序轮换的中心点(对齐 web `novelai.ts`,避免多角色叠在中心)。
+/// 存量存档迁移用的旧「AUTO」坐标表 —— **不要用在新逻辑里**。
 ///
-/// 导入侧也要认它:发出去的元数据里只有具体坐标,没有「这一位当时是 AUTO」
-/// 这个事实 —— 不比对这张表的话,自家出的图导回来会把第一个角色显示成 B3
-/// (0.3,0.5 正压在 B3 格心上),第二个 D3,以此类推。见 [isAutoCenterLayout]。
-const kAutoCenters = <Map<String, double>>[
+/// 2026-09-04 之前没有全局 use_coords 开关:恒发 `true`,而「AUTO」是每个角色
+/// 各自的一个档位,发送时按角色下标从这张表里代一个坐标进去。那是我们自己发明
+/// 的模型,官方没有(官方是位置区块上的 AI's Choice / Custom 全局二选一,新角色
+/// 建的时候就有具体坐标)。
+///
+/// 现在只剩一个用途:把老存档里 `position == null` 的角色**按原样**补回坐标,
+/// 让老提示词还能复现出同一张图。新角色一律走 [nextSpawnPosition]。
+const kLegacyAutoCenters = <Map<String, double>>[
   {'x': 0.3, 'y': 0.5},
   {'x': 0.7, 'y': 0.5},
   {'x': 0.5, 'y': 0.3},
@@ -107,41 +111,14 @@ const kAutoCenters = <Map<String, double>>[
   {'x': 0.7, 'y': 0.7},
 ];
 
-/// 角色中心点:网格 id('A1'..'E5')与自由坐标串('x,y',V5)统一解析(见
-/// [resolveCharacterCenter]);AUTO/无位置 → 按角色序 [index] 轮换 [kAutoCenters]。
-/// 与 web `novelai.ts` 一致。
-Map<String, double> _center(String? pos, int index) {
+/// 角色中心点:网格 id('A1'..'E5')与自由坐标串('x,y',V5)统一解析。
+///
+/// 角色建出来就带坐标(见 GenerateNotifier._spawnPos),所以正常不会走到兜底;
+/// 真解不出来时回落正中 —— 官方 25 格占满时也是这么兜的。
+/// 「不指定站位」现在由全局 `use_coords=false` 表达,不再靠每个角色的空值。
+Map<String, double> _center(String? pos) {
   final c = resolveCharacterCenter(pos);
-  if (c != null) return {'x': c.x, 'y': c.y};
-  return kAutoCenters[index % kAutoCenters.length];
-}
-
-/// 这一批坐标是不是「谁都没摆过」——即逐位等于 [kAutoCenters] 的轮换。
-///
-/// 为什么需要它:AUTO 只活在本地状态里,**发出去就没了** —— 请求与元数据里
-/// 记的都是 [_center] 代入的那个具体坐标。所以自家出的图导回来,第一个角色
-/// 会显示成 B3(0.3,0.5 正压在 B3 格心)、第二个 D3……用户看到的是一批自己
-/// 从没摆过的站位。
-///
-/// **整批一致才算**,不逐个判:只有"全体都落在自动序列上"才是没摆过的签名。
-/// 单看一位的话,一个手动摆在 B3 的角色会被误判成 AUTO。
-///
-/// 误判的代价是零:落在自动序列上的坐标,按 AUTO 重发时 [_center] 会原样代
-/// 回同一组数,请求逐字节相同 —— 区别只在徽章上老实写 AUTO 而不是 B3。
-///
-/// [centers] 按角色顺序给,null 表示那一位本来就没坐标(元数据里没 centers)。
-bool isAutoCenterLayout(List<({double x, double y})?> centers) {
-  if (centers.isEmpty) return false;
-  for (var i = 0; i < centers.length; i++) {
-    final c = centers[i];
-    if (c == null) return false;
-    final a = kAutoCenters[i % kAutoCenters.length];
-    // 元数据里是 JSON 浮点,别指望 == 能成立
-    if ((c.x - a['x']!).abs() > 1e-6 || (c.y - a['y']!).abs() > 1e-6) {
-      return false;
-    }
-  }
-  return true;
+  return c != null ? {'x': c.x, 'y': c.y} : {'x': 0.5, 'y': 0.5};
 }
 
 /// 由创作页状态构造 NAI `/ai/generate-image-stream` 请求体(镜像 web `services/novelai.ts`)。
@@ -187,11 +164,10 @@ bool isAutoCenterLayout(List<({double x, double y})?> centers) {
   final chars = s.characters
       .where((c) => c.enabled && c.positive.trim().isNotEmpty)
       .toList();
-  // web: use_coords = 有启用角色即 true(不看是否指定站位)
-  final useCoords = chars.isNotEmpty;
-  final centers = [
-    for (var i = 0; i < chars.length; i++) _center(chars[i].position, i),
-  ];
+  // 官方的 use_coords 是位置区块上的 AI's Choice / Custom 全局二选一,**默认
+  // false**。早先这里恒发 `chars.isNotEmpty`,那是我们自己的模型,不是官方行为。
+  final useCoords = s.params.useCoords;
+  final centers = [for (final c in chars) _center(c.position)];
   // 只有 V5 吃自由坐标(官方能力位 freeformCharacterPosition);其余模型官方在
   // 发送前把坐标吸附到 5×5 格心,存着的值不动。char_captions 发吸附后的,
   // characterPrompts 仍发原始坐标 —— 那是给导入回放用的,不该被这次请求对模型

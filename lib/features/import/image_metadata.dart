@@ -97,6 +97,7 @@ class ImageMetadata {
     this.tagHintUcPreset,
     this.transparentBackground,
     this.straightAlpha,
+    this.useCoords,
     this.characters = const [],
     this.vibes = const [],
     this.loras = const [],
@@ -122,6 +123,11 @@ class ImageMetadata {
   /// 多样性(Variety+):NAI 写 skip_cfg_above_sigma,数值=开、null=关;
   /// 字段整个缺失(老图)为 null,表示不可知、面板不显示该行。
   final bool? varietyPlus;
+
+  /// 这张图是不是「按我摆的位置」出的(`v4_prompt.use_coords`)。
+  /// `false` = 官方的 AI's Choice:坐标照写进元数据,但模型没理会。
+  /// 不是 V4+ 的图(V3 / 非 NAI)则为 null。
+  final bool? useCoords;
 
   /// 官方的档位提示:`tag_hint_qt`(质量档)/ `tag_hint_uc_preset`(负面档)。
   /// 导入时用来把预设候选排到队首 —— 只是提示,最终仍以「能不能把预设文本
@@ -163,6 +169,7 @@ class ImageMetadata {
     noiseSchedule: noiseSchedule,
     cfgRescale: cfgRescale,
     varietyPlus: varietyPlus,
+    useCoords: useCoords,
     tagHintQt: tagHintQt,
     tagHintUcPreset: tagHintUcPreset,
     transparentBackground: transparentBackground,
@@ -356,6 +363,9 @@ ImageMetadata? _parseNai(Map<String, dynamic> data) {
     final cps = comment['characterPrompts'];
     final chars = <CharacterMeta>[];
     final v4 = comment['v4_prompt'];
+    // 官方导入也是从这里读回顶层 params 的 use_coords(AI's Choice / Custom)。
+    // 它决定那些坐标到底算不算数 —— false 时坐标照写,但出图没用上。
+    final useCoords = v4 is Map ? v4['use_coords'] as bool? : null;
     if (v4 is Map && v4['caption'] is Map) {
       final capt = v4['caption'] as Map;
       final list = capt['char_captions'];
@@ -471,6 +481,7 @@ ImageMetadata? _parseNai(Map<String, dynamic> data) {
       source: source,
       sourceType: ImageSourceType.novelai,
       promptSyntax: PromptSyntax.nai,
+      useCoords: useCoords,
       prompt: (comment['prompt'] ?? '').toString(),
       negativePrompt: negative,
       width: (comment['width'] as num?)?.toInt() ?? 0,
