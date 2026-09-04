@@ -94,7 +94,11 @@ const _samplerMap = <String, String>{
 };
 
 /// AUTO(未指定站位)角色按序轮换的中心点(对齐 web `novelai.ts`,避免多角色叠在中心)。
-const _autoCenters = <Map<String, double>>[
+///
+/// 导入侧也要认它:发出去的元数据里只有具体坐标,没有「这一位当时是 AUTO」
+/// 这个事实 —— 不比对这张表的话,自家出的图导回来会把第一个角色显示成 B3
+/// (0.3,0.5 正压在 B3 格心上),第二个 D3,以此类推。见 [isAutoCenterLayout]。
+const kAutoCenters = <Map<String, double>>[
   {'x': 0.3, 'y': 0.5},
   {'x': 0.7, 'y': 0.5},
   {'x': 0.5, 'y': 0.3},
@@ -104,12 +108,40 @@ const _autoCenters = <Map<String, double>>[
 ];
 
 /// 角色中心点:网格 id('A1'..'E5')与自由坐标串('x,y',V5)统一解析(见
-/// [resolveCharacterCenter]);AUTO/无位置 → 按角色序 [index] 轮换 [_autoCenters]。
+/// [resolveCharacterCenter]);AUTO/无位置 → 按角色序 [index] 轮换 [kAutoCenters]。
 /// 与 web `novelai.ts` 一致。
 Map<String, double> _center(String? pos, int index) {
   final c = resolveCharacterCenter(pos);
   if (c != null) return {'x': c.x, 'y': c.y};
-  return _autoCenters[index % _autoCenters.length];
+  return kAutoCenters[index % kAutoCenters.length];
+}
+
+/// 这一批坐标是不是「谁都没摆过」——即逐位等于 [kAutoCenters] 的轮换。
+///
+/// 为什么需要它:AUTO 只活在本地状态里,**发出去就没了** —— 请求与元数据里
+/// 记的都是 [_center] 代入的那个具体坐标。所以自家出的图导回来,第一个角色
+/// 会显示成 B3(0.3,0.5 正压在 B3 格心)、第二个 D3……用户看到的是一批自己
+/// 从没摆过的站位。
+///
+/// **整批一致才算**,不逐个判:只有"全体都落在自动序列上"才是没摆过的签名。
+/// 单看一位的话,一个手动摆在 B3 的角色会被误判成 AUTO。
+///
+/// 误判的代价是零:落在自动序列上的坐标,按 AUTO 重发时 [_center] 会原样代
+/// 回同一组数,请求逐字节相同 —— 区别只在徽章上老实写 AUTO 而不是 B3。
+///
+/// [centers] 按角色顺序给,null 表示那一位本来就没坐标(元数据里没 centers)。
+bool isAutoCenterLayout(List<({double x, double y})?> centers) {
+  if (centers.isEmpty) return false;
+  for (var i = 0; i < centers.length; i++) {
+    final c = centers[i];
+    if (c == null) return false;
+    final a = kAutoCenters[i % kAutoCenters.length];
+    // 元数据里是 JSON 浮点,别指望 == 能成立
+    if ((c.x - a['x']!).abs() > 1e-6 || (c.y - a['y']!).abs() > 1e-6) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /// 由创作页状态构造 NAI `/ai/generate-image-stream` 请求体(镜像 web `services/novelai.ts`)。

@@ -12,6 +12,10 @@ import 'package:plana_app/features/generate/nai_request.dart';
 import 'package:plana_app/features/generate/prompt_presets.dart';
 import 'package:plana_app/features/import/image_metadata.dart';
 
+/// 发送层对第 [i] 个 AUTO 角色代入的中心点(与 nai_request 的 _center 同表)。
+Map<String, double> _centerForAuto(int i) =>
+    kAutoCenters[i % kAutoCenters.length];
+
 /// 一份**故意把两个 V5 不支持的开关都打开**的状态:非 karras + Variety+。
 /// 用户切到 V5 之前留下的值就长这样,收口没做好它们就会被带出去。
 GenerateState _state(String model) => GenerateState.initial().copyWith(
@@ -319,6 +323,53 @@ void main() {
       expect(positionOfCenter(null, null), isNull);
       // 收成格子 id 也不丢位置:两种写法解析回来是同一个点
       expect(resolveCharacterCenter('C4'), (x: 0.5, y: 0.7));
+    });
+
+    // 自家出的图导回来,不该凭空多出一批用户从没摆过的站位。
+    //
+    // AUTO **发出去就没了**:请求和元数据里记的都是 _center 代入的具体坐标
+    // (第一个 0.3,0.5 —— 正压在 B3 格心上)。不认这张自动排布表的话,导入
+    // 回来第一个角色写着 B3、第二个 D3,用户从没点过那两格。
+    group('导入:自动排布的坐标还原成 AUTO', () {
+      ({double x, double y}) at(int i) =>
+          (x: kAutoCenters[i]['x']!, y: kAutoCenters[i]['y']!);
+
+      test('整批落在自动序列上 → 全体 AUTO', () {
+        expect(isAutoCenterLayout([at(0)]), isTrue);
+        expect(isAutoCenterLayout([at(0), at(1)]), isTrue);
+        expect(isAutoCenterLayout([at(0), at(1), at(2), at(3)]), isTrue);
+        // 超过表长按 % 轮换,与发送侧同一套
+        expect(
+          isAutoCenterLayout([for (var i = 0; i < 8; i++) at(i % 6)]),
+          isTrue,
+        );
+      });
+
+      test('顺序不对 / 有一位偏了 → 保留站位,不误判', () {
+        expect(isAutoCenterLayout([at(1), at(0)]), isFalse, reason: '换了序就是摆过的');
+        expect(isAutoCenterLayout([at(0), (x: 0.1, y: 0.1)]), isFalse);
+        expect(isAutoCenterLayout([(x: 0.5, y: 0.5)]), isFalse, reason: 'C3 不在表里');
+      });
+
+      test('缺坐标 / 空列表 → 不算自动排布', () {
+        expect(isAutoCenterLayout([null]), isFalse);
+        expect(isAutoCenterLayout([at(0), null]), isFalse);
+        expect(isAutoCenterLayout([]), isFalse);
+      });
+
+      test('JSON 浮点有误差也认', () {
+        expect(isAutoCenterLayout([(x: 0.30000000000000004, y: 0.5)]), isTrue);
+      });
+
+      // 这条是「改了也不会变差」的依据:落在自动序列上的坐标,按 AUTO 重发时
+      // _center 原样代回同一组数 —— 请求逐字节相同,只是徽章老实写 AUTO。
+      test('还原成 AUTO 之后重发,坐标与原来逐位相同', () {
+        for (var i = 0; i < kAutoCenters.length; i++) {
+          final a = at(i);
+          expect(positionOfCenter(a.x, a.y), isNotNull, reason: '本来会被读成格子 id');
+          expect(_centerForAuto(i), {'x': a.x, 'y': a.y});
+        }
+      });
     });
 
     test('positionChipLabel:grid 模式显示会被吸附到的那一格', () {

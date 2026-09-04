@@ -21,7 +21,7 @@ import '../generate/char_position.dart';
 import '../generate/gen_modules.dart';
 import '../generate/generate_state.dart';
 import '../generate/models.dart';
-import '../generate/nai_request.dart' show naiModelId;
+import '../generate/nai_request.dart' show isAutoCenterLayout, naiModelId;
 import '../generate/prompt_presets.dart';
 import '../generate/widgets/common.dart';
 import '../lora/lora_install_queue.dart';
@@ -78,6 +78,23 @@ Uint8List? _tryB64(String s) {
 /// 恰好落 5×5 格心 → 网格 id('A1'..'E5',V4/V4.5 干净往返);否则保留精确自由
 /// 坐标串(V5 自由坐标不吸附丢位置)。统一走 [positionOfCenter]。
 String? gridPosOfCenter(double? x, double? y) => positionOfCenter(x, y);
+
+/// 这张图的角色站位 —— 整批都落在自动排布序列上时一律回 AUTO。
+///
+/// AUTO 发出去就变成具体坐标了(见 [isAutoCenterLayout]),不还原的话,自家出的
+/// 图导回来会凭空多出一批用户从没摆过的站位(第一个 B3、第二个 D3……)。
+List<String?> importPositions(List<CharacterMeta> chars) {
+  final centers = [
+    for (final c in chars)
+      c.centerX != null && c.centerY != null
+          ? (x: c.centerX!, y: c.centerY!)
+          : null,
+  ];
+  if (isAutoCenterLayout(centers)) {
+    return List<String?>.filled(chars.length, null);
+  }
+  return [for (final c in chars) positionOfCenter(c.centerX, c.centerY)];
+}
 
 /// 创作页吸底栏「导入图片」入口:选图 → 推入全屏导入面板。
 Future<void> openImportPanel(BuildContext context) async {
@@ -869,15 +886,15 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     // 角色(站位跟着角色勾选一起走,不单独设开关)
     if (_inNai && _charChecked.isNotEmpty) {
       final idx = _charChecked.toList()..sort();
+      // 站位按**整张图**判 AUTO,所以先算全量再按勾选取用 ——
+      // 只拿勾中的那几位去比对自动序列,会因为序号错位而判不出来。
+      final positions = importPositions(m.characters);
       final chars = [
         for (final i in idx)
           (
             positive: m.characters[i].prompt,
             negative: m.characters[i].uc ?? '',
-            position: gridPosOfCenter(
-              m.characters[i].centerX,
-              m.characters[i].centerY,
-            ),
+            position: positions[i],
           ),
       ];
       notifier.addCharactersFrom(chars, replace: !_charAppend);
@@ -2021,6 +2038,8 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
   Widget _charSection(ColorScheme scheme, ImageMetadata m) {
     final total = m.characters.length;
     final allOn = _charChecked.length == total;
+    // 整批一次算完:站位是**按整张图**判 AUTO 的,而且每行都重算一遍纯属浪费
+    final positions = importPositions(m.characters);
     return _section(
       scheme,
       icon: Icons.group,
@@ -2052,12 +2071,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
             // 本身就看得出来的信息,占着位置反而把真正有用的格号挤窄。
             _itemRow(
               scheme,
-              tag: positionChipLabel(
-                gridPosOfCenter(
-                  m.characters[i].centerX,
-                  m.characters[i].centerY,
-                ),
-              ),
+              tag: positionChipLabel(positions[i]),
               tagColor: scheme.tertiary,
               text: m.characters[i].prompt,
               checked: _charChecked.contains(i),
