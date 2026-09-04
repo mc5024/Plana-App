@@ -24,6 +24,7 @@ import 'public_tags.dart';
 import 'tag_editor_page.dart';
 import 'tag_library.dart';
 import 'tag_models.dart';
+import 'widgets/tag_filter_sheet.dart';
 import 'widgets/tag_sheets.dart';
 import '../../core/util/haptics.dart';
 
@@ -80,6 +81,20 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
   /// 其余是 [ArtistModelGroup] 的 name。与 [_filter] 是两个正交的维度,
   /// 可以同时生效(「收藏的 + 标了 NAI 5 的」)。
   String? _modelFilter;
+
+  /// 作者筛选:null=全部;其余是条目的归属键(QQ 号,存量数据可能是个名字串)。
+  /// 角色/画风(有公共库的两类)都吃这一维,与 [_modelFilter] 同样正交。
+  String? _authorFilter;
+
+  /// 作者目录(QQ 号 → 昵称)。build 时从 [tagAuthorNamesProvider] 取一份存下来,
+  /// 好让 [_matches] 这些深处的过滤函数不必层层传参;取不到就是空表(显示 QQ 号)。
+  Map<String, String> _authorNames = const {};
+
+  /// 排序档,每个分类记各的。与搜索/筛选不同,**换分类不重置** —— 它是「我想
+  /// 怎么看这一类」的偏好,回来还想看到上次那个排法。
+  final Map<TagCategory, TagSort> _sortBy = {};
+
+  TagSort get _sortMode => _sortBy[_cat] ?? defaultTagSort(_cat);
 
   /// 批量操作进行中(禁重入)。
   bool _busy = false;
@@ -161,6 +176,7 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
       _search = '';
       _filter = null;
       _modelFilter = null;
+      _authorFilter = null;
       if (!tagCategoryDef(c).hasPublic) _tab.index = 0;
     });
     // 新分类的列表要等这一帧布好才有 maxScrollExtent,落位排到帧后。
@@ -176,11 +192,28 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
   bool _matches(TagEntry e, String q) {
     if (q.isEmpty) return true;
     bool has(String s) => s.toLowerCase().contains(q);
+    final author = e.createdBy?.trim();
     return has(e.name) ||
         has(e.positive) ||
         e.aliases.any(has) ||
-        e.tags.any(has);
+        e.tags.any(has) ||
+        // 作者:昵称和 QQ 号都算命中,搜索框里输哪个都能找到他发的东西。
+        // ⚠ QQ 号要 5 位起才比 —— 画风名本身就是 A1..Z99 这种编号,再让「5」
+        //   去撞每个作者的号码,一搜就是满屏不相干的串。
+        (author != null &&
+            author.isNotEmpty &&
+            ((q.length >= 5 && has(author)) ||
+                has(_authorNames[author] ?? '')));
   }
+
+  /// 作者筛选。归属键为空的条目(纯本地 / 公共库里的无主老数据)不属于任何人,
+  /// 筛作者时一律不出现。
+  List<TagEntry> _byAuthor(List<TagEntry> list) => _authorFilter == null
+      ? list
+      : [
+          for (final e in list)
+            if (e.createdBy?.trim() == _authorFilter) e,
+        ];
 
   /// 标签被删(标签池管理里删掉正在筛选的那个)后按「全部」处理,
   /// 不让列表空掉却没有任何选中态。
@@ -192,11 +225,21 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
 
   /// 「我的」的完整来源 = 本地条目 + 公共库里我发布的(本地没副本的补进来,
   /// 标 created;对齐 web mineAll)。归属判定优先 owner_id,与服务端一致。
-  List<TagEntry> _mineAll(TagLibraryState lib) {
-    final local = lib.of(_cat);
-    if (!_def.hasPublic) return local;
-    final myId = ref.watch(botSessionProvider).value?.botUserId;
-    final pub = ref.watch(publicTagsProvider(_cat)).value;
+  List<TagEntry> _mineAll(TagLibraryState lib) => _def.hasPublic
+      ? _mergeMine(
+          lib.of(_cat),
+          ref.watch(botSessionProvider).value?.botUserId,
+          ref.watch(publicTagsProvider(_cat)).value,
+        )
+      : lib.of(_cat);
+
+  /// [_mineAll] 的纯函数体 —— 筛选弹层要在 build 之外拿同一份来源点候选作者,
+  /// 那里不能 watch,只能把读来的值喂进来。
+  static List<TagEntry> _mergeMine(
+    List<TagEntry> local,
+    String? myId,
+    List<TagEntry>? pub,
+  ) {
     if (myId == null || pub == null) return local;
     final haveId = {for (final e in local) e.publicId};
     final haveName = {for (final e in local) e.name};
@@ -228,7 +271,7 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
           if (e.tags.contains(filter)) e,
       ];
     }
-    list = _byModel(list);
+    list = _byAuthor(_byModel(list));
     _sort(list);
     return list;
   }
@@ -247,19 +290,28 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
       for (final e in all)
         if (_matches(e, q)) e,
     ];
-    final out = _byModel(list);
+    final out = _byAuthor(_byModel(list));
     _sort(out);
     return out;
   }
 
-  /// 画风按编号自然序(A1<A2<A10);其余最新在前。
   void _sort(List<TagEntry> list) {
-    if (_cat == TagCategory.artist) {
-      list.sort((a, b) => naturalCompare(a.name, b.name));
-    } else {
-      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    switch (_sortMode) {
+      case TagSort.number:
+        list.sort((a, b) => naturalCompare(a.name, b.name));
+      case TagSort.time:
+        list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      // 按作者是**切组**不是排序:组内还是该分类原本的顺序,不然点开一栏
+      // 里面又是一团乱序。
+      case TagSort.author:
+        _sortNatural(list);
     }
   }
+
+  /// 分类原本的排法:画风按编号自然序(A1<A2<A10),其余最新在前。
+  void _sortNatural(List<TagEntry> list) => _cat == TagCategory.artist
+      ? list.sort((a, b) => naturalCompare(a.name, b.name))
+      : list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
   // ---- 回填(语义对齐 web;app 编辑器无芯片协议,按约定插裸内容) ----
 
@@ -349,6 +401,7 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
     final scheme = context.scheme;
     final lib = ref.watch(tagLibraryProvider).value ?? const TagLibraryState();
     final def = _def;
+    _authorNames = ref.watch(tagAuthorNamesProvider).value ?? const {};
 
     // 法典模式:只留分类胶囊的顶栏 + 只读浏览器,无搜索/分段/筛选/选择栏
     // (法典自带选择器与搜索)。
@@ -383,12 +436,12 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
                   borderSide: BorderSide.none,
                 ),
                 contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                // 「适用模型」筛选挂在搜索框里:它和左边的标签筛选是两个正交维度,
-                // 塞进同一条 chip 行既会让人以为是同一组单选,标签一多还会被挤到
-                // 屏幕外。挂这儿两个 scope 都有,且不多占一行高度。
-                suffixIcon: _cat == TagCategory.artist
-                    ? _modelFilterButton(scheme)
-                    : null,
+                // 「作者 / 适用模型」筛选挂在搜索框里:它们和左边的标签筛选是正交
+                // 维度,塞进同一条 chip 行既会让人以为是同一组单选,标签一多还会被
+                // 挤到屏幕外。挂这儿两个 scope 都有,且不多占一行高度。
+                // 只给有公共库的两类(角色/画风)—— 场景/其他的条目全是自己的,
+                // 没有「别人」可筛。
+                suffixIcon: def.hasPublic ? _filterButton(scheme) : null,
                 suffixIconConstraints: const BoxConstraints(
                   minWidth: 0,
                   maxWidth: 190,
@@ -435,6 +488,8 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
         children: [
           _categoryPill(scheme, lib),
           const Spacer(),
+          // 排序只给有公共库的两类:场景/其他的条目全是自己的,没有作者可分组
+          if (_def.hasPublic) _sortButton(scheme),
           IconButton(
             tooltip: '数据备份',
             icon: const Icon(Icons.cloud_outlined),
@@ -448,6 +503,37 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
             ).push(sharedAxisRoute(TagEditorPage(cat: _cat))),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 顶栏的排序按钮。不是默认档时图标点主色 —— 「列表怎么变了个顺序」
+  /// 得能一眼找到是这儿改的。
+  Widget _sortButton(ColorScheme scheme) {
+    final mode = _sortMode;
+    final on = mode != defaultTagSort(_cat);
+    return PopupMenuButton<TagSort>(
+      tooltip: '排序:${mode.label}',
+      offset: const Offset(0, 44),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      onSelected: (v) => setState(() => _sortBy[_cat] = v),
+      itemBuilder: (_) => [
+        for (final s in tagSortOptions(_cat))
+          PopupMenuItem(
+            value: s,
+            child: Row(
+              children: [
+                Text(s.label),
+                const Spacer(),
+                if (s == mode)
+                  Icon(Icons.check, size: 18, color: scheme.primary),
+              ],
+            ),
+          ),
+      ],
+      icon: Icon(
+        Icons.sort,
+        color: on ? scheme.primary : scheme.onSurfaceVariant,
       ),
     );
   }
@@ -711,20 +797,35 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
     return null;
   }
 
-  /// 搜索框右侧的「适用模型」筛选:没筛时是个漏斗图标,筛着时变成带 × 的药丸 ——
-  /// 「有没有在筛、筛的哪一档」得一眼看见,否则会出现"我的串怎么少了"。
-  Widget _modelFilterButton(ColorScheme scheme) {
-    final label = _modelFilterLabel;
+  /// 作者的显示名:查得到昵称就显示昵称,查不到就是那串 QQ 号。
+  String _authorLabel(String id) => _authorNames[id] ?? id;
+
+  /// 漏斗里的两维有没有在筛(空列表的说法要跟着变:是"没匹配上"而不是"库是空的")。
+  bool get _narrowed => _authorFilter != null || _modelFilter != null;
+
+  /// 药丸上的字;null = 没在筛。两维都筛着就并排写 ——「有没有在筛、筛的哪一档」
+  /// 得一眼看见,否则会出现"我的串怎么少了"。
+  String? get _filterPillLabel {
+    final parts = [
+      if (_authorFilter != null) _authorLabel(_authorFilter!),
+      ?_modelFilterLabel,
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
+  /// 搜索框右侧的筛选入口:没筛时是个漏斗图标,筛着时变成带 × 的药丸。
+  Widget _filterButton(ColorScheme scheme) {
+    final label = _filterPillLabel;
     if (label == null) {
       return IconButton(
-        tooltip: '按适用模型筛选',
+        tooltip: '筛选',
         visualDensity: VisualDensity.compact,
         icon: Icon(
           Icons.filter_alt_outlined,
           size: 20,
           color: scheme.onSurfaceVariant,
         ),
-        onPressed: _pickModelFilter,
+        onPressed: _pickFilters,
       );
     }
     return Padding(
@@ -736,21 +837,29 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            InkWell(
-              onTap: _pickModelFilter,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 5, 4, 5),
-                child: Text(
-                  label,
-                  style: context.texts.labelMedium!.copyWith(
-                    color: scheme.onPrimary,
-                    fontWeight: FontWeight.w700,
+            // 昵称可长可短,药丸宽度封顶在 suffixIconConstraints,超了就截断
+            Flexible(
+              child: InkWell(
+                onTap: _pickFilters,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 5, 4, 5),
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.texts.labelMedium!.copyWith(
+                      color: scheme.onPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
             ),
             InkWell(
-              onTap: () => setState(() => _modelFilter = null),
+              onTap: () => setState(() {
+                _authorFilter = null;
+                _modelFilter = null;
+              }),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(2, 5, 8, 5),
                 child: Icon(Icons.close, size: 15, color: scheme.onPrimary),
@@ -762,47 +871,30 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
     );
   }
 
-  Future<void> _pickModelFilter() async {
-    final scheme = context.scheme;
-    // 「全部」用哨兵而不是 null:点外面关掉 sheet 返回的也是 null,
-    // 两者混在一起会变成"随手关掉就把筛选清了"。
-    const all = '__all__';
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
-              child: Text(
-                '按适用模型筛选',
-                style: context.texts.titleSmall!.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            for (final e in <(String, String)>[
-              (all, '全部'),
-              for (final g in ArtistModelGroup.values) (g.name, g.filterLabel),
-              (kGenericModelFilter, '$kGenericModelLabel(没标注的)'),
-            ])
-              ListTile(
-                dense: true,
-                title: Text(e.$2),
-                trailing: (_modelFilter ?? all) == e.$1
-                    ? Icon(Icons.check, size: 18, color: scheme.primary)
-                    : null,
-                onTap: () => Navigator.pop(context, e.$1),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+  Future<void> _pickFilters() async {
+    // 候选作者只从**当前 scope 里真有的条目**上点:公共 tab 数公共库、我的 tab
+    // 数我的那些,免得补全里列出一串在这个列表里根本搜不到的人。
+    final lib = ref.read(tagLibraryProvider).value ?? const TagLibraryState();
+    final pub = ref.read(publicTagsProvider(_cat)).value;
+    final scope = _tabIndex == 1 && _def.hasPublic
+        ? (pub ?? const <TagEntry>[])
+        : _mergeMine(
+            lib.of(_cat),
+            ref.read(botSessionProvider).value?.botUserId,
+            pub,
+          );
+    final picked = await showTagFilterSheet(
+      context,
+      authors: collectTagAuthors(scope, _authorNames),
+      current: (author: _authorFilter, model: _modelFilter),
+      // 适用模型只有画风有;角色那张表就少这一节。
+      hasModels: _cat == TagCategory.artist,
     );
     if (!mounted || picked == null) return; // null = 点外面关掉,不改
-    setState(() => _modelFilter = picked == all ? null : picked);
+    setState(() {
+      _authorFilter = picked.author;
+      _modelFilter = picked.model;
+    });
   }
 
   /// 「全部 / 收藏 / 标签…」筛选行(我的 scope;标签=池∪在用)。
@@ -895,10 +987,16 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
     final list = _mineList(lib);
     if (list.isEmpty) {
       return _empty(
-        _search.isNotEmpty || _filter != null
+        _search.isNotEmpty || _filter != null || _narrowed
             ? '没有匹配的${_def.label}'
             : '还没有${_def.label},点右上角 + 新建',
       );
+    }
+    // 按作者排序:整个 scope 改成一个作者一栏(我的这边同理 —— 自建的归自己
+    // 那栏,收藏来的归原作者,「我收藏了谁的东西」一眼能看出来)
+    if (_sortMode == TagSort.author) {
+      final groups = _authorGroups(list);
+      return _railWrap(groups, _mineScroll, _grid(groups, _mineScroll, false));
     }
     // 自建/我发布的在上,公共库收藏来的单独一组在下(对齐 web)
     final mine = [
@@ -969,45 +1067,94 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
             ),
           );
         }
-        return _empty(
-          '公共库加载失败',
-          action: ('重试', () => ref.invalidate(publicTagsProvider(_cat))),
-        );
+        return _empty('公共库加载失败', action: ('重试', _reloadPublic));
       },
       data: (all) {
         final list = _publicList(all);
         if (list.isEmpty) {
           return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(publicTagsProvider(_cat)),
+            onRefresh: () async => _reloadPublic(),
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 SizedBox(
                   height: 320,
                   child: _empty(
-                    _search.isNotEmpty ? '没有匹配的${_def.label}' : '公共库暂无内容',
+                    _search.isNotEmpty || _narrowed
+                        ? '没有匹配的${_def.label}'
+                        : '公共库暂无内容',
                   ),
                 ),
               ],
             ),
           );
         }
-        final groups = <_Group>[
-          (
-            header: _sectionHeader(
-              Icons.public,
-              '公共${_def.label}',
-              list.length,
-            ),
-            items: list,
-          ),
-        ];
+        final groups = _sortMode == TagSort.author
+            ? _authorGroups(list)
+            : <_Group>[
+                (
+                  header: _sectionHeader(
+                    Icons.public,
+                    '公共${_def.label}',
+                    list.length,
+                  ),
+                  items: list,
+                ),
+              ];
         return RefreshIndicator(
-          onRefresh: () async => ref.invalidate(publicTagsProvider(_cat)),
+          onRefresh: () async => _reloadPublic(),
           child: _railWrap(groups, _pubScroll, _grid(groups, _pubScroll, true)),
         );
       },
     );
+  }
+
+  /// 下拉刷新 / 重试:公共库和作者目录一起重来 —— 只刷条目的话,新作者的
+  /// 昵称要等下次冷启动才补得上,列表里会先冒出一串光秃秃的 QQ 号。
+  void _reloadPublic() {
+    ref.invalidate(publicTagsProvider(_cat));
+    ref.invalidate(tagAuthorNamesProvider);
+  }
+
+  /// 按作者切组:一个作者一栏,条目多的在前;没署名的老数据兜底成「未认领」
+  /// 收在最后(对齐 web 的分组画廊)。标题写成 `昵称(QQ 号)`。
+  List<_Group> _authorGroups(List<TagEntry> list) {
+    final byAuthor = <String, List<TagEntry>>{};
+    final unclaimed = <TagEntry>[];
+    for (final e in list) {
+      final id = e.createdBy?.trim();
+      if (id == null || id.isEmpty) {
+        unclaimed.add(e);
+      } else {
+        (byAuthor[id] ??= []).add(e);
+      }
+    }
+    final ids = byAuthor.keys.toList()
+      ..sort((a, b) {
+        final c = byAuthor[b]!.length.compareTo(byAuthor[a]!.length);
+        return c != 0 ? c : _authorLabel(a).compareTo(_authorLabel(b));
+      });
+    return [
+      for (final id in ids)
+        (
+          header: _sectionHeader(
+            Icons.account_circle_outlined,
+            authorDisplay(id, _authorNames),
+            byAuthor[id]!.length,
+          ),
+          items: byAuthor[id]!,
+        ),
+      if (unclaimed.isNotEmpty)
+        (
+          header: _sectionHeader(
+            Icons.no_accounts_outlined,
+            '未认领',
+            unclaimed.length,
+            muted: true,
+          ),
+          items: unclaimed,
+        ),
+    ];
   }
 
   Widget _sectionHeader(
@@ -1024,11 +1171,16 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
         children: [
           Icon(icon, size: 15, color: color),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: context.texts.labelLarge!.copyWith(
-              fontWeight: FontWeight.w700,
-              color: color,
+          // 作者栏的标题是 `昵称(QQ 号)`,可以很长:截断,别把分隔线顶出行外
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.texts.labelLarge!.copyWith(
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
             ),
           ),
           const SizedBox(width: 6),
@@ -1135,10 +1287,13 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
     );
   }
 
-  /// 画风分类包一层右缘字母导航。
+  /// 画风分类包一层右缘字母导航。**只在按编号排时**有:换成时间/作者以后
+  /// 列表不再是字母序,字母条跳过去就是错位。
   Widget _railWrap(List<_Group> groups, ScrollController ctrl, Widget child) {
     final total = groups.fold(0, (n, g) => n + g.items.length);
-    if (!_def.alphabetRail || total < 12) return child;
+    if (!_def.alphabetRail || _sortMode != TagSort.number || total < 12) {
+      return child;
+    }
     // 用 Set 去重:'#' 桶(数字开头排最前、CJK 排最后)可能不相邻,
     // 只留首次出现,跳转恒到首个。
     final seen = <String>{};

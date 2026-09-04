@@ -546,7 +546,7 @@ class NaiKeyStatusLine extends ConsumerWidget {
             'Anlas ${fmtInt(s.anlas)}',
             // V5 额度只有拿得到才写:官方没承诺过这块字段,读不到就干脆不提 ——
             // 顶个假的 0% 上去比不显示糟得多。
-            if (usage != null) '额度 ${(usage.percent * 100).round()}%',
+            if (usage != null) '额度 ${usage.batteryPct.round()}%',
           ].join(' · '),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,

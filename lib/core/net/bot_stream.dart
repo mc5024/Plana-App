@@ -15,10 +15,14 @@ import 'gen_abort.dart';
 /// N 张(上限 4),它们共用一条任务、一份进度,只在结果里分开。单张时列表
 /// 长度就是 1 —— 调用方不用分两条路走。
 ///
-/// - [onProgress] `(step, total, preview?, stageText)`:逐步进度,WS 携带预览图
-///   base64。同一条消息里可能**既有读数也有阶段文案**(「生成中 3/36」、采样
-///   跑满之后的「取图中」),所以文案跟着这一路一起给 —— 分两次回调的话后到的
-///   那次会把先到的抹掉。
+/// - [onProgress] `(step, total, preview?, stageText)`:逐步进度。同一条消息里
+///   可能**既有读数也有阶段文案**(「生成中 3/36」、采样跑满之后的「取图中」),
+///   所以文案跟着这一路一起给 —— 分两次回调的话后到的那次会把先到的抹掉。
+///
+///   ⚠ 预览帧走的是 WS 的**二进制帧**(2026-09-04 起),不再是 `task_progress`
+///   里的 base64 字段:省 33% 体积,也省掉这边先 base64Decode 出一个上兆
+///   字节数组那一步。服务端先发 JSON 读数、紧接着发二进制帧,所以拿到帧时
+///   用记住的那份读数回调即可。**帧数没有抽稀**,流畅度和以前一致。
 /// - [onQueue] `(queuePos)`:排队中。
 /// - [onStage] `(note, pct)`:**没有步数**那几段的文案。两个来源 ——
 ///   ① anima Modal 冷启动(`status=starting`),pct 恒为 -1;
@@ -92,19 +96,40 @@ Future<List<Uint8List>> streamBotTask({
     }
   }
 
-  /// 完成。[b64] 是这一批的全部图(单张时长度 1)——**在这里一次性解码**,
-  /// 解不动就整批算失败:半批图入库比没有图更糟,用户看不出少了哪张。
-  void done(List<String> b64) {
-    if (completer.isCompleted) return;
-    try {
-      final out = [for (final s in b64) base64Decode(s)];
-      logi(
-        '[bot] $taskId done: ${out.length} 张 / '
-        '${out.fold<int>(0, (a, b) => a + b.length)}B',
-      );
-      completer.complete(out);
-    } catch (_) {
-      fail(BackendException('结果解码失败'));
+  /// 完成。[urls] 是这一批全部图的 URL(单张时长度 1)—— 控制平面只给 URL,
+  /// 字节在这里**并发取一次**。整批要么全成要么整批失败:半批图入库比没有图
+  /// 更糟,用户看不出少了哪张。
+  ///
+  /// [fetching] 挡的是重复取:WS 和轮询都会报 completed,让两边各取一遍就把
+  /// 省下来的流量又花回去了。
+  ///
+  /// **失败重试一次**:图已经画完了(钱也花了),这一步再丢就太亏。移动网络
+  /// 上一次瞬时失败很常见,而结果在服务端只留 10 分钟 —— 值得赌这一次,但
+  /// 不值得赌第二次。
+  var fetching = false;
+  Future<void> done(List<String> urls) async {
+    if (completer.isCompleted || fetching) return;
+    fetching = true;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (completer.isCompleted) return;
+      try {
+        final out = await Future.wait([
+          for (final u in urls) client.fetchResultImage(u),
+        ]);
+        logi(
+          '[bot] $taskId done: ${out.length} 张 / '
+          '${out.fold<int>(0, (a, b) => a + b.length)}B',
+        );
+        if (!completer.isCompleted) completer.complete(out);
+        return;
+      } catch (e) {
+        if (attempt == 0) {
+          logi('[bot] $taskId 取结果图失败,重试一次: $e');
+          await Future<void>.delayed(const Duration(seconds: 1));
+          continue;
+        }
+        fail(e is BackendException ? e : BackendException('取结果图失败: $e'));
+      }
     }
   }
 
@@ -128,8 +153,15 @@ Future<List<Uint8List>> streamBotTask({
   // 从 1 重新开始 —— 挡了它整段进度都被吃掉,条卡在满格不动直到出图。
   // WS 本身保证消息有序,不需要这层防护;真正会乱序的是下面那条 HTTP 轮询
   // 兜底,防回退放在它自己那边。
+  // 预览帧是独立的二进制消息,到达时手里没有读数 —— 记住紧挨着它的那条
+  // task_progress 的读数,配着一起回调。
+  var lastTotal = 0;
+  var lastStage = '';
+
   void progress(int step, int total, Uint8List? preview, String stageText) {
     lastStep = step;
+    lastTotal = total;
+    lastStage = stageText;
     onProgress?.call(step, total, preview, stageText);
   }
 
@@ -150,10 +182,38 @@ Future<List<Uint8List>> streamBotTask({
 
   armWatchdog();
 
+  /// 解一帧二进制预览。头 24 字节,其余是原始图片字节:
+  ///   ver(1) type(1) step(2) total(2) fmt(1) 保留(1) task_id(16 ASCII)
+  ///
+  /// 头里的 step/total 只供调试。**进度以 task_progress 为准** —— 那条紧挨着
+  /// 二进制帧发送,而且带着「准备阶段读数不可采信」那套判据(readProgressMsg
+  /// 的 useSteps),这里另起一套只会打架。
+  void handleBinary(List<int> raw) {
+    if (raw.length <= 24) return;
+    final b = raw is Uint8List ? raw : Uint8List.fromList(raw);
+    if (b[0] != 1 || b[1] != 1) return; // 版本/类型不认识就整帧丢弃
+    var id = '';
+    for (var i = 8; i < 24 && b[i] != 0; i++) {
+      id += String.fromCharCode(b[i]);
+    }
+    if (id != taskId) return;
+    onProgress?.call(
+      lastStep < 0 ? 0 : lastStep,
+      lastTotal,
+      Uint8List.sublistView(b, 24),
+      lastStage,
+    );
+  }
+
   void handle(dynamic raw) {
+    // 预览帧走二进制,其余是 JSON 文本
+    if (raw is! String) {
+      if (raw is List<int>) handleBinary(raw);
+      return;
+    }
     Map<String, dynamic> m;
     try {
-      final d = jsonDecode(raw as String);
+      final d = jsonDecode(raw);
       if (d is! Map<String, dynamic>) return;
       m = d;
     } catch (_) {
@@ -161,16 +221,10 @@ Future<List<Uint8List>> streamBotTask({
     }
     switch (m['action']) {
       case 'task_progress':
-        Uint8List? pv;
-        final p = m['preview'];
-        if (p is String && p.isNotEmpty) {
-          try {
-            pv = base64Decode(p);
-          } catch (_) {}
-        }
+        // 预览帧不在这条消息里了(走二进制帧),这里只有读数和文案
         final r = readProgressMsg(m);
         if (r.useSteps) {
-          progress(r.step, r.total, pv, r.stage);
+          progress(r.step, r.total, null, r.stage);
         } else if (r.stage.isNotEmpty) {
           // 准备阶段:没有步数,只有文案和百分比。这段可能真要好几分钟,
           // 每收到一条就把死线往后推,别让正常出图被自己的超时掐掉。
@@ -183,11 +237,11 @@ Future<List<Uint8List>> streamBotTask({
         warn(m['warning'] as String?);
         switch (m['status']) {
           case 'completed':
-            // batch:结果里额外带了 images(含第 0 张);单张时退回 imageBase64。
-            // 两条都空才是真没图 —— 见 botResultImages。
-            final all = botResultImages(m['result']);
+            // batch:结果里额外带了 urls(含第一张);单张时只有 url。
+            // 两条都空才是真没图 —— 见 botResultUrls。
+            final all = botResultUrls(m['result']);
             if (all.isNotEmpty) {
-              done(all);
+              unawaited(done(all));
             } else {
               // completed 但没带图:不能吞掉,否则会一直卡在最后一步等结果
               logi('[bot] $taskId ws completed 无图,等轮询取结果');
@@ -230,8 +284,17 @@ Future<List<Uint8List>> streamBotTask({
   var pollFails = 0;
   const maxPollFails = 8; // × 2.5s = 20s
   String? lastPolled; // 状态转移才记日志,避免 2.5s 一条刷屏
+
+  // 轮询是**兜底,不是并行通道**:WS 活着时结果和进度都从那边来,这边只需要
+  // 一个低频的存活探测。2.5s 一轮打满一次生成要二十多个请求,全是白问。
+  // WS 一断立刻回到 2.5s,兜底能力不变。
+  var lastPollAt = 0;
   final poll = Timer.periodic(const Duration(milliseconds: 2500), (_) async {
     if (completer.isCompleted) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final gap = ws?.readyState == WebSocket.open ? 30000 : 2500;
+    if (now - lastPollAt < gap) return;
+    lastPollAt = now;
     try {
       final t = await client.getTask(sessionId: sessionId, taskId: taskId);
       pollFails = 0; // 联系上了就清零
@@ -244,8 +307,8 @@ Future<List<Uint8List>> streamBotTask({
       if (!t.success) return; // 尚未可见,继续
       warn(t.warning);
       if (t.completed) {
-        if (t.images.isNotEmpty) {
-          done(t.images);
+        if (t.urls.isNotEmpty) {
+          await done(t.urls);
         } else {
           logi('[bot] $taskId poll completed 但 result 无图');
         }

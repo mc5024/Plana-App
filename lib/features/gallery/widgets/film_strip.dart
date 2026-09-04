@@ -32,16 +32,23 @@ const _thumbSlotH = _thumbH + (_thumbPad + _thumbBorder) * 2;
 const _moreSize = 44.0; // 圆钮直径
 const _moreRight = 12.0; // 距右边缘
 
-// 上滑删除的垃圾条:浮在胶片条正上方(overlay 层,不占布局,不推画布)。
-const _trashH = 54.0;
+// 上滑后浮出的落点:两条横带浮在胶片条正上方(overlay 层,不占布局,不推画布),
+// 自下而上是「分享」「删除」。
+const _bandH = 54.0;
+const _bandSpacing = 10.0; // 两条之间的缝,松在缝里 = 取消
 
-/// 与胶片条的间距 —— 同时也是**这个手势唯一的保险**。
+/// 下面那条(分享)与胶片条的间距 —— 同时也是**这个手势唯一的保险**。
 ///
-/// 原来靠长按起手:按住不动到时才拿得起来,所以垃圾条贴着条摆(10)也不怕误删。
+/// 原来靠长按起手:按住不动到时才拿得起来,所以落点贴着条摆(10)也不怕误触。
 /// 改成直接上滑之后那道门没了,保险只能落在行程上:手指从缩略图中心算起要走
-/// 约 `10(条内衬) + 38(缩略图半高) + 64 ≈ 110`,是一个明确的「往上甩一下」,
-/// 横滑翻图或点选时的竖向抖动够不着。
-const _trashGap = 64.0;
+/// 约 `10(条内衬) + 38(缩略图半高) + 64 ≈ 110` 才碰到分享,是一个明确的
+/// 「往上甩一下」,横滑翻图或点选时的竖向抖动够不着。
+///
+/// 删除排在**更远**那条(再过一条带加一道缝,约 175):松手早了落在分享上,
+/// 顶多弹一下系统分享面板,关掉就是;反过来排的话,想分享却松早了就是一次
+/// 不可撤销的删除。拖过分享继续往上就到删除,不用绕 —— 带是通宽的,
+/// 而拖起来的那张本来就只能上下走(见 [_FilmThumb] 的 axis)。
+const _bandGap = 64.0;
 
 /// 极端长宽比的兜底:太窄点不着,太宽一张就把条占满。
 /// 两头都按 [_thumbH] 的倍数写(= 原来 40/116 对 62 的那两个比例)——
@@ -58,9 +65,10 @@ double _thumbSlotW(double aspect) =>
 /// 跟随它,点历史缩略图切走看历史 —— 对齐 web 桌面端的占位卡交互。
 /// 取消不在卡上:卡这么小,取消挨着「切换跟随」这个主手势太容易点错,
 /// 它长在画布那条进度胶囊上(见 ProgressPill,web 也是放在状态条上)。
-/// 历史图**上滑**即拿起,条上方浮出垃圾区,拖上去松手即删;拖回来或松在别处
-/// 什么都不发生 —— 所以不再另弹确认。竖向手势与横向滚动各认各的轴
-/// (见 [_FilmThumb] 的 affinity),不用自己进竞技场调解。
+/// 历史图**上滑**即拿起,条上方浮出两条落点(下分享、上删除),拖上去松手即
+/// 分享 / 删;拖回来或松在别处什么都不发生 —— 所以删除不再另弹确认。
+/// 竖向手势与横向滚动各认各的轴(见 [_FilmThumb] 的 affinity),不用自己
+/// 进竞技场调解。
 /// 选中项变化(含画布横滑切图、从展开页跳选)时自动滚动,把选中项摆到视野中央。
 class FilmStrip extends StatefulWidget {
   const FilmStrip({
@@ -68,6 +76,7 @@ class FilmStrip extends StatefulWidget {
     required this.results,
     required this.selectedId,
     required this.onSelect,
+    required this.onShare,
     required this.onDelete,
     this.jobs = const [],
     this.selectedJobId,
@@ -78,7 +87,10 @@ class FilmStrip extends StatefulWidget {
   final String? selectedId;
   final ValueChanged<String> onSelect;
 
-  /// 拖进垃圾区后删这一张(状态与盘上文件由调用方处理)。
+  /// 拖进分享区后分享这一张(按保存设置处理、拉系统面板都在调用方)。
+  final ValueChanged<String> onShare;
+
+  /// 拖进删除区后删这一张(状态与盘上文件由调用方处理)。
   final ValueChanged<String> onDelete;
 
   /// 在跑的任务,**已按新→旧排好**(调用方给 `GenPool.newestFirst`)。
@@ -114,45 +126,51 @@ class _FilmStripState extends State<FilmStrip> {
 
   @override
   void dispose() {
-    _hideTrash();
+    _hideBands();
     _sc.dispose();
     super.dispose();
   }
 
-  // ---- 拖拽删除:垃圾条走 overlay ----
+  // ---- 拖拽落点:分享 / 删除两条带走 overlay ----
   //
-  // 不能把它塞进胶片条自己的 Stack 里:一来会把画布顶上去(拖到一半整屏
+  // 不能把它们塞进胶片条自己的 Stack 里:一来会把画布顶上去(拖到一半整屏
   // 跳一下),二来 Stack 越界的子节点根本收不到命中测试,而 DragTarget
   // 认的就是命中测试。
   //
-  // 也不能让它待在手指起始位置底下 —— 那样原地松手就删,「得拖过去」这层
-  // 保险等于没有。所以摆在胶片条**正上方**,且隔开 [_trashGap]:
-  // 完全避开横向滚动那条轴,而那段距离就是防误删的全部依仗。
+  // 也不能让它待在手指起始位置底下 —— 那样原地松手就触发,「得拖过去」这层
+  // 保险等于没有。所以摆在胶片条**正上方**,且隔开 [_bandGap]:
+  // 完全避开横向滚动那条轴,而那段距离就是防误触的全部依仗。
 
-  OverlayEntry? _trash;
+  OverlayEntry? _bands;
 
-  void _showTrash() {
-    if (_trash != null) return;
+  void _showBands() {
+    if (_bands != null) return;
     final box = context.findRenderObject() as RenderBox?;
     final overlay = Overlay.of(context);
     final ob = overlay.context.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize || ob == null) return;
     final top = box.localToGlobal(Offset.zero, ancestor: ob).dy;
-    _trash = OverlayEntry(
+    const h = _bandH * 2 + _bandSpacing;
+    _bands = OverlayEntry(
       builder: (_) => Positioned(
         left: _stripPadH,
         right: _stripPadH,
-        top: top - _trashH - _trashGap,
-        height: _trashH,
-        child: _TrashBand(onAccept: _dropDelete),
+        top: top - h - _bandGap,
+        height: h,
+        child: _DropBands(onShare: _dropShare, onDelete: _dropDelete),
       ),
     );
-    overlay.insert(_trash!);
+    overlay.insert(_bands!);
   }
 
-  void _hideTrash() {
-    _trash?.remove();
-    _trash = null;
+  void _hideBands() {
+    _bands?.remove();
+    _bands = null;
+  }
+
+  void _dropShare(String id) {
+    Haptics.medium();
+    widget.onShare(id);
   }
 
   void _dropDelete(String id) {
@@ -225,8 +243,8 @@ class _FilmStripState extends State<FilmStrip> {
                           r.id == widget.selectedId &&
                           widget.selectedJobId == null,
                       onTap: () => widget.onSelect(r.id),
-                      onDragStart: _showTrash,
-                      onDragEnd: _hideTrash,
+                      onDragStart: _showBands,
+                      onDragEnd: _hideBands,
                     );
                   },
                 ),
@@ -360,7 +378,7 @@ class _FilmThumb extends StatelessWidget {
       // 横移的归列表滚动,往上走的才算拿起。两条手势按轴分,天然不打架。
       //
       // axis 竖直 = 拖起来的那张只跟着上下走。既呼应「上滑」这个动作,
-      // 也免得手一歪飘出垃圾条的横向范围。
+      // 也免得手一歪飘出落点的横向范围。
       affinity: Axis.vertical,
       axis: Axis.vertical,
       onDragStarted: () {
@@ -455,20 +473,20 @@ class _FilmThumb extends StatelessWidget {
   );
 }
 
-/// 拖拽删除的落点。浮在胶片条正上方,只在拖拽期间存在。
-///
-/// 悬停时整条转成 error 配色并把文案换成「松手删除」—— 松手是不可撤销的
-/// 一下,得先让人看见自己正停在哪儿。
-class _TrashBand extends StatefulWidget {
-  const _TrashBand({required this.onAccept});
+/// 上滑后浮出的落点:上删除、下分享(为什么这么排见 [_bandGap]),只在拖拽期间
+/// 存在。悬停到哪条,哪条就亮起并把文案换成「松手 ×」—— 删除那下不可撤销,
+/// 得先让人看见自己正停在哪儿。
+class _DropBands extends StatefulWidget {
+  const _DropBands({required this.onShare, required this.onDelete});
 
-  final ValueChanged<String> onAccept;
+  final ValueChanged<String> onShare;
+  final ValueChanged<String> onDelete;
 
   @override
-  State<_TrashBand> createState() => _TrashBandState();
+  State<_DropBands> createState() => _DropBandsState();
 }
 
-class _TrashBandState extends State<_TrashBand>
+class _DropBandsState extends State<_DropBands>
     with SingleTickerProviderStateMixin {
   late final _c = AnimationController(vsync: this, duration: Motion.medium)
     ..forward();
@@ -481,10 +499,9 @@ class _TrashBandState extends State<_TrashBand>
 
   @override
   Widget build(BuildContext context) {
-    final scheme = context.scheme;
     return FadeTransition(
       opacity: _c,
-      // 从胶片条那头升上来,而不是凭空出现 —— 让人看出它是被这次拿起
+      // 从胶片条那头升上来,而不是凭空出现 —— 让人看出它们是被这次拿起
       // 唤出来的,不是本来就在
       child: SlideTransition(
         position: _c.drive(
@@ -493,48 +510,98 @@ class _TrashBandState extends State<_TrashBand>
             end: Offset.zero,
           ).chain(CurveTween(curve: Motion.emphasized)),
         ),
-        child: DragTarget<String>(
-          onAcceptWithDetails: (d) => widget.onAccept(d.data),
-          builder: (context, cand, _) {
-            final on = cand.isNotEmpty;
-            return Material(
-              color: on
-                  ? scheme.errorContainer
-                  : scheme.surfaceContainerHighest,
-              elevation: on ? 8 : 3,
-              shadowColor: Colors.black.withValues(alpha: .45),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(
-                  color: on ? scheme.error : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    on ? Icons.delete_forever : Icons.delete_outline,
-                    size: 22,
-                    color: on
-                        ? scheme.onErrorContainer
-                        : scheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    on ? '松手删除' : '拖到这里删除',
-                    style: context.texts.bodyMedium!.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: on
-                          ? scheme.onErrorContainer
-                          : scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _DropBand(
+              icon: Icons.delete_outline,
+              activeIcon: Icons.delete_forever,
+              label: '拖到这里删除',
+              activeLabel: '松手删除',
+              destructive: true,
+              onAccept: widget.onDelete,
+            ),
+            const SizedBox(height: _bandSpacing),
+            _DropBand(
+              icon: Icons.ios_share,
+              label: '拖到这里分享',
+              activeLabel: '松手分享',
+              destructive: false,
+              onAccept: widget.onShare,
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+/// 一条落点。[destructive] 的悬停色走 error,否则走 primary。
+class _DropBand extends StatelessWidget {
+  const _DropBand({
+    required this.icon,
+    this.activeIcon,
+    required this.label,
+    required this.activeLabel,
+    required this.destructive,
+    required this.onAccept,
+  });
+
+  final IconData icon;
+  final IconData? activeIcon;
+  final String label;
+  final String activeLabel;
+  final bool destructive;
+  final ValueChanged<String> onAccept;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    return SizedBox(
+      height: _bandH,
+      child: DragTarget<String>(
+        onAcceptWithDetails: (d) => onAccept(d.data),
+        builder: (context, cand, _) {
+          final on = cand.isNotEmpty;
+          final bg = !on
+              ? scheme.surfaceContainerHighest
+              : destructive
+              ? scheme.errorContainer
+              : scheme.primaryContainer;
+          final fg = !on
+              ? scheme.onSurfaceVariant
+              : destructive
+              ? scheme.onErrorContainer
+              : scheme.onPrimaryContainer;
+          final edge = !on
+              ? Colors.transparent
+              : destructive
+              ? scheme.error
+              : scheme.primary;
+          return Material(
+            color: bg,
+            elevation: on ? 8 : 3,
+            shadowColor: Colors.black.withValues(alpha: .45),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: edge, width: 2),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(on ? (activeIcon ?? icon) : icon, size: 22, color: fg),
+                const SizedBox(width: 8),
+                Text(
+                  on ? activeLabel : label,
+                  style: context.texts.bodyMedium!.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: fg,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

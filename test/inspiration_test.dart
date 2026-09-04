@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:plana_app/features/inspiration/tag_models.dart';
+import 'package:plana_app/features/inspiration/widgets/tag_filter_sheet.dart';
 
 TagEntry _e(
   TagCategory c, {
@@ -8,6 +9,7 @@ TagEntry _e(
   String positive = '',
   String negative = '',
   List<String> tags = const [],
+  String? createdBy,
   Map<String, dynamic> extra = const {},
 }) => TagEntry(
   id: id,
@@ -17,6 +19,7 @@ TagEntry _e(
   negative: negative,
   tags: tags,
   createdAt: 1,
+  createdBy: createdBy,
   extra: extra,
 );
 
@@ -253,5 +256,48 @@ void main() {
       'lowres, bad hands, watermark',
     );
     expect(appendTagNegatives('', [e1]), 'lowres, bad hands');
+  });
+
+  test('候选作者:只数署名的条目,昵称查不到就回显 QQ 号', () {
+    final authors = collectTagAuthors(
+      [
+        _e(TagCategory.artist, id: '1', createdBy: '10001'),
+        _e(TagCategory.artist, id: '2', createdBy: '10001'),
+        _e(TagCategory.artist, id: '3', createdBy: ' 10001 '), // 首尾空白同一人
+        _e(TagCategory.artist, id: '4', createdBy: '20002'),
+        _e(TagCategory.artist, id: '5'), // 无主:不进候选
+        _e(TagCategory.artist, id: '6', createdBy: '  '),
+      ],
+      const {'10001': '小明'},
+    );
+    expect(authors.map((a) => a.id), ['10001', '20002']); // 条目多的在前
+    expect(authors.first.count, 3);
+    expect(authors.first.label, '小明');
+    expect(authors.last.label, '20002'); // 目录里没有 → 回显号码
+  });
+
+  test('作者补全:昵称和 QQ 号都能命中', () {
+    const a = TagAuthor(id: '123456', nickname: '小明');
+    expect(a.matches('小'), isTrue);
+    expect(a.matches('3456'), isTrue);
+    expect(a.matches('阿花'), isFalse);
+    // 没昵称的按号码找
+    expect(const TagAuthor(id: '654321').matches('6543'), isTrue);
+  });
+
+  test('作者署名:昵称(QQ 号),没昵称就只剩号码', () {
+    expect(authorDisplay('12345', const {'12345': '小明'}), '小明(12345)');
+    expect(authorDisplay('12345', const {}), '12345');
+    expect(authorDisplay('12345', const {'12345': ''}), '12345');
+  });
+
+  test('排序档:画风多一档编号,默认各回各的原排法', () {
+    expect(defaultTagSort(TagCategory.artist), TagSort.number);
+    expect(defaultTagSort(TagCategory.character), TagSort.time);
+    expect(tagSortOptions(TagCategory.artist), contains(TagSort.number));
+    expect(tagSortOptions(TagCategory.character), [
+      TagSort.time,
+      TagSort.author,
+    ]);
   });
 }

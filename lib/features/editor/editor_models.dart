@@ -283,7 +283,13 @@ List<Tok> parseToks(
     final inner = text.substring(ia, ib);
     final di = inner.indexOf('::');
     final dj = inner.lastIndexOf('::');
-    if (di > 0 && dj > di && dj == inner.length - 2) {
+    // 收口 `::` 必须与开记号**不重叠**(`dj >= di + 2`):`1.5:::` 的三个冒号里
+    // 头一对是开记号(di=开)、后一对是收口(dj=开+1),两对共用中间那个冒号 ——
+    // 只判 `dj > di` 会当成合法闭合,算出 nameStart(di+2) > nameEnd(dj) 的倒挂
+    // 区间,substring 直接抛 RangeError(注音/权重底色/富文本三处 parseToks 全崩,
+    // 屏上就是一大片渲染失败的灰底)。重叠时这里不认,整枚当普通文本走,打全
+    // `1.5::x::` 再正常上色。
+    if (di > 0 && dj >= di + 2 && dj == inner.length - 2) {
       final num = double.tryParse(inner.substring(0, di));
       if (num != null) {
         numMult = num;

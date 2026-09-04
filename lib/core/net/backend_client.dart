@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -19,17 +20,22 @@ class BackendException implements Exception {
   String toString() => message;
 }
 
-/// 从任务结果里取**这一批的全部图**(base64)。
+/// 从任务结果里取**这一批全部图的 URL**(形如 `/api/i/<hash>.png`)。
 ///
-/// 契约是加法式的:`imageBase64` 永远是第 0 张,batch_size>1 时**额外**多出
-/// `images`(含第 0 张)与 `count`。所以顺序是「有 images 用 images,
-/// 没有就用 imageBase64 凑一张」—— 两条都空才是真没图。
+/// 服务端 2026-09-04 起**不再在控制平面里下发图片字节**:`url` 是第一张,
+/// `count > 1` 时另带 `urls`(含第一张)。字节要自己 GET 一次,见
+/// [BackendClient.fetchResultImage]。
+///
+/// 为什么改:以前结果是 `{type:'base64', imageBase64}`,那份 base64 会随
+/// `task_update` 推一遍、再随每一次轮询响应重发一遍。实测 2718 张图对应
+/// 2730 次带图轮询,占了后端出向流量的 39.5%。换成 URL 之后字节只出一次,
+/// 重复请求由 HTTP 缓存吸收(内容寻址 + immutable)。
 ///
 /// WS 的 `task_update` 和轮询的 `GET /api/bot/task/{id}` 用的是同一份结构,
 /// 所以这段拆出来共用:两处各写一遍迟早只改对一处。
-List<String> botResultImages(Object? result) {
+List<String> botResultUrls(Object? result) {
   if (result is! Map) return const [];
-  final all = result['images'];
+  final all = result['urls'];
   if (all is List) {
     final out = [
       for (final v in all)
@@ -37,7 +43,7 @@ List<String> botResultImages(Object? result) {
     ];
     if (out.isNotEmpty) return out;
   }
-  final one = result['imageBase64'];
+  final one = result['url'];
   return (one is String && one.isNotEmpty) ? [one] : const [];
 }
 
@@ -48,8 +54,7 @@ class BotTask {
     this.status,
     this.step = 0,
     this.totalSteps = 0,
-    this.imageBase64,
-    this.images = const [],
+    this.urls = const [],
     this.error,
     this.warning,
     this.queuePosition = 0,
@@ -59,12 +64,10 @@ class BotTask {
   final String? status; // queued/starting/generating/completed/failed/cancelled
   final int step;
   final int totalSteps;
-  final String? imageBase64; // 完成时的结果图(batch 时是第 0 张)
 
-  /// batch_size>1 时的**全部**图。服务端刻意保留 `imageBase64` 不动、只在
-  /// count>1 时**额外**给 `images` —— 老 app 只认前者,新旧都能用。
-  /// 单张时这里是空的,别拿它当唯一来源。
-  final List<String> images;
+  /// 完成时这一批全部图的 URL(单张时长度 1)。**不是字节** ——
+  /// 拿它去 [BackendClient.fetchResultImage] 取。
+  final List<String> urls;
   final String? error;
 
   /// 非致命提醒:图照常出,但有东西没生效(目前只有 LoRA 超上限被丢弃)。
@@ -75,18 +78,12 @@ class BotTask {
   bool get failed => status == 'failed' || status == 'cancelled';
 
   factory BotTask.fromJson(Map<String, dynamic> j) {
-    final result = j['result'];
-    String? img;
-    if (result is Map && result['imageBase64'] is String) {
-      img = result['imageBase64'] as String;
-    }
     return BotTask(
       success: j['success'] == true,
       status: j['status'] as String?,
       step: (j['step'] as num?)?.toInt() ?? 0,
       totalSteps: (j['total_steps'] as num?)?.toInt() ?? 0,
-      imageBase64: img,
-      images: botResultImages(result),
+      urls: botResultUrls(j['result']),
       error: j['error'] as String?,
       warning: j['warning'] as String?,
       queuePosition: (j['queue_position'] as num?)?.toInt() ?? 0,
@@ -275,6 +272,19 @@ class PublicOcMeta {
 
   String get displayName =>
       zhName != null && zhName!.isNotEmpty ? zhName! : enName;
+}
+
+/// 公共库作者(`GET /api/public/authors`):在公共画师串 / OC 里有条目的人。
+/// [id] 就是列表接口给的 owner_id(QQ 号;存量数据可能是个名字串),
+/// [nickname] 由服务端从 bot 的昵称表里查(查不到为 null,显示回落到 [id])。
+class PublicAuthorMeta {
+  const PublicAuthorMeta({required this.id, this.nickname});
+
+  final String id;
+  final String? nickname;
+
+  /// 展示名:有昵称用昵称,没有就是那串 QQ 号。
+  String get label => nickname != null && nickname!.isNotEmpty ? nickname! : id;
 }
 
 /// 「我的 NAI 5 额度」(`GET /api/user/quota`)—— **我们自己**发给每个用户的
@@ -1382,6 +1392,35 @@ class BackendClient {
     return BotTask.fromJson(j);
   }
 
+  /// 取一张出图结果。[url] 就是 `result.url`(形如 `/api/i/<hash>.png`,
+  /// 已含 `/api` 前缀,所以这里不走 [_u])。
+  ///
+  /// 不需要鉴权:哈希本身就是凭证(128 位,猜不出来)。服务端只在内存里留
+  /// 10 分钟,过期即 404 —— 那是预期行为,拿到就该立刻落库。
+  Future<Uint8List> fetchResultImage(String url) async {
+    if (baseUrl.isEmpty) throw BackendException('未配置后端地址');
+    final http.Response resp;
+    try {
+      resp = await http
+          .get(Uri.parse('$baseUrl$url'))
+          .timeout(const Duration(seconds: 60));
+    } on TimeoutException {
+      throw BackendException('取结果图超时,请检查网络');
+    } catch (_) {
+      throw BackendException('取结果图失败,请检查网络');
+    }
+    if (resp.statusCode == 404) {
+      throw BackendException('结果已过期(服务端只保留 10 分钟)');
+    }
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw BackendException(
+        '取结果图失败(${resp.statusCode})',
+        status: resp.statusCode,
+      );
+    }
+    return resp.bodyBytes;
+  }
+
   /// 取消**排队中**的任务(`DELETE /api/task/{id}`,与 web 同一个端点)。
   ///
   /// 服务端只受理 `queued`:已经在跑的返 400、任务不存在返 404 —— 两种都当
@@ -1391,10 +1430,13 @@ class BackendClient {
   /// 值得调的理由:它不只是打个 cancelled 标记 —— NAI 侧会把任务踢出队列
   /// (省下这次的 Anlas),anima/krea 侧还会显式踢出 provider 的本地 FIFO 并
   /// 唤醒其协程,否则那条协程照样排队→出图→烧机时。
-  Future<bool> cancelTask(String taskId) async {
+  Future<bool> cancelTask(String taskId, {String? sessionId}) async {
     try {
       final j = await _handle(
-        () => http.delete(_u('/task/$taskId'), headers: _headers()),
+        // 2026-09-04 起这个端点要鉴权（此前完全敞着，知道 task_id 就能撤别人的任务）。
+        // 不带会话会 401 —— 而 401 在这里被当成「没取消成」吞掉，表现是「点了取消
+        // 但服务端照常出图」，很难查。所以调用方务必把 sessionId 传进来。
+        () => http.delete(_u('/task/$taskId'), headers: _headers(sessionId)),
       );
       return j['success'] == true;
     } catch (_) {
@@ -1664,6 +1706,26 @@ class BackendClient {
             createdBy: o['created_by'] as String?,
             ownerId: o['owner_id'] as String?,
             createdAt: (o['created_at'] as num?)?.toInt() ?? 0,
+          ),
+    ];
+  }
+
+  /// 公共库作者目录(登录:Bearer 头)。只含在公共库里有条目的人 ——
+  /// 灵感页拿它把 owner_id 那串数字显示成昵称,并作为作者筛选的候选名单。
+  ///
+  /// 老后端没有这个端点,调用方按空表处理(照旧显示 QQ 号)。
+  Future<List<PublicAuthorMeta>> listPublicAuthors(String sessionId) async {
+    final j = await _getJson('/public/authors', sessionId);
+    final authors = j['authors'];
+    if (authors is! List) return const [];
+    return [
+      for (final a in authors)
+        if (a is Map &&
+            a['user_id'] is String &&
+            (a['user_id'] as String).isNotEmpty)
+          PublicAuthorMeta(
+            id: a['user_id'] as String,
+            nickname: a['nickname'] is String ? a['nickname'] as String : null,
           ),
     ];
   }

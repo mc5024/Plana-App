@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/store/app_stores.dart';
 import '../../core/theme/app_theme.dart';
@@ -10,6 +11,8 @@ import '../generate/widgets/common.dart' show hintSnack;
 import '../inpaint/inpaint_overlay.dart';
 import 'gallery_state.dart';
 import 'models.dart';
+import 'save_settings.dart';
+import 'share_pipeline.dart';
 import 'widgets/film_strip.dart';
 import 'widgets/result_canvas.dart';
 
@@ -40,8 +43,8 @@ const _kGalleryHints = <({String key, String text, IconData icon})>[
     icon: Icons.download_outlined,
   ),
   (
-    key: 'hint_strip_swipe_delete',
-    text: '底部胶片条里的图,向上滑可以删除',
+    key: 'hint_strip_swipe',
+    text: '底部胶片条里的图,向上滑可以分享或删除',
     icon: Icons.swipe_up_outlined,
   ),
 ];
@@ -126,6 +129,29 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
       _userDrag = false;
     }
     return false;
+  }
+
+  /// 胶片条上滑分享:单张,与网格弹层那条同一套管线(见 [prepareShareFiles])。
+  Future<void> _shareOne(String id) async {
+    final r = ref
+        .read(galleryProvider)
+        .results
+        .where((e) => e.id == id)
+        .firstOrNull;
+    if (r == null) return;
+    final settings = await ref.read(saveSettingsProvider.future);
+    if (!mounted) return;
+    final prep = await prepareShareFiles(
+      [r],
+      store: ref.read(appStoresProvider).gallery,
+      settings: settings,
+    );
+    if (!mounted) return;
+    if (prep.files.isEmpty) {
+      hintSnack(context, '没有可分享的图片', icon: Icons.error_outline);
+      return;
+    }
+    await SharePlus.instance.share(ShareParams(files: prep.files));
   }
 
   /// 图库里有图了 → 提一条还没提过的引导(见 [_kGalleryHints])。
@@ -335,6 +361,7 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
                 ref.read(generationProvider.notifier).select(null);
                 ref.read(galleryProvider.notifier).select(id);
               },
+              onShare: _shareOne,
               onDelete: (id) =>
                   ref.read(galleryProvider.notifier).deleteResults([id]),
               jobs: pool.newestFirst,

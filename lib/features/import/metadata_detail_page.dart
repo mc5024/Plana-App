@@ -8,7 +8,7 @@ import '../generate/widgets/common.dart' show hintSnack, sharedAxisRoute;
 import 'image_metadata.dart';
 import 'import_panel.dart';
 
-/// 3b 完整元数据页:顶卡「原始元数据」入口的落地页,对齐桌面 MetadataDetailPanel。
+/// 3b 完整元数据页:顶卡「完整元数据」入口的落地页,对齐桌面 MetadataDetailPanel。
 /// 图片 + 大小/尺寸/格式/来源、正/负向(可复制)、角色提示词、生成参数网格、
 /// LoRA、Vibe、原始 JSON(可复制)。
 class MetadataDetailPage extends StatelessWidget {

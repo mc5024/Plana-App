@@ -18,6 +18,7 @@ import '../../core/util/prompt_convert.dart' show convertSdToNai;
 import '../char_library/char_library.dart';
 import '../generate/auto_text.dart';
 import '../generate/char_position.dart';
+import '../generate/gen_modules.dart';
 import '../generate/generate_state.dart';
 import '../generate/models.dart';
 import '../generate/nai_request.dart' show naiModelId;
@@ -474,6 +475,34 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     );
   }
 
+  // ---- 模块可用性 ----
+
+  /// 这个功能模块在**当前模型**下能不能用;不能用返回禁用原因。
+  ///
+  /// 判定直接借主页那条统一可见性谓词([GenModuleSettings.isVisibleFor]),
+  /// **不另立门槛**:主页上因型号能力(NAI 5 之于 Vibe、非 4.5 之于角色参考)
+  /// 或用户隐藏而收走的模块,从这里导进去也会被 stripHiddenModules 原样剥掉 ——
+  /// 让人按得下去、转一圈没效果,比按不动更难懂。
+  ///
+  /// 用 read 不用 watch:[_initSelections] 在 build 之外也要问同一件事。模型
+  /// 只会由本页的「切换到 xx 模型」改动,那条路自带 setState。
+  String? _moduleBlocked(GenModule m) {
+    final model = ref.read(generateProvider).params.model;
+    final mods =
+        ref.read(genModulesProvider).value ?? const GenModuleSettings();
+    if (mods.isVisibleFor(m, model)) return null;
+    final def = genModuleDef(m);
+    final p = providerOfModel(model);
+    // 三种拦法说清是哪一种:功能归别的渠道 / 这一档型号不支持 / 用户自己关的。
+    // 头一条照实说「归谁」而不是「你没有」—— Krea 有自己的风格参考卡,说成
+    // 「Krea 2 没有风格」会对不上他在创作页看到的东西。
+    if (def.provider != p) {
+      return '「${def.label}」是 ${providerLabel(def.provider)} 的功能';
+    }
+    if (!def.supportsModel(model)) return '$model 不支持「${def.label}」';
+    return '「${def.label}」已在创作页模块里隐藏';
+  }
+
   // ---- Vibe 可导入性 ----
 
   /// 来源模型可识别时,元数据里编码串对应的 encodings 键(v4-5full 等)。
@@ -483,11 +512,18 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     return display == null ? null : kModelToEncodingKey[naiModelId(display)];
   }
 
+  /// 当前模型有没有 Vibe Transfer 这个模块;没有则整组不可导。
+  String? get _vibeModuleBlocked => _moduleBlocked(GenModule.vibe);
+
   /// 有原图 → 可导入(生成时按当前模型现场编码);
   /// 仅编码 → 来源模型可识别才可导入(挂到该模型的编码键下)。
+  ///
+  /// 前置一道模块门槛:当前模型没有 Vibe 这个模块(NAI 5 预载期屏蔽)时逐行
+  /// 全部不可导 —— 勾得上、导进去,生成前又被整组剥掉,等于白勾一趟。
   bool _vibeImportable(ImageMetadata m, int i) =>
-      _vibeBytes[i] != null ||
-      (m.vibes[i].encoding != null && _vibeEncKey != null);
+      _vibeModuleBlocked == null &&
+      (_vibeBytes[i] != null ||
+          (m.vibes[i].encoding != null && _vibeEncKey != null));
 
   // ---- 生成设置可用性 ----
 
@@ -1748,7 +1784,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     bool reverse = false,
   }) {
     final m = _meta;
-    final simple = noMeta || reverse; // 无徽标 / 无原始元数据入口
+    final simple = noMeta || reverse; // 无徽标 / 无完整元数据入口
     final hasDims = m != null && (m.width > 0 || m.height > 0);
     final String subtitle;
     if (hasDims) {
@@ -1828,7 +1864,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
               ],
             ),
           ),
-          // 原始元数据入口
+          // 完整元数据入口
           if (m != null && !simple)
             _RawEntry(
               onTap: () {
@@ -1913,16 +1949,25 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        // 展开后全文就在下面,单行预览留着只是重复
-                        if (!expanded) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            preview,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 11.5, color: textColor),
+                        // 展开后全文就在下面,单行预览留着只是重复。但不能直接
+                        // 拿掉:行高一变,居中的图标 / 勾选 / 箭头会瞬移半行。
+                        // 让它和全文走同一套 ExpandBody 反向折叠,整行高度连续
+                        // 过渡,头部元素跟着滑而不是跳。
+                        ExpandBody(
+                          expanded: !expanded,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              preview,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: textColor,
+                              ),
+                            ),
                           ),
-                        ],
+                        ),
                       ],
                     ),
                   ),
@@ -2045,15 +2090,18 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
       title: 'Vibe',
       count: '${_vibeChecked.length}/${importable.length}',
       allOn: allOn,
-      onToggleAll: () => setState(() {
-        if (allOn) {
-          _vibeChecked.clear();
-        } else {
-          _vibeChecked
-            ..clear()
-            ..addAll(importable);
-        }
-      }),
+      // 一条都导不了时全选不给按(与生成设置区同口径)
+      onToggleAll: importable.isEmpty
+          ? null
+          : () => setState(() {
+              if (allOn) {
+                _vibeChecked.clear();
+              } else {
+                _vibeChecked
+                  ..clear()
+                  ..addAll(importable);
+              }
+            }),
       expanded: _vibeExpanded,
       onToggleExpand: () => setState(() => _vibeExpanded = !_vibeExpanded),
       child: Column(
@@ -2081,7 +2129,12 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     final params =
         '强度 ${v.strength.toStringAsFixed(2)} · IE ${(v.informationExtracted ?? 1.0).toStringAsFixed(1)}';
     final String sub;
-    if (thumb != null) {
+    final moduleBlocked = _vibeModuleBlocked;
+    if (moduleBlocked != null) {
+      // 这条跟图本身无关,是当前模型没这功能 —— 写在行里,别让人对着一排灰掉的
+      // Vibe 猜是不是图坏了
+      sub = moduleBlocked;
+    } else if (thumb != null) {
       sub = params;
     } else if (importable) {
       sub = '仅编码 · $params';
@@ -2470,13 +2523,33 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
   Widget _useAsRow(ColorScheme scheme, {required bool reverse}) {
     return Row(
       children: [
-        _useAsBtn(scheme, Icons.image_outlined, '图生图', _useAsImg2img),
+        _useAsBtn(
+          scheme,
+          Icons.image_outlined,
+          '图生图',
+          _useAsImg2img,
+          blocked: _moduleBlocked(GenModule.img2img),
+        ),
         const SizedBox(width: 8),
-        _useAsBtn(scheme, Icons.palette_outlined, '风格', _useAsVibe),
+        _useAsBtn(
+          scheme,
+          Icons.palette_outlined,
+          '风格',
+          _useAsVibe,
+          blocked: _moduleBlocked(GenModule.vibe),
+        ),
         const SizedBox(width: 8),
-        _useAsBtn(scheme, Icons.face_retouching_natural, '角色', _useAsCharRef),
+        _useAsBtn(
+          scheme,
+          Icons.face_retouching_natural,
+          '角色',
+          _useAsCharRef,
+          blocked: _moduleBlocked(GenModule.charRef),
+        ),
         if (!reverse) ...[
           const SizedBox(width: 8),
+          // 反推走 Bot 的 tagger 服务,产出只是一串提示词,跟当前出图模型
+          // 没有关系 —— 不跟着上面三个一起禁。
           _useAsBtn(scheme, Icons.auto_awesome, '反推', _reverse),
         ],
       ],
@@ -2487,28 +2560,38 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     ColorScheme scheme,
     IconData icon,
     String label,
-    VoidCallback onTap,
-  ) {
+    VoidCallback onTap, {
+    String? blocked,
+  }) {
+    final off = blocked != null;
     return Expanded(
       child: Material(
         color: scheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(13),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: onTap,
+          // 禁用态不做成死按钮 —— 格子太小塞不下原因,点一下用提示条讲清楚,
+          // 比一个按下去毫无反应的灰按钮好懂。
+          onTap: off
+              ? () => hintSnack(context, blocked, icon: Icons.block)
+              : onTap,
           child: SizedBox(
             height: 58,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 22, color: scheme.primary),
+                Icon(
+                  icon,
+                  size: 22,
+                  color: off ? scheme.outline : scheme.primary,
+                ),
                 const SizedBox(height: 4),
                 Text(
                   label,
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
-                    color: scheme.onSurface,
+                    color: off ? scheme.outline : scheme.onSurface,
                   ),
                 ),
               ],
@@ -2527,7 +2610,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
   };
 }
 
-/// 顶卡右侧「原始元数据」竖分栏入口。
+/// 顶卡右侧「完整元数据」竖分栏入口。
 class _RawEntry extends StatelessWidget {
   const _RawEntry({required this.onTap});
   final VoidCallback onTap;
@@ -2539,22 +2622,22 @@ class _RawEntry extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        width: 52,
-        padding: const EdgeInsets.symmetric(vertical: 4),
+        width: 60,
+        padding: const EdgeInsets.symmetric(vertical: 6),
         decoration: BoxDecoration(
           border: Border(left: BorderSide(color: scheme.outlineVariant)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.data_object, size: 20, color: scheme.primary),
-            const SizedBox(height: 3),
+            Icon(Icons.data_object, size: 24, color: scheme.primary),
+            const SizedBox(height: 4),
             Text(
-              '原始\n元数据',
+              '完整\n元数据',
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 8.5,
-                height: 1.2,
+                fontSize: 10,
+                height: 1.25,
                 color: scheme.onSurfaceVariant,
               ),
             ),

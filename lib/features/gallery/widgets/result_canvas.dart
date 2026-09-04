@@ -1228,67 +1228,70 @@ class _UpscalePanelState extends ConsumerState<_UpscalePanel> {
     ),
   );
 
-  /// 全宽 CTA:结果尺寸 + 点数胶囊,与重绘面板那条同一套(图标 + 数字,免费写「免费」)。
-  Widget _cta(ColorScheme scheme, ({int w, int h}) t, int? cost) =>
-      FilledButton(
-        style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(46),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(23),
-          ),
+  /// 全宽 CTA:结果尺寸 + 点数胶囊,与创作页主按钮那颗同一套 —— 要扣点就是
+  /// tertiaryContainer 的浅粉(角色计数、灵感「随机」徽章同款),
+  /// 免费或算不出时才是中性半透明。
+  Widget _cta(ColorScheme scheme, ({int w, int h}) t, int? cost) {
+    final paid = cost != null && cost > 0;
+    // 底色换了字色就得跟着换到配套那支;中性底那档才走按钮的 onPrimary。
+    final fg = paid ? scheme.onTertiaryContainer : scheme.onPrimary;
+    return FilledButton(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size.fromHeight(46),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
+      ),
+      onPressed: cost == null ? null : () => Navigator.of(context).pop(_s),
+      // 整块等比缩,不让任何一段省略号 —— 窄屏 + 四位数点数时两边都装不下。
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _isRedraw ? Icons.auto_fix_high : Icons.photo_size_select_large,
+              size: 18,
+            ),
+            const SizedBox(width: 7),
+            const Text(
+              '开始放大',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _isRedraw && _s.enhanceScale == EnhanceScale.max
+                  ? '≈${t.w}×${t.h}'
+                  : '${t.w}×${t.h}',
+              style: mono(
+                context,
+                size: 11,
+              ).copyWith(color: scheme.onPrimary.withValues(alpha: .75)),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: paid
+                    ? scheme.tertiaryContainer
+                    : scheme.onPrimary.withValues(alpha: .16),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.toll, size: 12, color: fg),
+                  const SizedBox(width: 3),
+                  Text('${cost ?? '—'}', style: _pill(fg)),
+                ],
+              ),
+            ),
+          ],
         ),
-        onPressed: cost == null ? null : () => Navigator.of(context).pop(_s),
-        // 整块等比缩,不让任何一段省略号 —— 窄屏 + 四位数点数时两边都装不下。
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                _isRedraw ? Icons.auto_fix_high : Icons.photo_size_select_large,
-                size: 18,
-              ),
-              const SizedBox(width: 7),
-              const Text(
-                '开始放大',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                _isRedraw && _s.enhanceScale == EnhanceScale.max
-                    ? '≈${t.w}×${t.h}'
-                    : '${t.w}×${t.h}',
-                style: mono(
-                  context,
-                  size: 11,
-                ).copyWith(color: scheme.onPrimary.withValues(alpha: .75)),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: scheme.onPrimary.withValues(alpha: .16),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.toll, size: 12, color: scheme.onPrimary),
-                    const SizedBox(width: 3),
-                    Text('${cost ?? '—'}', style: _pill(scheme)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+      ),
+    );
+  }
 
-  TextStyle _pill(ColorScheme scheme) => TextStyle(
-    fontSize: 11,
-    fontWeight: FontWeight.w700,
-    color: scheme.onPrimary,
-  );
+  TextStyle _pill(Color fg) =>
+      TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: fg);
 }
 
 /// 超分进度对话框。三条路都是远程一次性调用,拿不到逐步进度 ——

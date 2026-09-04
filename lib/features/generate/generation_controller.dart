@@ -341,7 +341,15 @@ class GenerationNotifier extends Notifier<GenPool> {
     // 不撤的话点了取消也只是本地不等了,NAI 那边照扣点、Modal 那边照占容器。
     final taskId = run.taskId;
     if (taskId != null) {
-      unawaited(ref.read(backendClientProvider).cancelTask(taskId));
+      // 撤单也要带会话（服务端已加鉴权）。这里拿不到现成的 session 变量，
+      // 从 provider 现取；取不到就带 null 发出去，服务端会 401，而 401 被
+      // cancelTask 当「没撤成」吞掉 —— 和以前撤不动是同一种表现，不会更糟。
+      unawaited(() async {
+        final s = await ref.read(botSessionProvider.future);
+        await ref
+            .read(backendClientProvider)
+            .cancelTask(taskId, sessionId: s?.sessionId);
+      }());
     }
     run.abort.abort();
   }
@@ -951,7 +959,7 @@ class GenerationNotifier extends Notifier<GenPool> {
         // 而任务其实已经在服务端建好了 —— 不在这补一刀,它会照常排队、照常出图、
         // 照常收钱,而 app 这边显示的是「已取消」。
         if (abort.aborted) {
-          unawaited(client.cancelTask(sub.taskId!));
+          unawaited(client.cancelTask(sub.taskId!, sessionId: session.sessionId));
           return _cancelled(jobId);
         }
 

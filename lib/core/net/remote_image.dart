@@ -366,9 +366,10 @@ class RemoteImageProvider extends ImageProvider<RemoteImageProvider> {
     return true;
   }
 
+  /// [chunks] = null:不关心进度([fetchRemoteImageBytes] 那条路会用到)。
   static Future<({Uint8List bytes, String? etag})> _download(
     String url,
-    StreamController<ImageChunkEvent> chunks,
+    StreamController<ImageChunkEvent>? chunks,
   ) async {
     final uri = Uri.parse(url);
     final resp = await _client.send(http.Request('GET', uri));
@@ -379,7 +380,7 @@ class RemoteImageProvider extends ImageProvider<RemoteImageProvider> {
     final buf = BytesBuilder(copy: false);
     await for (final part in resp.stream) {
       buf.add(part);
-      if (!chunks.isClosed) {
+      if (chunks != null && !chunks.isClosed) {
         chunks.add(
           ImageChunkEvent(
             cumulativeBytesLoaded: buf.length,
@@ -405,6 +406,41 @@ class RemoteImageProvider extends ImageProvider<RemoteImageProvider> {
 
   @override
   String toString() => 'RemoteImageProvider("$url")';
+}
+
+/// 取一张远端图的**原始字节**,与 [RemoteImageProvider] 共用那份磁盘缓存:
+/// 命中直接返回,否则下载并落盘。
+///
+/// 显示走 provider 就够了,这条是给「要把字节整个交出去」的场景用的 ——
+/// 比如导入原图:解码后的位图里没有 PNG 文本块,元数据只在原始字节里。
+/// [onProgress] 收到的 total 可能是 null(服务端没给 Content-Length)。
+Future<Uint8List> fetchRemoteImageBytes(
+  String url, {
+  void Function(int received, int? total)? onProgress,
+  Duration timeout = const Duration(seconds: 60),
+}) async {
+  final hit = await RemoteImageStore.read(url);
+  if (hit != null) return hit;
+  StreamController<ImageChunkEvent>? chunks;
+  StreamSubscription<ImageChunkEvent>? sub;
+  if (onProgress != null) {
+    chunks = StreamController<ImageChunkEvent>();
+    sub = chunks.stream.listen(
+      (e) => onProgress(e.cumulativeBytesLoaded, e.expectedTotalBytes),
+    );
+  }
+  try {
+    final (:bytes, :etag) = await RemoteImageProvider._download(
+      url,
+      chunks,
+    ).timeout(timeout);
+    // 落盘是旁路:写失败只是下次还得重下,不该连累这一次
+    unawaited(RemoteImageStore.write(url, bytes, etag: etag));
+    return bytes;
+  } finally {
+    unawaited(sub?.cancel());
+    unawaited(chunks?.close());
+  }
 }
 
 /// `Image.network` 的替代:磁盘缓存 + 按布局宽限制解码尺寸。

@@ -90,6 +90,29 @@ const kTagCategoryDefs = <TagCategoryDef>[
 TagCategoryDef tagCategoryDef(TagCategory c) =>
     kTagCategoryDefs.firstWhere((d) => d.key == c);
 
+/// 灵感页网格的排序档。
+///   [number] 按名字自然序(A1<A2<A10)—— 只有画风有,它的名字本来就是编号;
+///   [time]   最新在前;
+///   [author] 按作者切组,组内仍按该分类的自然序。
+enum TagSort { number, time, author }
+
+extension TagSortX on TagSort {
+  String get label => switch (this) {
+    TagSort.number => '编号',
+    TagSort.time => '最新',
+    TagSort.author => '作者',
+  };
+}
+
+/// 该分类的默认档 = 它原本的排法(画风按编号,其余最新在前)。
+TagSort defaultTagSort(TagCategory c) =>
+    c == TagCategory.artist ? TagSort.number : TagSort.time;
+
+/// 排序菜单给哪几档:编号只对画风有意义,角色那栏就少一项。
+List<TagSort> tagSortOptions(TagCategory c) => c == TagCategory.artist
+    ? const [TagSort.number, TagSort.time, TagSort.author]
+    : const [TagSort.time, TagSort.author];
+
 TagCategory? tagCategoryByWebId(String webId) {
   for (final d in kTagCategoryDefs) {
     if (d.webId == webId) return d.key;

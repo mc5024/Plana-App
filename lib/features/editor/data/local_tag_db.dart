@@ -69,8 +69,17 @@ class LocalTagDb {
   final _warmListeners = <VoidCallback>[];
   bool _warmDone = false;
 
-  /// 分片大小:每这么多条让一次帧。
-  static const _warmChunk = 8000;
+  /// 一片最多占主线程多久 —— **也就是这轮灌注最多能让哪一帧晚多久**。
+  ///
+  /// 分片一直都有,但早先是按**条数**切(8000 条一片)。条数和耗时不是一回事:
+  /// 同样 8000 条,在这台机器上十几毫秒,一帧就整个没了 —— 于是"开机灌注"变成
+  /// 十来帧连着丢,撞上切页面就是一口气卡那么一下。改按**时间**切,片长在哪台
+  /// 机器上都是这个数,一帧最多被推迟 2ms,挤得进 16ms 的预算。
+  ///
+  /// 让帧用零延时 Timer 就够:同一时刻只挂着**一个**待跑的片,vsync 一到就排在
+  /// 它后面,最多等这一片跑完。(必须是 `Future.delayed`,不能 `await null` ——
+  /// 后者只让微任务,事件循环根本不喘气,vsync 进不来。)
+  static const _warmSliceUs = 2000;
 
   /// 在这几个进度点回调 [warmTagMeta] 的 `onChunk`。都落在正名那一遍里
   /// (别名遍从 9 万多开始),因为热度降序的收益全在前面。
@@ -87,6 +96,21 @@ class LocalTagDb {
     final entries = _entries;
     if (entries == null) return;
     var i = 0;
+    // 这一片已经占了主线程多久;到点就让一帧,让完清零。
+    //
+    // 写成同步判定、由调用处 await,而不是包一个 `Future<void> yieldIfDue()`:
+    // 那样每一条都要 await 一次,即便立刻返回也得建一个 Future、走一轮微任务
+    // —— 十一万条,光这一下就够把省下来的钱花回去。
+    final slice = Stopwatch()..start();
+    var since = 0; // 距上次看表又过了多少条:看表也要钱,64 条问一次够细了
+    bool sliceDue() {
+      if (++since < 64) return false;
+      since = 0;
+      if (slice.elapsedMicroseconds < _warmSliceUs) return false;
+      slice.reset();
+      return true;
+    }
+
     final taken = <String>{};
     for (final e in entries) {
       final name = e.tag.replaceAll('_', ' ');
@@ -94,10 +118,10 @@ class LocalTagDb {
       if (e.zh != null || e.count > 0) {
         cacheTagMeta(name, trans: e.zh, count: e.count);
       }
-      if (++i % _warmChunk == 0) {
-        if (_warmNotifyAt.contains(i)) _notifyWarm();
-        await Future<void>.delayed(Duration.zero);
-      }
+      // 进度回调按**条数**走(热度降序,前几片的收益最大),让帧按**时间**走,
+      // 两者不再互相绑定 —— 早先合在一条 if 里,分片一改这几个点就再也对不上。
+      if (_warmNotifyAt.contains(++i)) _notifyWarm();
+      if (sliceDue()) await Future<void>.delayed(Duration.zero);
     }
     // 第二遍:别名(第 4 列)。Danbooru 的别名就是同一个标签的另一种写法 ——
     // 旧名、拼写变体、俗称(`hires`/`high res`→highres、`1girls`→1girl、
@@ -113,7 +137,7 @@ class LocalTagDb {
         if (!taken.add(metaKey(a))) continue;
         cacheTagMeta(a, trans: e.zh, count: e.count);
       }
-      if (++i % _warmChunk == 0) await Future<void>.delayed(Duration.zero);
+      if (sliceDue()) await Future<void>.delayed(Duration.zero);
     }
     _warmDone = true;
     _warmListeners.clear(); // 灌完就不再需要,别攥着已 dispose 的 State 的闭包

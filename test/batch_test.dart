@@ -1,9 +1,10 @@
 // anima / krea 的一次采样出 N 张(`batch_size`,上限 4)。
 //
 // 这条链上有三处「说好了就不能改」的契约,各自都是静默失效型的坑:
-//  ① 结果契约是**加法式**的:服务端保留 imageBase64 不动(永远是第 0 张),
-//     只在 count>1 时额外给 images/count —— 认错主次的话,要么老服务端解不出图,
-//     要么新服务端只入库第一张、白画的那几张悄悄丢掉;
+//  ① 结果契约只给 **URL**:`url` 永远是第一张,只在 count>1 时额外给 `urls`
+//     (含第一张)。认错主次的话会只入库第一张、白画的那几张悄悄丢掉。
+//     (2026-09-04 之前这里是 base64:控制平面直接带图片字节,导致每张图被
+//      WS 和轮询各投递一遍,占了后端出向的 39.5%。)
 //  ② 发出去的张数必须等于**实际会出的张数**:开着重绘放大时服务端强制单张,
 //     界面上却摆着「4」的话,用户选 4 出 1 张且没有任何提示(web 早期就这样);
 //  ③ 批次里 N 张共用一个 seed,只有 seed + batchIndex 才唯一确定一张图。
@@ -48,33 +49,40 @@ Future<void> _until(Future<bool> Function() cond) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('结果契约:imageBase64 是第 0 张,images 是全部', () {
-    test('count>1:用 images(它已经含第 0 张,别再拼一次)', () {
-      final r = botResultImages({
-        'type': 'base64',
-        'imageBase64': 'a',
-        'images': ['a', 'b', 'c'],
+  group('结果契约:url 是第一张,urls 是全部', () {
+    test('count>1:用 urls(它已经含第一张,别再拼一次)', () {
+      final r = botResultUrls({
+        'type': 'url',
+        'url': '/api/i/aa.png',
+        'urls': ['/api/i/aa.png', '/api/i/bb.png', '/api/i/cc.png'],
         'count': 3,
       });
-      expect(r, ['a', 'b', 'c']);
+      expect(r, ['/api/i/aa.png', '/api/i/bb.png', '/api/i/cc.png']);
     });
 
-    test('单张:没有 images,退回 imageBase64', () {
-      expect(botResultImages({'imageBase64': 'a'}), ['a']);
+    test('单张:没有 urls,退回 url', () {
+      expect(botResultUrls({'type': 'url', 'url': '/api/i/aa.png'}), [
+        '/api/i/aa.png',
+      ]);
     });
 
     test('两条都空 = 真没图(不能凑出一个空串来充数)', () {
-      expect(botResultImages({'imageBase64': ''}), isEmpty);
-      expect(botResultImages(const {}), isEmpty);
-      expect(botResultImages(null), isEmpty);
+      expect(botResultUrls({'url': ''}), isEmpty);
+      expect(botResultUrls(const {}), isEmpty);
+      expect(botResultUrls(null), isEmpty);
     });
 
-    test('images 里混进空串/非串:剔掉,别把它当成一张图', () {
-      final r = botResultImages({
-        'imageBase64': 'a',
-        'images': ['a', '', 42, 'b'],
+    test('urls 里混进空串/非串:剔掉,别把它当成一张图', () {
+      final r = botResultUrls({
+        'url': '/api/i/aa.png',
+        'urls': ['/api/i/aa.png', '', 42, '/api/i/bb.png'],
       });
-      expect(r, ['a', 'b']);
+      expect(r, ['/api/i/aa.png', '/api/i/bb.png']);
+    });
+
+    test('**不接受**旧的 base64 形状 —— 静默解出空列表才是对的,'
+        '否则会把一整串 base64 当成 URL 去请求', () {
+      expect(botResultUrls({'type': 'base64', 'imageBase64': 'AAAA'}), isEmpty);
     });
   });
 

@@ -59,7 +59,8 @@ class _Setup extends ConsumerWidget {
     final cost = estimateCost(sent, isOpus: isOpus, v5Charged: v5Charged);
     final n = p.loop.count;
 
-    final costText = cost == 0 && vibeFee == 0
+    final free = cost == 0 && vibeFee == 0;
+    final costText = free
         ? '免费'
         : n > 0
         ? '$cost/张 · 共 ${cost * n + vibeFee} Anlas'
@@ -118,9 +119,14 @@ class _Setup extends ConsumerWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.end,
+                // 要扣点就上粉,与主按钮那颗费用胶囊同一个语义;免费档留常规
+                // 字色,不必特意醒目。这里是**字**不是徽章,所以取 tertiary 而
+                // 不是胶囊那支 tertiaryContainer —— 后者是给底色用的调子,
+                // 当字色压在浅色面上根本读不出来。同一族,深浅各就各位。
                 style: mono(
                   context,
                   size: 13,
+                  color: free ? null : scheme.tertiary,
                 ).copyWith(fontWeight: FontWeight.w600),
               ),
             ),

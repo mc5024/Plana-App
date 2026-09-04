@@ -13,6 +13,7 @@ import '../../../core/util/file_read.dart';
 import '../../generate/widgets/common.dart' show confirmDialog, hintSnack;
 import '../../migrate/web_backup.dart';
 import '../../migrate/web_backup_import.dart';
+import '../public_tags.dart';
 import '../tag_library.dart';
 import '../tag_models.dart';
 import 'prompt_chips.dart';
@@ -46,14 +47,20 @@ Widget _sheetTitle(BuildContext context, IconData icon, String title) {
 Future<void> showTagDetailSheet(BuildContext context, TagEntry e) =>
     _sheet(context, _DetailSheet(e));
 
-class _DetailSheet extends StatelessWidget {
+class _DetailSheet extends ConsumerWidget {
   const _DetailSheet(this.e);
 
   final TagEntry e;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = context.scheme;
+    // 作者:查得到昵称就显示昵称,查不到显示那串 QQ 号(目录没加载出来时同理)。
+    final author = e.createdBy?.trim();
+    final authorLabel = author == null || author.isEmpty
+        ? null
+        : (ref.watch(tagAuthorNamesProvider).value ?? const {})[author] ??
+              author;
     // 定高封顶:正文(分类标签 + 正负向芯片)在内部滚,标题与「复制」常驻
     // 两端 —— 长词条不再把按钮顶出屏幕、整张弹层跟着无限拉长(法典详情同款)。
     return SafeArea(
@@ -92,6 +99,18 @@ class _DetailSheet extends StatelessWidget {
                 ],
               ),
             ),
+            if (authorLabel != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 2, 18, 0),
+                child: Text(
+                  '作者 $authorLabel',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.texts.bodySmall!.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
             Flexible(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),

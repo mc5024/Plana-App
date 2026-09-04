@@ -192,7 +192,7 @@ class _BottomActionBarState extends ConsumerState<BottomActionBar> {
                         onTap: () => openImportPanel(context),
                         child: Center(
                           child: Icon(
-                            Icons.add_photo_alternate_outlined,
+                            Icons.input,
                             size: 22,
                             color: scheme.primary,
                           ),
@@ -359,9 +359,17 @@ class _GenerateButton extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Flexible(
-                      child: AnimatedSwitcher(
+                      // 宽度滑过去而不是跳。胶囊自己按「两位数」定了最小宽,
+                      // 免费与一位数都在这个宽度里,平时根本不动;三位数以上
+                      // 才撑开,那一下由这层补成一段过渡 —— 不然「生成」两个字
+                      // 会跟着横向弹一格。
+                      child: AnimatedSize(
                         duration: Motion.fast,
-                        child: _PillChip(key: ValueKey(cost), cost: cost),
+                        curve: Motion.standard,
+                        child: AnimatedSwitcher(
+                          duration: Motion.fast,
+                          child: CostPill(key: ValueKey(cost), cost: cost),
+                        ),
                       ),
                     ),
                   ],
@@ -448,43 +456,123 @@ class _GenerateButton extends StatelessWidget {
 /// 「Anlas」这个词砍掉换成顶栏同款点数图标(重绘 CTA 早就这么做了,见
 /// inpaint_overlay):按钮内部现在还要分一段给停止区,最长的那个词首先该让位,
 /// 四位数也不必再靠省略号救。免费档保留中文 —— 一个图标表达不了「不要钱」。
-class _PillChip extends StatelessWidget {
-  const _PillChip({super.key, required this.cost});
+///
+/// 要扣点时整颗胶囊换成 tertiaryContainer 的浅粉,免费档留中性半透明。
+/// 原先两档共用同一身皮,压在 primary 按钮上就是一块和底色同族的灰,
+/// 「这一单要不要花钱」得盯着字读;现在扫一眼颜色就知道。
+///
+/// 粉色特意借 tertiaryContainer 那一对而不是自己定一支:角色的计数徽章、
+/// 灵感页的「随机」徽章用的就是它([CountBadge] 同款),app 里的浅粉只此一种,
+/// 换主题色时也跟着它们一起走,不会某天变成两种粉。
+///
+/// **公开只为可测**:这颗胶囊的不变量(免费与两位数等宽、两档等高、不撑满
+/// 按钮)全是布局层面的,analyze 一条都查不出来,历史上连着栽过三次。
+/// 直接 pump 它比经由整页去凑一个免费/收费状态可靠得多,见 widget_test。
+class CostPill extends StatelessWidget {
+  const CostPill({super.key, required this.cost});
 
   final int cost;
+
+  static const _icon = 12.0;
+  static const _gap = 3.0;
+  static const _padH = 8.0;
+  static const _padV = 3.0;
+
+  /// 内容行的固定高。**别让它跟着文字走** —— 两档字号不同(11 / 12),各自的
+  /// 自然行高会让胶囊在免费时高一点点;而把行高锁成 1 换来的是另一头的毛病:
+  /// 行盒正好等于字号,胶囊就紧紧贴着字,比原来还矮一截。
+  ///
+  /// 所以行高照锁(两档等高),上下的余量由这个盒子给:12 的图标摆在 14 里,
+  /// 各留 1;连同 [_padV] 一共 20 的胶囊,和左边「生成」那行字的分量对得上。
+  static const _contentH = 14.0;
+
+  /// 点数那档的字号。免费档要大一号 —— 见 [_freeSize]。
+  static const _numSize = 11.0;
+
+  /// 免费档的字号。两个方块字按 1em 走,11 号只有 22 宽,比点数那行整整窄
+  /// 一截,两档轮流出现时看着就是大小不一。放到 12(= 24 宽)才和点数那行
+  /// 的分量对得上。
+  static const _freeSize = 12.0;
+
+  /// 撑宽度的隐形替身:恒按「图标 + 间隔 + 两位数字」占位,画不出来但照样参与
+  /// 布局(alpha 为 0 的 Opacity 只跳过绘制,语义也一并排除)。
+  ///
+  /// 为什么不写一个 minWidth 常数了:那得自己算「两位数字有多宽」,而数字宽度
+  /// 是**字体的事**。先前按 Roboto 的 0.57em 估了 43.5,真机上的中文字体数字
+  /// 比这宽一点点,于是两位数那档刚好越过下限、免费那档还卡在下限上 —— 差的
+  /// 就是那零点几像素,表现为切到免费时左边「生成」两个字往左挪一格。
+  /// 让替身去量,谁的字体都不用猜。
+  Widget _ghost(TextStyle style) => Opacity(
+    opacity: 0,
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.toll, size: _icon),
+        const SizedBox(width: _gap),
+        Text('00', maxLines: 1, softWrap: false, style: style),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
+    final paid = cost > 0;
+    // 底色换了,字色得跟着换到配套的那支 —— onPrimary 是给按钮底色配的,
+    // 压在浅粉上会在浅色主题下变成浅字压浅底。
+    final fg = paid ? scheme.onTertiaryContainer : scheme.onPrimary;
+    // height 1 = 行盒正好等于字号,两档(11 / 12)于是一样高;上下的呼吸留给
+    // [_contentH] 那个盒子,不靠行高撑 —— 靠行高撑的话两档又会差回去。
     final style = TextStyle(
-      fontSize: 11,
+      fontSize: paid ? _numSize : _freeSize,
+      height: 1,
       fontWeight: FontWeight.w700,
-      color: scheme.onPrimary,
+      color: fg,
     );
+    // ⚠ 居中靠 Stack / Row 自己做,**不要**给这个 Container 加 alignment、
+    // 也不要在里面套 Center:两者都会包出一个 Align,而 Align 在有界约束下
+    // 直接取 constraints.biggest —— 胶囊会从「生成」一路撑到按钮右缘。
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: _padH, vertical: _padV),
       decoration: BoxDecoration(
-        color: scheme.onPrimary.withValues(alpha: .16),
+        color: paid
+            ? scheme.tertiaryContainer
+            : scheme.onPrimary.withValues(alpha: .16),
         borderRadius: BorderRadius.circular(9),
       ),
-      child: cost == 0
-          ? Text('免费', maxLines: 1, softWrap: false, style: style)
-          : Row(
+      child: SizedBox(
+        height: _contentH,
+        // Stack 取最宽的那个孩子(loose fit 不会撑满约束),于是替身成了宽度
+        // 的下限:免费、一位数都躲在它后面,三位数以上才把它顶出去 —— 那是
+        // 少数情况,由外面的 AnimatedSize 滑过去。
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            _ghost(style.copyWith(fontSize: _numSize)),
+            // 免费档也走 Row(而不是一个光秃秃的 Text):高度与竖向居中就此
+            // 两档同源,换一档不会连带着换一套对齐方式。
+            Row(
               mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.toll, size: 12, color: scheme.onPrimary),
-                const SizedBox(width: 3),
-                Flexible(
-                  child: Text(
-                    '$cost',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    softWrap: false,
-                    style: style,
-                  ),
-                ),
-              ],
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: !paid
+                  ? [Text('免费', maxLines: 1, softWrap: false, style: style)]
+                  : [
+                      Icon(Icons.toll, size: _icon, color: fg),
+                      const SizedBox(width: _gap),
+                      Flexible(
+                        child: Text(
+                          '$cost',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          softWrap: false,
+                          style: style,
+                        ),
+                      ),
+                    ],
             ),
+          ],
+        ),
+      ),
     );
   }
 }

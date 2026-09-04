@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -8,11 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderMetaData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/store/app_stores.dart';
-import '../../../core/store/cache_sweep.dart' show kShareCacheDir;
 import '../../../core/store/ui_prefs.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../generate/widgets/common.dart'
@@ -24,6 +21,7 @@ import '../gallery_state.dart';
 import '../models.dart';
 import '../save_pipeline.dart';
 import '../save_settings.dart';
+import '../share_pipeline.dart';
 import 'album_name_sheet.dart';
 import 'result_badge_chip.dart';
 import 'result_thumb.dart';
@@ -538,6 +536,8 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet> {
         await _importOne(id);
       case 'save':
         await _downloadPicked(only: {id});
+      case 'share':
+        await _sharePicked(only: {id});
       case 'delete':
         _deleteOne(id);
     }
@@ -594,70 +594,42 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet> {
     );
   }
 
-  /// 批量分享:按保存设置处理后落进缓存,交给系统分享面板。
-  ///
-  /// 刻意走 processForSave 这条**与保存同一条**的管线 —— 把元数据设成
-  /// 「清除」的人,不会希望分享出去的那份又把提示词带上。
-  ///
-  /// 落在 cache/[kShareCacheDir]/,每次分享前先整个清掉:给出去的是 content
-  /// URI,接收方当场就拷走了,留着只会在缓存里越积越多(sweepPickerCache
-  /// 也认这个目录名,存储管理那边手动清理一并带走)。
-  Future<void> _sharePicked() async {
+  /// 分享:按保存设置处理后落进缓存,交给系统分享面板(管线见
+  /// [prepareShareFiles],胶片条的上滑分享也走那条)。
+  /// [only] 指定就只分享这几张(长按菜单那条单张的路),否则分享多选选中的。
+  Future<void> _sharePicked({Set<String>? only}) async {
+    final want = only ?? _picked;
     final items = [
       for (final r in ref.read(galleryProvider).results)
-        if (_picked.contains(r.id)) r,
+        if (want.contains(r.id)) r,
     ];
     if (items.isEmpty) return;
     final settings = await ref.read(saveSettingsProvider.future);
     if (!mounted) return;
-    final store = ref.read(appStoresProvider).gallery;
     setState(() {
       _sharing = true;
       _saveDone = 0;
       _saveTotal = items.length;
     });
-    final jpg = settings.format == SaveFormat.jpg;
-    final files = <XFile>[];
-    var failed = 0;
-    try {
-      final dir = Directory(
-        '${(await getTemporaryDirectory()).path}/$kShareCacheDir',
-      );
-      if (dir.existsSync()) await dir.delete(recursive: true);
-      await dir.create(recursive: true);
-      for (final r in items) {
-        if (!mounted) return; // 弹层已关:中止剩余
-        try {
-          final bytes = r.bytes ?? await store.readImage(r.id);
-          if (bytes == null) {
-            failed++;
-          } else {
-            final out = await processForSave(bytes, settings);
-            final f = File(
-              '${dir.path}/plana_${r.seed}.${jpg ? 'jpg' : 'png'}',
-            );
-            await f.writeAsBytes(out, flush: true);
-            files.add(
-              XFile(f.path, mimeType: jpg ? 'image/jpeg' : 'image/png'),
-            );
-          }
-        } catch (_) {
-          failed++;
-        }
-        if (mounted) setState(() => _saveDone = files.length + failed);
-      }
-    } catch (_) {
-      failed = items.length - files.length;
-    }
+    final prep = await prepareShareFiles(
+      items,
+      store: ref.read(appStoresProvider).gallery,
+      settings: settings,
+      onEach: (done) {
+        if (!mounted) return false; // 弹层已关:中止剩余
+        setState(() => _saveDone = done);
+        return true;
+      },
+    );
     if (!mounted) return;
     setState(() => _sharing = false);
-    if (files.isEmpty) {
+    if (prep.files.isEmpty) {
       hintSnack(context, '没有可分享的图片', icon: Icons.error_outline);
       return;
     }
-    await SharePlus.instance.share(ShareParams(files: files));
-    if (failed > 0 && mounted) {
-      hintSnack(context, '$failed 张读不出来,已跳过', icon: Icons.error_outline);
+    await SharePlus.instance.share(ShareParams(files: prep.files));
+    if (prep.failed > 0 && mounted) {
+      hintSnack(context, '${prep.failed} 张读不出来,已跳过', icon: Icons.error_outline);
     }
   }
 
@@ -1046,7 +1018,9 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet> {
                                 children: [
                                   Expanded(
                                     child: OutlinedButton.icon(
-                                      onPressed: canAct ? _sharePicked : null,
+                                      onPressed: canAct
+                                          ? () => _sharePicked()
+                                          : null,
                                       icon: _sharing
                                           ? const SizedBox(
                                               width: 15,
@@ -1284,7 +1258,7 @@ class _LiftedThumb extends ConsumerWidget {
   static const _menuW = 200.0;
   static const _itemH = 46.0;
   static const _dividerH = 9.0;
-  static const _menuH = _itemH * 3 + _dividerH + 16;
+  static const _menuH = _itemH * 4 + _dividerH + 16;
 
   /// 抬起的图占「可用框」(去掉边距与菜单之后那块)的面积比例。
   static const _fill = .42;
@@ -1426,6 +1400,7 @@ class _LiftedThumb extends ConsumerWidget {
           const SizedBox(height: 8),
           _item(context, Icons.input, '导入', 'import'),
           _item(context, Icons.download, '保存', 'save'),
+          _item(context, Icons.ios_share, '分享', 'share'),
           // 删除排最后并单独隔一条线:菜单就在手指底下,不可撤销的那项
           // 排第一位等于放到最容易误落的地方
           Divider(

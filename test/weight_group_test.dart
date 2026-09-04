@@ -41,6 +41,22 @@ void main() {
     ]);
   });
 
+  test('数字后接三冒号 `1.5:::` 不崩溃(开记号与收口重叠)', () {
+    // 打权重时 `1.5::` 后再补一个冒号,三冒号里两对 `::` 共用中间那个,
+    // 曾算出 nameStart > nameEnd 让 substring 抛 RangeError,连累注音/权重
+    // 底色/富文本三处 parseToks 全崩,屏上一大片灰。现应降级为普通文本。
+    for (final t in ['1:::', '1.5:::', '20:::', '-3:::']) {
+      expect(() => parseToks(t), returnsNormally, reason: t);
+      final spans = <WeightSpan>[];
+      final toks = parseToks(t, weightSpans: spans);
+      expect(toks.single.name, t, reason: '$t 整枚当普通文本'); // 未成词条权重
+      expect(toks.single.effMult, 1.0, reason: t);
+      expect(spans, isEmpty, reason: '$t 不铺权重底色');
+    }
+    // 打全收口即恢复正常上色
+    expect(_toks('1.5::x::'), [('x', 1.5)]);
+  });
+
   test('未闭合的组被下一个前缀截断,倍率不连乘', () {
     const t = '0.5::a, b, 0.8::c::';
     expect(_toks(t), [

@@ -14,7 +14,9 @@ import '../../editor/editor_models.dart' show draftOf, outputOf, pickEditorText;
 import '../../generate/generate_state.dart';
 import '../../generate/models.dart'
     show GenProvider, GenerateState, providerOfModel;
-import '../../generate/widgets/common.dart' show confirmDialog, hintSnack;
+import '../../generate/widgets/common.dart'
+    show confirmDialog, hintSnack, sharedAxisRoute;
+import '../../import/import_panel.dart' show ImportImagePanel;
 import '../../shell/shell_state.dart';
 import '../tag_models.dart'
     show TagCategory, TagEntry, appendTagPositivesFolded;
@@ -180,6 +182,9 @@ class _DetailSheet extends ConsumerStatefulWidget {
 /// 卡片跟手是 1:1 的,所以这个值同时决定了甩出去的行程。
 const _dragSpanRatio = .55;
 
+/// 牌堆的标配比例 = NAI 竖图的标准出图尺寸 832×1216(见 [_DetailSheetState._deckAspect])。
+const _deckRatio = 832 / 1216;
+
 /// 一次横向拖动归谁:先看内层例图还有没有下一张,吃到头才交给牌堆。
 enum _DragMode { undecided, pages, deck }
 
@@ -201,6 +206,13 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
   );
   int _imgPage = 0;
   _DragMode _dragMode = _DragMode.undecided;
+
+  /// 「导入」正在下原图:按钮转圈并停用,不让同一张被点两遍。
+  bool _importing = false;
+
+  /// 下载进度(0..1;长度未知或空闲时 null)。用 notifier 而不是 setState ——
+  /// 每来一个数据块就重建整张弹层(里头是牌堆和大图)太贵,只让那枚小圈重画。
+  final _importAt = ValueNotifier<double?>(null);
 
   /// 每次按下自增:甩牌动画跑到一半又被按住时,用它作废上一轮的收尾。
   int _dragSeq = 0;
@@ -234,34 +246,28 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
     _drawn.add(next);
   }
 
-  /// 这批里最「竖」的那张(aspect 最小)。牌堆定高用,开弹层时算一次。
-  /// 随机模式按整个抽奖池算 —— 边抽边定高会一张一个样。
-  late final double _minAspect = (widget.pool ?? widget.entries).fold<double>(
-    .75,
-    (m, e) {
-      final a = e.aspect <= 0 ? .75 : e.aspect;
-      return a < m ? a : m;
-    },
-  );
-
-  /// 牌堆的固定比例:一副牌每张一样大,不能一张一个高度 —— 左右滑的时候
-  /// 整张弹层跟着长高缩矮,手感是散的。取这批里最高的那张作准,
-  /// 但封顶屏高的 72%,免得一条极端长图把每张牌都撑成一根柱子。
-  /// 随机模式不组牌堆,返回 null = 仍按词条自己的比例走。
+  /// 牌堆的比例:一副牌每张一样大,不能一张一个高度 —— 左右滑的时候
+  /// 整张弹层跟着长高缩矮,手感是散的。
+  ///
+  /// 写死 [_deckRatio](NAI 竖图标配 832×1216):绝大多数例图就是这个比例,
+  /// 这个高度一屏正好放得下;横图 / 方图在框里留边(同图毛玻璃垫底)。
+  /// 只有**当前这张**比它还竖时才按它自己的比例撑高 —— 图不缩,正文滚起来,
+  /// 翻走了框又回到标配。早先取"这批里最竖的那张"作准,混进一条长图,
+  /// 整副牌全被拉成柱子(普通模式看整批,随机模式看整个抽奖池,更容易中)。
+  ///
+  /// 不组牌堆(单张)返回 null = 按词条自己的比例走。随机模式也是牌堆:
+  /// [_ensureAhead] 一开始就备好了下一张。
   double? get _deckAspect {
     if (!_canStep) return null;
-    final size = MediaQuery.sizeOf(context);
-    final w = size.width - 36; // 弹层左右各 18 内边距
-    final maxH = size.height * .72;
-    var a = _minAspect;
-    if (w / a > maxH) a = w / maxH;
-    return a;
+    final own = _entry.aspect; // 没尺寸的按 .75,比标配宽,落进框里
+    return own < _deckRatio ? own : _deckRatio;
   }
 
   @override
   void dispose() {
     _drag.dispose();
     _pageDrag.dispose();
+    _importAt.dispose();
     super.dispose();
   }
 
@@ -445,81 +451,87 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
                 onHorizontalDragEnd: _canStep ? _onDragEnd : null,
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
-                  // 换词条后高度不同(图比例 / 标题 / 提示词长度都在变),
-                  // AnimatedSize 平滑过渡卡高,避免闪现高低;顶对齐让顶部内容不跳。
-                  // 图位是 AspectRatio(元数据比例),新高度即时可知,不必等图加载。
-                  child: AnimatedSize(
-                    duration: Motion.medium,
-                    curve: Motion.emphasized,
-                    alignment: Alignment.topCenter,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // 标题这块只做淡入淡出:横向位移交给下面那副牌,
-                        // 两处一起动会打架。
-                        // 组牌堆时按「两行标题 + 一行分类」写死高度并顶对齐:
-                        // 标题一行两行、有没有分类路径都会改总高,左右滑时整张
-                        // 弹层跟着长个儿 —— 牌定了高,这里不定等于白定。
-                        SizedBox(
-                          height: deckAspect == null ? null : _headerH(context),
-                          child: Align(
-                            alignment: Alignment.topLeft,
-                            child: AnimatedSwitcher(
-                              duration: Motion.medium,
-                              // 默认是居中摞:一行换两行时,高度一涨,旧的那行
-                              // 就被推到新高度的正中去了 —— 看着像"先下坠再换字"。
-                              // 钉在左上角,旧的原地淡出、新的原地淡入。
-                              layoutBuilder: (current, previous) => Stack(
-                                alignment: Alignment.topLeft,
-                                children: [...previous, ?current],
-                              ),
-                              // 先淡完再淡进,不让两段文字叠在一起糊成一片
-                              switchOutCurve: const Interval(.5, 1),
-                              switchInCurve: const Interval(.5, 1),
-                              child: Column(
-                                key: ValueKey(e.id),
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          e.title,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: _titleStyle(context),
-                                        ),
-                                      ),
-                                      if (widget.pool != null) ...[
-                                        const SizedBox(width: 8),
-                                        _randomBadge(scheme),
-                                      ],
-                                    ],
-                                  ),
-                                  if (e.path.isNotEmpty) ...[
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      e.path.join(' / '),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: context.texts.labelSmall!.copyWith(
-                                        color: scheme.onSurfaceVariant,
+                  // 换词条后高度不同只来自图框的比例,由图框那处自己补间
+                  // (见 TweenAnimationBuilder);表头在牌堆模式下写死了高度。
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 标题这块只做淡入淡出:横向位移交给下面那副牌,
+                      // 两处一起动会打架。
+                      // 组牌堆时按「两行标题 + 一行分类」写死高度并顶对齐:
+                      // 标题一行两行、有没有分类路径都会改总高,左右滑时整张
+                      // 弹层跟着长个儿 —— 牌定了高,这里不定等于白定。
+                      SizedBox(
+                        height: deckAspect == null ? null : _headerH(context),
+                        child: Align(
+                          alignment: Alignment.topLeft,
+                          child: AnimatedSwitcher(
+                            duration: Motion.medium,
+                            // 默认是居中摞:一行换两行时,高度一涨,旧的那行
+                            // 就被推到新高度的正中去了 —— 看着像"先下坠再换字"。
+                            // 钉在左上角,旧的原地淡出、新的原地淡入。
+                            layoutBuilder: (current, previous) => Stack(
+                              alignment: Alignment.topLeft,
+                              children: [...previous, ?current],
+                            ),
+                            // 先淡完再淡进,不让两段文字叠在一起糊成一片
+                            switchOutCurve: const Interval(.5, 1),
+                            switchInCurve: const Interval(.5, 1),
+                            child: Column(
+                              key: ValueKey(e.id),
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        e.title,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: _titleStyle(context),
                                       ),
                                     ),
+                                    if (widget.pool != null) ...[
+                                      const SizedBox(width: 8),
+                                      _randomBadge(scheme),
+                                    ],
                                   ],
+                                ),
+                                if (e.path.isNotEmpty) ...[
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    e.path.join(' / '),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: context.texts.labelSmall!.copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ),
                                 ],
-                              ),
+                              ],
                             ),
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        // 牌堆模式下无论有没有图都走同一张卡(无图的正面直接是
-                        // 提示词)—— 否则纯文字词条一条一个高度,左右滑又开始抖。
-                        // 随机模式没有牌堆,纯文字词条仍按内容高度,不撑空box。
-                        if (imgCount > 0 || deckAspect != null)
-                          _CodexHeroImages(
+                      ),
+                      const SizedBox(height: 12),
+                      // 牌堆模式下无论有没有图都走同一张卡(无图的正面直接是
+                      // 提示词)—— 否则纯文字词条一条一个高度,左右滑又开始抖。
+                      // 单张(不组牌堆)时纯文字词条仍按内容高度,不撑空 box。
+                      if (imgCount > 0 || deckAspect != null)
+                        // 框的比例自己做补间:换词条只改 end,框从当前比例平滑
+                        // 变到新的,里头的图(contain)跟着连续缩放。早先靠外层
+                        // AnimatedSize 过渡总高 —— 它只动容器、裁掉多出来的那截,
+                        // 图本身第一帧就已经是新尺寸,看着是跳过去的。
+                        // 首次进来 begin 为空 = 直接落在 end,不做开场补间。
+                        // ⚠ 不能给它挂 ValueKey(e.id):换词条会把补间状态一起换掉。
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(end: deckAspect ?? e.aspect),
+                          duration: Motion.medium,
+                          curve: Motion.emphasized,
+                          // 牌堆本身走 child:每帧只重建外面这层 AspectRatio
+                          child: _CodexHeroImages(
                             key: ValueKey(e.id),
                             codex: widget.codex,
                             entry: e,
@@ -527,24 +539,24 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
                             drag: _drag,
                             pageDrag: _pageDrag,
                             page: _imgPage,
-                            aspect: deckAspect,
+                            deck: deckAspect != null,
                             prev: _hasPrev ? _list[_index - 1] : null,
                             next: _hasNext ? _list[_index + 1] : null,
-                          )
-                        else
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: scheme.surfaceContainerHigh,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: PromptChips(
-                              sections: _codexPromptSections(e),
-                            ),
                           ),
-                      ],
-                    ),
+                          builder: (_, a, child) =>
+                              AspectRatio(aspectRatio: a, child: child),
+                        )
+                      else
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: scheme.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: PromptChips(sections: _codexPromptSections(e)),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -557,8 +569,8 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
     );
   }
 
-  /// 底部常驻操作条:随机模式多一枚「继续抽」;顶部一道细线与滚动区分隔。
-  /// 钉在 SafeArea 内,按钮永远露在系统栏之上,不被长内容挤出屏幕。
+  /// 底部常驻操作条:随机模式头上多一枚整宽的「继续抽」;顶部一道细线与滚动
+  /// 区分隔。钉在 SafeArea 内,按钮永远露在系统栏之上,不被长内容挤出屏幕。
   Widget _bottomActions(ColorScheme scheme, CodexEntry e, bool canReroll) {
     return Container(
       decoration: BoxDecoration(
@@ -570,95 +582,181 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (canReroll) ...[
-            FilledButton.tonalIcon(
-              onPressed: _reroll,
-              icon: const Icon(Icons.casino_outlined, size: 18),
-              label: const Text('换一个'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(double.infinity, 46),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(23),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-          ],
+          if (canReroll) ...[_rerollButton(), const SizedBox(height: 10)],
+          // 四件事一行摆得下,靠的是**收藏和复制只留图标**:星星和纸叠自己就
+          // 说得清,那四个字省下的宽度正是带字两枚摆得开所需的 —— 「加入提示词」
+          // 五个汉字加图标本来就顶格,谁多占一点它就换行,而这条操作栏一变高
+          // 就把上面的内容挤走。
           Row(
             children: [
               _favButton(scheme, e),
-              const SizedBox(width: 10),
-              // 两颗按钮**不等分**:一个两字、一个五字,五五开等于把富余全给了
-              // 「复制」,而「加入提示词」那颗连字都摆不下(实测换行,整条操作栏
-              // 跟着变高)。2:3 之外还各自收了内边距 —— M3 的 icon 按钮默认
-              // 左 16 右 24,五个汉字加图标本来就顶格,那 40px 是压垮它的那根。
-              Expanded(
-                flex: 2,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: e.fullText));
-                    if (mounted) {
-                      Navigator.pop(context);
-                      hintSnack(context, '已复制提示词', icon: Icons.copy);
-                    }
-                  },
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 46),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(23),
-                    ),
-                  ),
-                  icon: const Icon(Icons.copy, size: 18),
-                  label: const Text('复制', maxLines: 1),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 3,
-                child: FilledButton.icon(
-                  onPressed: () {
-                    final r = codexAddToPrompt(ref, e);
-                    Navigator.pop(context);
-                    hintSnack(
-                      context,
-                      // 拆出了角色就说清楚 —— 不然用户只看到主提示词短了一截,
-                      // 不知道内容跑去了角色卡里
-                      r.dropped > 0
-                          ? '已加入提示词 · ${r.added} 个角色(另 ${r.dropped} 个超出上限)'
-                          : (r.added > 0
-                                ? '已加入提示词 · ${r.added} 个角色'
-                                : '已加入提示词'),
-                      icon: Icons.check_circle_outline,
-                      actionLabel: '去创作',
-                      onAction: () => ref
-                          .read(shellIndexProvider.notifier)
-                          .select(kTabCreate),
-                    );
-                  },
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(0, 46),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(23),
-                    ),
-                  ),
-                  icon: const Icon(Icons.add, size: 18),
-                  // 兜底:系统字号调得很大时宁可省略号,也不能换行 ——
-                  // 这条操作栏是钉在底部的,它一变高就把上面的内容挤走
-                  label: const Text(
-                    '加入提示词',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
+              const SizedBox(width: 8),
+              _copyButton(e),
+              const SizedBox(width: 8),
+              // 2:3 差不多就是「导入」与「加入提示词」各自最小宽之比;
+              // 五五开等于把富余全给短的那枚,长的先换行
+              Expanded(flex: 2, child: _importButton()),
+              const SizedBox(width: 8),
+              Expanded(flex: 3, child: _addButton(e)),
             ],
           ),
         ],
       ),
     );
   }
+
+  /// 带字那两枚共用的尺寸:描边和实心混排,高度圆角不统一一眼就看得出参差。
+  /// 内边距收到 8 —— M3 带图标的默认是左 16 右 24,那 32px 是压垮它的那根;
+  /// 省下来的富余留给系统字号放大(放大到 1.2 倍才开始吃省略号)。
+  static const _labeledStyle = ButtonStyle(
+    minimumSize: WidgetStatePropertyAll(Size(0, 46)),
+    padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8)),
+    shape: WidgetStatePropertyAll(StadiumBorder()),
+  );
+
+  /// 只留图标那两枚:46×46 的**正圆**(宽=高才是圆;圆比同高的胶囊窄,
+  /// 省下的宽度正好给右边带字的两枚)。
+  ///
+  /// ⚠ `minimumSize` 必须跟着给零:M3 给 OutlinedButton 的默认最小宽是 **64**,
+  /// 而 fixedSize 要先被最小尺寸夹一道才生效 —— 只写 fixedSize 的话这两枚会
+  /// 悄悄各占 64 宽,右边「导入」和「加入提示词」双双被挤成省略号(实测)。
+  static const _iconOnlyStyle = ButtonStyle(
+    minimumSize: WidgetStatePropertyAll(Size.zero),
+    fixedSize: WidgetStatePropertyAll(Size(46, 46)),
+    padding: WidgetStatePropertyAll(EdgeInsets.zero),
+    shape: WidgetStatePropertyAll(CircleBorder()),
+  );
+
+  /// 复制。不留字(见 [_bottomActions]);纸叠图标够常见,长按还有 tooltip 兜底。
+  Widget _copyButton(CodexEntry e) => Tooltip(
+    message: '复制提示词',
+    child: OutlinedButton(
+      onPressed: () async {
+        await Clipboard.setData(ClipboardData(text: e.fullText));
+        if (mounted) {
+          Navigator.pop(context);
+          hintSnack(context, '已复制提示词', icon: Icons.copy);
+        }
+      },
+      style: _iconOnlyStyle,
+      child: const Icon(Icons.copy, size: 20),
+    ),
+  );
+
+  /// 「导入」:每张例图背后还压着一张原图,里头带着出图元数据。
+  ///
+  /// 无图词条按**停用**摆着而不是撤掉 —— 一摞牌里翻过去少一枚按钮,
+  /// 整条操作栏会跟着变形。下载期间也停用,同一张不让点两遍。
+  Widget _importButton() => OutlinedButton.icon(
+    onPressed: _imgCount > 0 && !_importing ? _importOriginal : null,
+    style: _labeledStyle,
+    icon: _importing
+        ? ValueListenableBuilder<double?>(
+            valueListenable: _importAt,
+            builder: (_, v, _) => SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2, value: v),
+            ),
+          )
+        : const Icon(Icons.input, size: 18),
+    label: const Text('导入', maxLines: 1, overflow: TextOverflow.ellipsis),
+  );
+
+  /// 下当前这张的原图 → 关弹层 → 推导入面板(与相册 / 画布同一个面板:
+  /// 参数逐项挑着导,或整张用作图生图 / 风格 / 角色参考)。
+  ///
+  /// 先关再推:面板是整页的,压在弹层上会留一层退不掉的夹心 —— 从面板返回时
+  /// 人以为回到了图鉴,实际还在这张弹层里。
+  ///
+  /// 原图按字节交出去,不能拿屏幕上那张:显示走的是解码后的位图,
+  /// PNG 文本块早没了,而元数据全在那里头。
+  Future<void> _importOriginal() async {
+    final e = _entry;
+    final url = codexImageItemUrl(
+      widget.codex,
+      e,
+      widget.media,
+      _imgPage,
+      original: true,
+    );
+    if (url == null) return;
+    Haptics.selection();
+    _importAt.value = null;
+    setState(() => _importing = true);
+    try {
+      final bytes = await fetchRemoteImageBytes(
+        url,
+        onProgress: (got, total) {
+          if (total != null && total > 0) _importAt.value = got / total;
+        },
+      );
+      if (!mounted) return;
+      final name = e.title.trim().isEmpty ? '法典原图' : e.title.trim();
+      final nav = Navigator.of(context);
+      nav.pop();
+      unawaited(
+        nav.push(
+          sharedAxisRoute(
+            ImportImagePanel(
+              bytes: bytes,
+              fileName: '$name${_extOf(url)}',
+              displayName: name,
+            ),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _importing = false);
+      hintSnack(context, '原图没下下来,检查下网络', icon: Icons.wifi_off_outlined);
+    }
+  }
+
+  /// 原图的扩展名(png / jpg / webp 都有),给导入面板的文件名用;
+  /// 认不出就当 png —— 那串只是拿来显示的,不参与解析。
+  String _extOf(String url) {
+    final path = Uri.tryParse(url)?.path ?? url;
+    final dot = path.lastIndexOf('.');
+    final ext = dot < 0 ? '' : path.substring(dot);
+    return RegExp(r'^\.[A-Za-z0-9]{2,4}$').hasMatch(ext) ? ext : '.png';
+  }
+
+  /// 随机模式的「换一个」:整宽独占一行 —— 随机页的主循环就是它,
+  /// 挤进下面那行会和主行动抢眼。
+  Widget _rerollButton() => FilledButton.tonalIcon(
+    onPressed: _reroll,
+    style: FilledButton.styleFrom(
+      minimumSize: const Size(double.infinity, 46),
+      shape: const StadiumBorder(),
+    ),
+    icon: const Icon(Icons.casino_outlined, size: 18),
+    label: const Text('换一个'),
+  );
+
+  Widget _addButton(CodexEntry e) => FilledButton.icon(
+    onPressed: () {
+      final r = codexAddToPrompt(ref, e);
+      Navigator.pop(context);
+      hintSnack(
+        context,
+        // 拆出了角色就说清楚 —— 不然用户只看到主提示词短了一截,
+        // 不知道内容跑去了角色卡里
+        r.dropped > 0
+            ? '已加入提示词 · ${r.added} 个角色(另 ${r.dropped} 个超出上限)'
+            : (r.added > 0 ? '已加入提示词 · ${r.added} 个角色' : '已加入提示词'),
+        icon: Icons.check_circle_outline,
+        actionLabel: '去创作',
+        onAction: () =>
+            ref.read(shellIndexProvider.notifier).select(kTabCreate),
+      );
+    },
+    style: _labeledStyle,
+    icon: const Icon(Icons.add, size: 18),
+    // 兜底:系统字号调得很大时宁可省略号,也不能换行 —— 这条操作栏是钉在
+    // 底部的,它一变高就把上面的内容挤走
+    label: const Text('加入提示词', maxLines: 1, overflow: TextOverflow.ellipsis),
+  );
 
   /// 收藏开关。**图标自己就是反馈**,不弹 snack —— 翻词条时会连点很多下,
   /// 每下都弹一条反而糊住正在看的图。只有加不进去(满了)才出声。
@@ -668,12 +766,13 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
         .contains(codexFavKey(widget.codex.id, e.id));
     return OutlinedButton(
       onPressed: () => _toggleFav(e),
-      style: OutlinedButton.styleFrom(
-        fixedSize: const Size(54, 46),
-        padding: EdgeInsets.zero,
-        shape: const StadiumBorder(),
-        foregroundColor: on ? scheme.primary : scheme.onSurfaceVariant,
-        side: BorderSide(color: on ? scheme.primary : scheme.outlineVariant),
+      // 只有开关色是动的,尺寸走 [_iconOnlyStyle](54 收到 44:那 10px 给了
+      // 「加入提示词」)
+      style: _iconOnlyStyle.merge(
+        OutlinedButton.styleFrom(
+          foregroundColor: on ? scheme.primary : scheme.onSurfaceVariant,
+          side: BorderSide(color: on ? scheme.primary : scheme.outlineVariant),
+        ),
       ),
       child: Icon(
         on ? Icons.star_rounded : Icons.star_outline_rounded,
@@ -739,7 +838,7 @@ class _CodexHeroImages extends ConsumerStatefulWidget {
     required this.drag,
     required this.pageDrag,
     required this.page,
-    this.aspect,
+    required this.deck,
     this.prev,
     this.next,
   });
@@ -752,8 +851,9 @@ class _CodexHeroImages extends ConsumerStatefulWidget {
   final Animation<double> pageDrag;
   final int page;
 
-  /// 牌堆定高用的固定比例;null = 按词条自己的比例(随机模式)。
-  final double? aspect;
+  /// 组了牌堆:框是整副牌共用的比例(由弹层定并做补间),各词条比例不一,
+  /// 图一律 contain 留边。单张时框就是词条自己的比例,cover 即原样铺满。
+  final bool deck;
 
   /// 相邻词条。「下一条」常驻露一条边;「上一条」只在往回拖时才淡进来
   /// —— 牌堆是往后摞的,静止时两边都露反而看不出方向。
@@ -781,6 +881,15 @@ class _CodexHeroImagesState extends ConsumerState<_CodexHeroImages>
   late final AnimationController _turn = AnimationController(vsync: this);
 
   bool _showingPrompt = false;
+
+  /// 提示词面已经排好版(在树里、照常布局,只是还没转过去)。
+  /// 换词条时整个 state 是新的(卡带 `ValueKey(e.id)`),自然回到 false。
+  ///
+  /// **只在真点了才排**,不预热:排一次 20ms 左右(实测 56 颗芯片,换成不带
+  /// 本项目任何代码的等量哑控件也要 16.6ms —— 八成是 Flutter 自己 inflate
+  /// 一百多个 widget、排一百多段文字,减不掉),而多数牌根本不会被翻,
+  /// 提前排等于给每张停下来看的牌白花这一笔。
+  bool _backUp = false;
   bool _teasing = false; // 首次示范进行中;用户一碰就作废
   bool _teaseScheduled = false;
   bool _showHint = false; // 首次的文字提示,跟着示范一起来一起走
@@ -802,18 +911,48 @@ class _CodexHeroImagesState extends ConsumerState<_CodexHeroImages>
   /// 无图词条:正面直接就是提示词,没有可翻的另一面。
   bool get _canFlip => _imgCount > 0 && _prompt.isNotEmpty;
 
+  /// 一面卡:留在树里照常布局,只切换画不画(理由见 [_topCard])。藏起来那面
+  ///  · 不吃点击 —— 提示词面的滚动区看不见也会抢走竖向拖动;
+  ///  · **停表** —— 芯片等译文时有一条脉动动画,不停表它在背面照转,每帧把
+  ///    那片芯片重建一遍,整个弹层跟着变钝。
+  static Widget _face(bool visible, Widget child) => TickerMode(
+    enabled: visible,
+    child: Visibility(
+      visible: visible,
+      maintainState: true,
+      maintainAnimation: true,
+      maintainSize: true,
+      child: child,
+    ),
+  );
+
   void _flip() {
     if (!_canFlip) return; // 没图或没提示词就没有背面,别翻出一片空
     Haptics.selection();
     _teasing = false; // 示范到一半被点:立刻让位,别再自己转回去
-    if (_showHint) setState(() => _showHint = false); // 已经会了,提示收掉
     _showingPrompt = !_showingPrompt;
-    _turn.animateTo(
-      _showingPrompt ? 1 : 0,
-      duration: Motion.slow,
-      curve: Curves.easeInOutCubic,
-    );
+    if (_backUp) {
+      // 这张牌翻过了,版还在:直接转
+      if (_showHint) setState(() => _showHint = false);
+      return _turnTo();
+    }
+    // 第一次翻这张牌:拿这一帧排版 —— 此刻 _turn 还是 0,屏幕上什么都没动,
+    // 一帧长一点看不出来。排完(帧后)才开转:动画按真实时间走,先开转再撞上
+    // 这一帧,卡片会直接跳过一段角度。
+    setState(() {
+      _showHint = false; // 已经会了,提示收掉
+      _backUp = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _turnTo();
+    });
   }
+
+  void _turnTo() => _turn.animateTo(
+    _showingPrompt ? 1 : 0,
+    duration: Motion.slow,
+    curve: Curves.easeInOutCubic,
+  );
 
   /// 首次示范:亮一句「点击翻转查看提示词」,同时自己歪出去一个角度再转回来。
   /// 光有动作说不清能得到什么,光有文字又不知道该怎么操作,两个一起才够。
@@ -891,43 +1030,33 @@ class _CodexHeroImagesState extends ConsumerState<_CodexHeroImages>
   Widget build(BuildContext context) {
     final scheme = context.scheme;
     final n = _imgCount;
-    final aspect =
-        widget.aspect ??
-        (widget.entry.aspect <= 0 ? 0.75 : widget.entry.aspect);
     // 读盘确认「没演示过」才排期(null = 还没读到,这次就不演)
     if (_canFlip && ref.watch(codexFlipHintProvider) == false) {
       _scheduleTease();
     }
-    // 按原比例满宽显示,不裁不压(竖图保持竖图)。太高不要紧:弹层已定高,
-    // 例图会跟着正文在滚动区里滚,防溢出交给卡片封顶+滚动,而不是裁图。
-    return Column(
+    // 框(AspectRatio)由弹层那边定比例并做补间,这里只管往框里填:
+    // 满宽不裁不压;太高不要紧,例图跟着正文在滚动区里滚。
+    // 这里**不能**包 ClipRRect:透视会把朝向自己的那条边放大,一裁就是
+    // "转到一半边角被啃掉"。圆角由每一面自己裁,卡片允许探出原位 ——
+    // 翻牌本来就该是从槽里抬起来转,而不是贴在槽底转。
+    return Stack(
+      // none:压在下面的两张要露到框外去,才看得出是一摞
+      clipBehavior: Clip.none,
       children: [
-        // 这里**不能**再包一层 ClipRRect:透视会把朝向自己的那条边放大,
-        // 一裁就是"转到一半边角被啃掉"。圆角改由每一面自己裁,卡片允许探出
-        // 原位 —— 翻牌本来就该是从槽里抬起来转,而不是贴在槽底转。
-        AspectRatio(
-          aspectRatio: aspect,
-          child: Stack(
-            // none:压在下面的两张要露到框外去,才看得出是一摞
-            clipBehavior: Clip.none,
-            children: [
-              // 顺序即层次:下一条压在底下,当前这张在中间,
-              // 上一条盖在最上面 —— 它是"已经发出去的牌",拉回来自然是从前面盖回来。
-              if (widget.next != null)
-                Positioned.fill(child: _behindCard(widget.next!, scheme)),
-              Positioned.fill(
-                child: AnimatedBuilder(
-                  animation: widget.drag,
-                  builder: (context, child) => _dragged(context, child!),
-                  child: _topCard(n, scheme),
-                ),
-              ),
-              if (widget.prev != null)
-                Positioned.fill(child: _frontCard(widget.prev!, scheme)),
-              _flipHint(),
-            ],
+        // 顺序即层次:下一条压在底下,当前这张在中间,
+        // 上一条盖在最上面 —— 它是"已经发出去的牌",拉回来自然是从前面盖回来。
+        if (widget.next != null)
+          Positioned.fill(child: _behindCard(widget.next!, scheme)),
+        Positioned.fill(
+          child: AnimatedBuilder(
+            animation: widget.drag,
+            builder: (context, child) => _dragged(context, child!),
+            child: _topCard(n, scheme),
           ),
         ),
+        if (widget.prev != null)
+          Positioned.fill(child: _frontCard(widget.prev!, scheme)),
+        _flipHint(),
       ],
     );
   }
@@ -968,11 +1097,17 @@ class _CodexHeroImagesState extends ConsumerState<_CodexHeroImages>
                 fit: StackFit.expand,
                 children: [
                   // 转过一半才换脸,正好是侧棱最窄的那一帧,看不见切换。
-                  // 图片面用 Offstage 藏而不是移除:多图那张 PageView 一旦被拆掉,
-                  // 翻回来就是新建的一张,停在第一页 —— 你翻到第二张再翻牌,
-                  // 回来图片会变回第一张,就是这么来的。
-                  Offstage(offstage: _turn.value > .5, child: front),
-                  if (_turn.value > .5) back,
+                  //
+                  // 两面都**留在树里并照常布局**,只切换画不画([_face])。
+                  // 换脸那一帧最不能干活:它正是转速最快的一帧。
+                  //  · 移除:多图那张 PageView 一被拆掉,翻回来就是新建的一张、
+                  //    停在第一页 —— 你翻到第二张再翻牌,图会变回第一张。
+                  //  · Offstage:状态是留住了,但它**跳过布局** —— 于是每次切脸
+                  //    两边都要重排一遍(图那面重新解一次约束,提示词面整片芯片
+                  //    重新分词排版),那几毫秒全砸在换脸那一帧上。
+                  _face(_turn.value <= .5, front),
+                  // 提示词面:第一次翻的时候才排版,之后一直留着(见 [_backUp])
+                  if (_backUp) _face(_turn.value > .5, back),
                   // 受光:转离正对方向就变暗。少了这层,透视再准也像贴纸
                   if (edge > .01)
                     IgnorePointer(
@@ -1076,9 +1211,9 @@ class _CodexHeroImagesState extends ConsumerState<_CodexHeroImages>
         child: ClipRRect(borderRadius: _cardRadius, child: child),
       );
 
-  /// 牌堆定高后,各词条比例不一,一律 contain —— 图鉴的例图宁可留边也不能裁。
-  /// 没定高(随机模式)时框就是原比例,cover 即原样铺满。
-  BoxFit get _fit => widget.aspect == null ? BoxFit.cover : BoxFit.contain;
+  /// 组了牌堆,各词条比例不一,一律 contain —— 图鉴的例图宁可留边也不能裁。
+  /// 单张时框就是原比例,cover 即原样铺满。
+  BoxFit get _fit => widget.deck ? BoxFit.contain : BoxFit.cover;
 
   /// 邻居只画封面;没有图就退成配色块 + 标题。
   Widget _preview(CodexEntry e, ColorScheme scheme) {
