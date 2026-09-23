@@ -7,13 +7,20 @@ import 'generate_state.dart';
 import 'generation_controller.dart';
 import 'loop_controller.dart';
 import 'models.dart';
+import '../gallery/albums/album_models.dart';
+import '../gallery/albums/album_state.dart';
 
 /// 排队任务:入队瞬间的完整参数快照,之后随便改编辑器不影响已排的。
 class QueuedTask {
-  const QueuedTask({required this.id, required this.snapshot});
+  const QueuedTask({
+    required this.id,
+    required this.snapshot,
+    this.galleryTarget = const GallerySaveTarget.all(),
+  });
 
   final int id;
   final GenerateState snapshot;
+  final GallerySaveTarget galleryTarget;
 }
 
 /// items 为待跑任务(不含正在跑的);active = 消费中;
@@ -77,7 +84,11 @@ class GenQueueNotifier extends Notifier<GenQueueState> {
     state = state.copyWith(
       items: [
         ...state.items,
-        QueuedTask(id: _seq++, snapshot: snap),
+        QueuedTask(
+          id: _seq++,
+          snapshot: snap,
+          galleryTarget: ref.read(gallerySaveTargetProvider),
+        ),
       ],
     );
     return true;
@@ -120,14 +131,20 @@ class GenQueueNotifier extends Notifier<GenQueueState> {
       while (!state.stopping && !failed && state.items.isNotEmpty) {
         final task = state.items.first;
         state = state.copyWith(items: state.items.sublist(1));
-        var outcome = await gen.generate(using: task.snapshot);
+        var outcome = await gen.generate(
+          using: task.snapshot,
+          galleryTarget: task.galleryTarget,
+        );
         // **只有「确定未扣点」才重试。** 流中断 / 超时 / 内容审核这类失败,NAI
         // 可能已经受理并扣了点,盲目重试就是第二次扣费,而且没有任何用户动作。
         // 用户取消(stopping)同样不重试。见 S1B-01。
         // `rejected`(额度/资格被拒)虽然也确定没扣点,但重试必然同样被拒 ——
         // 它单独一个值就是为了在这里落到「不重试」这一边。
         if (outcome == GenOutcome.notCharged && !state.stopping) {
-          outcome = await gen.generate(using: task.snapshot);
+          outcome = await gen.generate(
+            using: task.snapshot,
+            galleryTarget: task.galleryTarget,
+          );
         }
         if (outcome != GenOutcome.ok) {
           failed = true; // 让别的 worker 也收手,剩下的留在队里等用户处置

@@ -7,6 +7,7 @@ import '../shell/shell_state.dart';
 import 'gen_queue.dart';
 import 'generate_state.dart';
 import 'generation_controller.dart';
+import '../gallery/albums/album_state.dart';
 
 /// 循环生成状态。batch 为当前第几张(1-based);total 0 表示无限;
 /// stopping 表示已请求停止,本张跑完后不再续。
@@ -50,6 +51,7 @@ class LoopNotifier extends Notifier<LoopStatus> {
     // 手动生成中不再让位:并行之后手动那条只是池子里的一员,循环照常投。
     if (state.active || ref.read(genQueueProvider).active) return;
     final total = ref.read(generateProvider).params.loop.count; // 开跑时锁档位
+    final galleryTarget = ref.read(gallerySaveTargetProvider);
     state = LoopStatus(active: true, total: total);
     // 只在开跑时切一次图库;之后每张不再强拉(generate 里按 _inLoop 跳过)
     ref.read(shellIndexProvider.notifier).select(kTabGallery);
@@ -66,7 +68,7 @@ class LoopNotifier extends Notifier<LoopStatus> {
       while (ok && !state.stopping && (total == 0 || dispatched < total)) {
         dispatched++;
         // 非 ok 一律停(含用户取消):挂机连续失败无意义,也不该替用户决定重试
-        if (await gen.generate() != GenOutcome.ok) {
+        if (await gen.generate(galleryTarget: galleryTarget) != GenOutcome.ok) {
           ok = false;
           break;
         }

@@ -14,6 +14,9 @@ val keystoreProperties = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 val hasReleaseKey = keystoreProperties.getProperty("storeFile") != null
+// 真机图库验收可单独安装；显式开关适用于 debug/profile/release，
+// 便于用优化构建验收性能。未传开关时所有构建保持原包名。
+val planaGalleryTest = providers.gradleProperty("planaGalleryTest").orNull == "true"
 
 android {
     namespace = "com.sora214.plana.app"
@@ -26,13 +29,16 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.sora214.plana.app"
+        applicationId = if (planaGalleryTest) "com.sora214.plana.app.gallerytest"
+            else "com.sora214.plana.app"
         // 24 原是本地超分的 Vulkan compute 要求;那条线已下线,这里保持 24 不动 ——
         // 往下降是另一件事(得把所有插件重新验一遍),不该顺手改。
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        versionName = flutter.versionName + if (planaGalleryTest) "-gallery-test" else ""
+        manifestPlaceholders["galleryTestLabel"] =
+            if (planaGalleryTest) "Plana 图库测试" else "Plana App"
         ndk {
             // 只出 arm64(覆盖现代机型);出包文件名也带着这个 ABI。
             abiFilters += "arm64-v8a"
@@ -58,7 +64,10 @@ android {
         release {
             // 有 key.properties 就用正式签名;没有则回落 debug 签名,
             // 让 `flutter run --release` 在本机仍可用。**对外分发必须用正式签名**。
-            signingConfig = if (hasReleaseKey) {
+            // 并存测试包始终沿用其调试签名，以保留已安装测试版的数据。
+            signingConfig = if (planaGalleryTest) {
+                signingConfigs.getByName("debug")
+            } else if (hasReleaseKey) {
                 signingConfigs.getByName("release")
             } else {
                 signingConfigs.getByName("debug")
@@ -114,6 +123,19 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// 单独运行 Gradle 不会生成 Flutter 的原生插件注册文件。缺失时 APK
+// 仍能编译，却会在 path_provider 的 JNI 调用处启动崩溃，必须在出包前拦截。
+val verifyFlutterPluginRegistrant = tasks.register("verifyFlutterPluginRegistrant") {
+    doLast {
+        check(file("src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java").isFile) {
+            "Missing Flutter plugin registrant. Run 'flutter pub get' in the project root before building."
+        }
+    }
+}
+tasks.named("preBuild") {
+    dependsOn(verifyFlutterPluginRegistrant)
 }
 
 dependencies {

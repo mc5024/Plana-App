@@ -38,6 +38,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
 
   flutter_riverpod: ^3.3.2
   animations: ^2.2.0
@@ -50,7 +52,7 @@ dependencies:
   # 账号密码登录:NAI access key 派生要 Blake2b + Argon2id,上面的 crypto
   # 包只有 SHA 系没有这俩;纯 Dart 实现,无原生依赖。
   cryptography: ^2.7.0
-  photo_manager: ^3.7.0
+  photo_manager: ^3.8.0
   photo_manager_image_provider: ^2.2.0
   path_provider: ^2.1.6
   gal: ^2.3.2

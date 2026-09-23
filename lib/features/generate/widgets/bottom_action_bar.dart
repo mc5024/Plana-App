@@ -1,3 +1,4 @@
+import '../../gallery/albums/album_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -138,6 +139,7 @@ class _BottomActionBarState extends ConsumerState<BottomActionBar> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const GallerySaveTargetRow(),
             // 两种排法,按有没有「张数」分:
             //  · anima / krea 四颗 —— 均分。左边挤成一堆的话 Spacer 被压没,
             //    张数会和「高级」贴在一起;

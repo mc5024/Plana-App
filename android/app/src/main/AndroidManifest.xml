@@ -26,7 +26,7 @@
          非机密设置已迁到 settings.json(见 PrefsStore),但那份也没有跨机恢复的
          意义(后端地址/主题重设一次即可),不值得为它承担凭据被清的风险。 -->
     <application
-        android:label="Plana App"
+        android:label="${galleryTestLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"

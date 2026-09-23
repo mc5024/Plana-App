@@ -24,10 +24,16 @@ import '../../generate/widgets/common.dart'
     show ExpandBody, hintSnack, sharedAxisRoute;
 import '../../import/import_panel.dart';
 import '../gallery_dates.dart';
+import '../gallery_date_filter.dart';
+import '../albums/album_state.dart';
+import '../albums/album_ui.dart';
+import '../albums/album_organize_sheet.dart';
+import 'gallery_date_sheet.dart';
 import '../gallery_groups.dart';
 import '../gallery_search.dart';
 import '../gallery_state.dart';
 import '../models.dart';
+import '../phone_gallery_save.dart';
 import '../save_pipeline.dart';
 import '../save_settings.dart';
 import '../share_pipeline.dart';
@@ -85,7 +91,7 @@ class _GridMemory {
   final double wallOffset;
 }
 
-_GridMemory? _gridMemory;
+final _gridMemories = <String, _GridMemory>{};
 
 class _GalleryGridSheet extends ConsumerStatefulWidget {
   const _GalleryGridSheet();
@@ -95,12 +101,14 @@ class _GalleryGridSheet extends ConsumerStatefulWidget {
 }
 
 class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   bool _selecting = false;
   final Set<String> _picked = {};
   bool _saving = false;
   bool _sharing = false;
   bool _zipping = false;
+  bool _organizing = false;
+  late String _scopeKey = ref.read(galleryBrowseAlbumProvider) ?? '';
   // 保存 / 分享 / 打包共用这对计数(三件事不会同时跑,canAct 互斥)
   int _saveDone = 0;
   int _saveTotal = 0;
@@ -114,9 +122,9 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
   bool _searchOpen = false;
   String _query = '';
   String? _modelFilter; // null=全部;''=未知(无参数快照的老图)
-  // 0=全部 / 1=今天 / 7=近7天 / 30=近30天。记住上次的 —— 常年只看近 7 天的人
-  // 不该每次开网格都先筛一遍。
-  late int _daysFilter = ref.read(uiPrefsProvider).galleryDaysFilter;
+  // 保存日历日期；相对日期跨日与恢复前台时重新计算。
+  late GalleryDateFilter _dateFilter = ref.read(uiPrefsProvider).dateFilter;
+  late final Timer _dateTick;
 
   // 分组维度,同样记住上次的。存的是枚举名,不是下标 —— 将来插一档不会把
   // 老用户的选择挪到别的维度去。
@@ -201,7 +209,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
   /// M3 的 TextButton 默认 `minimumSize: Size(64, 40)`,而「多选」两个字才二十
   /// 来像素宽 —— 撑到 64 之后,多出来的宽度平摊到两侧成了额外内边距,文字被推得
   /// 离右缘比左边标题离左缘远出十来像素,一眼就是右边没贴边。这里把最小宽度放开、
-  /// 内边距写死成 12,配合容器的 8,文字落点与左边的 20 对齐。
+  /// 内边距写死成 12,配合容器的 4,文字落点与左边的 16 对齐。
   ///
   /// 高度仍留 40,且 tapTargetSize 保持默认(padded)—— 触摸区照样撑到 48,
   /// 只是不再把视觉往里推。
@@ -226,15 +234,108 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
   static Widget _fitLabel(String text) =>
       FittedBox(fit: BoxFit.scaleDown, child: Text(text));
 
+  Widget _batchActions(bool canAct) => LayoutBuilder(
+    builder: (context, size) {
+      final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+      final columns = size.maxWidth < 340 || scale > 1.2 ? 2 : 3;
+      final width = (size.maxWidth - _actGap * (columns - 1)) / columns;
+      final primary = FilledButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+      );
+      final buttons = <Widget>[
+        FilledButton.tonalIcon(
+          style: primary,
+          onPressed: canAct ? _downloadPicked : null,
+          icon: const Icon(Icons.download, size: 19),
+          label: _fitLabel(
+            _saving ? '保存中 $_saveDone/$_saveTotal' : '保存 (${_picked.length})',
+          ),
+        ),
+        FilledButton.tonalIcon(
+          style: primary,
+          onPressed: canAct ? _organizePicked : null,
+          icon: const Icon(Icons.drive_file_move_outline, size: 18),
+          label: _fitLabel('移动 (${_picked.length})'),
+        ),
+        FilledButton.icon(
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            backgroundColor: context.scheme.errorContainer,
+            foregroundColor: context.scheme.onErrorContainer,
+          ),
+          onPressed: canAct ? _deletePicked : null,
+          icon: const Icon(Icons.delete_outline, size: 19),
+          label: _fitLabel('删除 (${_picked.length})'),
+        ),
+        OutlinedButton.icon(
+          style: _subActBtn,
+          onPressed: canAct ? _sharePicked : null,
+          icon: _sharing
+              ? const SizedBox(
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.ios_share, size: 17),
+          label: _fitLabel(_sharing ? '准备 $_saveDone/$_saveTotal' : '分享'),
+        ),
+        OutlinedButton.icon(
+          style: _subActBtn,
+          onPressed: canAct ? _downloadToAlbum : null,
+          icon: const Icon(Icons.photo_album_outlined, size: 17),
+          label: _fitLabel('手机相册'),
+        ),
+        OutlinedButton.icon(
+          style: _subActBtn,
+          onPressed: canAct ? _zipPicked : null,
+          icon: _zipping
+              ? const SizedBox(
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.folder_zip_outlined, size: 17),
+          label: _fitLabel(_zipping ? '打包中' : '打包 ZIP'),
+        ),
+      ];
+      return Wrap(
+        spacing: _actGap,
+        runSpacing: _actGap,
+        children: [
+          for (var i = 0; i < buttons.length; i++)
+            SizedBox(
+              width: width,
+              height: math.max(
+                columns == 2 || i < 3 ? _actH : _actSubH,
+                20 * scale + 20,
+              ),
+              child: buttons[i],
+            ),
+        ],
+      );
+    },
+  );
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted && _dateFilter.active) {
+      setState(() {});
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _dateTick = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted && _dateFilter.active) setState(() {});
+    });
     _morph.addStatusListener(_onMorphDone);
     _morph.addListener(_onMorphTick);
     _open.addListener(_onOpenTick);
     _ctrl.addListener(_remember);
     // 换过分组维度的记忆不认:那一堆、那个位置在这个维度下都不存在
-    final memory = _gridMemory;
+    final memory = _gridMemories[_scopeKey];
     if (memory != null && memory.groupBy == _groupBy) {
       _openKey = memory.openKey;
       _wallOffset = memory.wallOffset;
@@ -327,7 +428,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     final p = _ctrl.position;
     if (!p.hasContentDimensions) return;
     // 认 build 里真在显示的,不认 _openKey:那一堆被筛没了时键还留着,画面却是墙
-    _gridMemory = _GridMemory(
+    _gridMemories[_scopeKey] = _GridMemory(
       groupBy: _groupBy,
       openKey: _inStack ? _openKey : null,
       offset: p.pixels,
@@ -413,6 +514,8 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _dateTick.cancel();
     _edgeTicker?.dispose();
     _morph.dispose();
     _open.dispose();
@@ -444,16 +547,6 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
 
   // ---- 筛选谓词(模型 × 时间 × 搜索,全 AND) ----
 
-  bool _passTime(ResultImage r) {
-    if (_daysFilter == 0) return true;
-    final now = DateTime.now();
-    // 「今天」按日历日;7/30 天按滚动窗口
-    final cut = _daysFilter == 1
-        ? DateTime(now.year, now.month, now.day)
-        : now.subtract(Duration(days: _daysFilter));
-    return r.createdAt >= cut.millisecondsSinceEpoch;
-  }
-
   bool _passModel(ResultImage r, Map<String, GallerySearchMeta> byId) {
     final want = _modelFilter;
     if (want == null) return true;
@@ -470,7 +563,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     return meta != null && searchMatch(meta.text, terms);
   }
 
-  /// 单选弹层(模型/时间共用):选项 = (文案, 值, 计数);值用单元素 record
+  /// 单选弹层(模型/分组共用):选项 = (文案, 值, 计数);值用单元素 record
   /// 包一层再 pop,可空的 T(全部=null)才与「取消」区分得开。
   Future<void> _pickFilter<T>({
     required String title,
@@ -557,23 +650,73 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     );
   }
 
-  void _pickTimeFilter() {
-    _pickFilter<int>(
-      title: '按时间筛选',
-      current: _daysFilter,
-      options: const [
-        ('全部', 0, null),
-        ('今天', 1, null),
-        ('近 7 天', 7, null),
-        ('近 30 天', 30, null),
-      ],
-      onPick: (v) {
-        ref
-            .read(uiPrefsProvider.notifier)
-            .patch((p) => p.copyWith(galleryDaysFilter: v));
-        setState(() => _daysFilter = v);
-      },
-    );
+  Future<void> _pickTimeFilter() async {
+    _searchFocus.unfocus();
+    final filter = await showGalleryDateFilter(context, _dateFilter);
+    if (filter == null || !mounted) return;
+    ref
+        .read(uiPrefsProvider.notifier)
+        .patch(
+          (p) => p.copyWith(
+            galleryDateFilter: filter,
+            galleryGroupBy: GalleryGroupBy.day.name,
+          ),
+        );
+    // 日期入口同时负责回到按天排列；取消日历时不改变原筛选或分组。
+    setState(() {
+      _dateFilter = filter;
+      _groupBy = GalleryGroupBy.day;
+      _openKey = null;
+    });
+  }
+
+  void _clearFilters() {
+    _searchDebounce?.cancel();
+    _searchCtrl.clear();
+    ref
+        .read(uiPrefsProvider.notifier)
+        .patch(
+          (p) => p.copyWith(galleryDateFilter: const GalleryDateFilter.all()),
+        );
+    setState(() {
+      _query = '';
+      _modelFilter = null;
+      _dateFilter = const GalleryDateFilter.all();
+    });
+  }
+
+  Future<void> _organizePicked() async {
+    if (_organizing) return;
+    setState(() => _organizing = true);
+    final notifier = ref.read(albumsProvider.notifier);
+    try {
+      final change = await showAlbumOrganize(
+        context,
+        Set.of(_picked),
+        sourceAlbum: ref.read(galleryBrowseAlbumProvider),
+      );
+      if (change == null || !mounted) return;
+      _picked.clear();
+      // 历史本身是 modal route，Scaffold 的 SnackBar 会被它挡住。
+      // 复用根 Overlay 提示，让撤销在历史保持打开时仍能点击。
+      hintSnack(
+        context,
+        '已整理 ${change.count} 张',
+        icon: Icons.photo_library_outlined,
+        actionLabel: change.count == 0 ? null : '撤销',
+        onAction: change.count == 0
+            ? null
+            : () async {
+                try {
+                  await notifier.undo(change);
+                } catch (e) {
+                  if (mounted) albumError(context, e);
+                }
+              },
+      );
+    } finally {
+      if (mounted) setState(() => _organizing = false);
+    }
   }
 
   void _pickGroupBy() {
@@ -582,7 +725,11 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     _pickFilter<GalleryGroupBy>(
       title: '分组方式',
       current: _groupBy,
-      options: [for (final v in GalleryGroupBy.values) (v.label, v, null)],
+      options: [
+        ('不分组', GalleryGroupBy.day, null),
+        for (final v in [GalleryGroupBy.character, GalleryGroupBy.style])
+          (v.label, v, null),
+      ],
       onPick: (v) {
         ref
             .read(uiPrefsProvider.notifier)
@@ -1179,17 +1326,17 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     });
   }
 
-  /// 批量保存:按默认保存设置逐张处理后存相册;逐张计数,
+  /// 批量保存:按生成时间从旧到新，逐张处理并等待写入后再存下一张;逐张计数,
   /// 中途关闭弹层即中止(已存的保留)。
-  /// [album] 非空 = 存进该自定义相册(gal 会按需创建 `Pictures/<album>/`)。
+  /// [album] 非空 = 存进该手机相册(按需创建 `Pictures/<album>/`)。
   /// [only] 非空 = 只存这些(长按菜单的单张保存借道同一条管线,
   /// 权限申请、保存设置、失败计数一条都不用重写)。
   Future<void> _downloadPicked({String? album, Set<String>? only}) async {
     final want = only ?? _picked;
-    final items = [
+    final items = oldestFirstForSave([
       for (final r in ref.read(galleryProvider).results)
         if (want.contains(r.id)) r,
-    ];
+    ]);
     if (items.isEmpty) return;
     // 写自建相册**以外**的相册要额外权限位,按目标申请
     final toAlbum = album != null;
@@ -1218,7 +1365,12 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
           failed++;
         } else {
           final out = await processForSave(bytes, settings);
-          await Gal.putImageBytes(out, name: 'plana_${r.seed}', album: album);
+          await saveProcessedImageToPhone(
+            out,
+            image: r,
+            format: settings.format,
+            album: album,
+          );
           saved++;
         }
       } catch (_) {
@@ -1386,6 +1538,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
   /// 先关网格弹层再推面板 —— 面板是整页的,压在弹层上会留一层退不掉的夹心:
   /// 从面板返回时人会以为回到了画布,实际还在弹层里。
   Future<void> _importOne(String id) async {
+    final origin = ref.read(albumsProvider.notifier).origin(id);
     final r = ref
         .read(galleryProvider)
         .results
@@ -1405,6 +1558,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
       nav.push(
         sharedAxisRoute(
           ImportImagePanel(
+            origin: origin,
             bytes: bytes,
             fileName: 'plana_${r.seed}.png',
             displayName: 'plana_${r.seed}',
@@ -1500,7 +1654,24 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(galleryProvider);
+    final state = ref.watch(galleryViewProvider);
+    final scope = ref.watch(galleryBrowseAlbumProvider);
+    final albums = ref.watch(albumsProvider);
+    final now = DateTime.now();
+    if (_scopeKey != (scope ?? '')) {
+      _scopeKey = scope ?? '';
+      _query = '';
+      _searchCtrl.clear();
+      _searchDebounce?.cancel();
+      _modelFilter = null;
+      _picked.clear();
+      _selecting = false;
+      _openKey = null;
+      _wallOffset = 0;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _ctrl.hasClients) _ctrl.jumpTo(0);
+      });
+    }
     final results = state.results;
     final search = ref.watch(gallerySearchProvider);
 
@@ -1508,13 +1679,13 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     final terms = searchTerms(_query);
     final filtered = <ResultImage>[
       for (final r in results)
-        if (_passTime(r) &&
+        if (_dateFilter.matches(r.createdAt, now) &&
             _passModel(r, search.byId) &&
             _passQuery(r, search.byId, terms))
           r,
     ];
     final filtering =
-        _query.isNotEmpty || _modelFilter != null || _daysFilter != 0;
+        _query.isNotEmpty || _modelFilter != null || _dateFilter.active;
 
     // 弹层开着期间条目可能被裁剪/删除/筛掉,勾选集随之收敛 ——
     // 批量操作永远只作用于当前可见集合,不留筛选外的"隐形勾选"。
@@ -1555,7 +1726,12 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
 
     final scheme = context.scheme;
     final h = MediaQuery.of(context).size.height * 0.82;
-    final canAct = _picked.isNotEmpty && !_saving && !_sharing && !_zipping;
+    final canAct =
+        _picked.isNotEmpty &&
+        !_saving &&
+        !_sharing &&
+        !_zipping &&
+        !_organizing;
 
     return PopScope(
       // 多选态下系统返回/侧滑先退多选,不关弹层 —— 勾了十几张再手滑退出,
@@ -1573,9 +1749,10 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
       child: SizedBox(
         height: h,
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 8, 8),
+              padding: const EdgeInsets.fromLTRB(16, 4, 4, 8),
               child: SizedBox(
                 height: 36,
                 child: _selecting
@@ -1636,7 +1813,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                               children: [
                                 Flexible(
                                   child: Text(
-                                    open?.label ?? '全部作品',
+                                    open?.label ?? albums.name(scope),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: context.texts.titleMedium!.copyWith(
@@ -1719,53 +1896,58 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
             // 分组 + 筛选 chips + 检索索引回填进度
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Row(
-                children: [
-                  _chip(
-                    scheme,
-                    label: _groupBy.label,
-                    active: _groupBy != GalleryGroupBy.day,
-                    onTap: _pickGroupBy,
-                  ),
-                  const SizedBox(width: 8),
-                  _chip(
-                    scheme,
-                    label: _modelFilter == null
-                        ? '模型'
-                        : (_modelFilter!.isEmpty ? '未知' : _modelFilter!),
-                    active: _modelFilter != null,
-                    onTap: () => _pickModelFilter(results, search.byId),
-                  ),
-                  const SizedBox(width: 8),
-                  _chip(
-                    scheme,
-                    label: switch (_daysFilter) {
-                      1 => '今天',
-                      7 => '近 7 天',
-                      30 => '近 30 天',
-                      _ => '时间',
-                    },
-                    active: _daysFilter != 0,
-                    onTap: _pickTimeFilter,
-                  ),
-                  if (search.building || grouping) ...[
-                    const Spacer(),
-                    const SizedBox(
-                      width: 12,
-                      height: 12,
-                      child: CircularProgressIndicator(strokeWidth: 1.8),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _chip(
+                      scheme,
+                      label: '图库',
+                      active: scope != null,
+                      onTap: () => showAlbumLibrary(context),
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      search.building
-                          ? '索引 ${search.done}/${search.total}'
-                          : '分组中',
-                      style: context.texts.bodySmall!.copyWith(
-                        color: scheme.outline,
+                    const SizedBox(width: 8),
+                    _chip(
+                      scheme,
+                      label: _groupBy.stacked ? _groupBy.label : '分组',
+                      active: _groupBy != GalleryGroupBy.day,
+                      onTap: _pickGroupBy,
+                    ),
+                    const SizedBox(width: 8),
+                    _chip(
+                      scheme,
+                      label: _modelFilter == null
+                          ? '模型'
+                          : (_modelFilter!.isEmpty ? '未知' : _modelFilter!),
+                      active: _modelFilter != null,
+                      onTap: () => _pickModelFilter(results, search.byId),
+                    ),
+                    const SizedBox(width: 8),
+                    _chip(
+                      scheme,
+                      label: _dateFilter.label(now),
+                      active: _dateFilter.active,
+                      onTap: _pickTimeFilter,
+                    ),
+                    if (search.building || grouping) ...[
+                      const SizedBox(width: 12),
+                      const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(strokeWidth: 1.8),
                       ),
-                    ),
+                      const SizedBox(width: 6),
+                      Text(
+                        search.building
+                            ? '索引 ${search.done}/${search.total}'
+                            : '分组中',
+                        style: context.texts.bodySmall!.copyWith(
+                          color: scheme.outline,
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
             Expanded(
@@ -1790,6 +1972,11 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                   color: scheme.onSurfaceVariant,
                                 ),
                               ),
+                              if (filtering)
+                                TextButton(
+                                  onPressed: _clearFilters,
+                                  child: const Text('清除筛选'),
+                                ),
                             ],
                           ),
                         )
@@ -1840,127 +2027,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                           16,
                           _actGap,
                         ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // 高度写死在外层:三颗按钮各是 tonal/filled/outlined,
-                            // 各自的默认内边距不一样,不给紧约束就长不齐
-                            SizedBox(
-                              height: _actH,
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: FilledButton.tonalIcon(
-                                      onPressed: canAct
-                                          ? () => _downloadPicked()
-                                          : null,
-                                      icon: const Icon(
-                                        Icons.download,
-                                        size: 19,
-                                      ),
-                                      label: Text(
-                                        _saving
-                                            ? '保存中 $_saveDone/$_saveTotal'
-                                            : '保存 (${_picked.length})',
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: _actGap),
-                                  Expanded(
-                                    child: FilledButton.icon(
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor: scheme.errorContainer,
-                                        foregroundColor:
-                                            scheme.onErrorContainer,
-                                      ),
-                                      onPressed: canAct ? _deletePicked : null,
-                                      icon: const Icon(
-                                        Icons.delete_outline,
-                                        size: 19,
-                                      ),
-                                      label: Text('删除 (${_picked.length})'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: _actGap),
-                            // 次行:三颗都要多一步(挑应用 / 选相册 / 挑落点),
-                            // 与上面两颗的即时性不同级,所以矮一档(_actSubH)。
-                            //
-                            // 三颗平分一行,「自定义相册」在窄屏上会顶出去 ——
-                            // 内边距收窄 + 文字 scaleDown 兜底,缩一号也比溢出好。
-                            SizedBox(
-                              height: _actSubH,
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      style: _subActBtn,
-                                      onPressed: canAct
-                                          ? () => _sharePicked()
-                                          : null,
-                                      icon: _sharing
-                                          ? const SizedBox(
-                                              width: 15,
-                                              height: 15,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                              ),
-                                            )
-                                          : const Icon(
-                                              Icons.ios_share,
-                                              size: 17,
-                                            ),
-                                      label: _fitLabel(
-                                        _sharing
-                                            ? '准备 $_saveDone/$_saveTotal'
-                                            : '分享',
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: _actGap),
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      style: _subActBtn,
-                                      onPressed: canAct
-                                          ? _downloadToAlbum
-                                          : null,
-                                      icon: const Icon(
-                                        Icons.photo_album_outlined,
-                                        size: 17,
-                                      ),
-                                      label: _fitLabel('自定义相册'),
-                                    ),
-                                  ),
-                                  const SizedBox(width: _actGap),
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      style: _subActBtn,
-                                      onPressed: canAct ? _zipPicked : null,
-                                      icon: _zipping
-                                          ? const SizedBox(
-                                              width: 15,
-                                              height: 15,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                              ),
-                                            )
-                                          : const Icon(
-                                              Icons.folder_zip_outlined,
-                                              size: 17,
-                                            ),
-                                      // 进度在打包弹层里,这儿只表示「在忙」
-                                      label: _fitLabel(
-                                        _zipping ? '打包中' : '打包 ZIP',
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
+                        child: _batchActions(canAct),
                       ),
                     ),
             ),

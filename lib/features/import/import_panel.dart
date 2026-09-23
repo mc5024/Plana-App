@@ -1,3 +1,7 @@
+import '../gallery/albums/album_models.dart';
+import '../gallery/albums/album_state.dart';
+import '../gallery/albums/import_album_options.dart';
+import '../inpaint/inpaint_overlay.dart' show inpaintSessionProvider;
 import 'dart:async';
 import 'dart:convert';
 
@@ -110,17 +114,20 @@ class ImportImagePanel extends ConsumerStatefulWidget {
     required this.bytes,
     required this.fileName,
     required this.displayName,
+    this.origin,
   });
 
   final Uint8List bytes;
   final String fileName;
   final String displayName;
+  final GalleryImportOrigin? origin;
 
   @override
   ConsumerState<ImportImagePanel> createState() => _ImportImagePanelState();
 }
 
 class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
+  ImportAlbumChoice _albumChoice = const ImportAlbumChoice();
   bool _loading = true;
   ImageMetadata? _meta;
 
@@ -1006,6 +1013,14 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
   /// 顶部 toast 提示并关闭面板(toast 挂 root overlay,pop 后仍然在)。
   /// 导入/用作都是写创作页,按硬约束自动切回创作 tab(从图库进来时生效)。
   void _finish(String text, IconData icon) {
+    final albumMessage = ref
+        .read(albumsProvider.notifier)
+        .applyImportChoice(
+          widget.origin,
+          _albumChoice,
+          canBrowse: ref.read(inpaintSessionProvider) == null,
+        );
+    if (albumMessage != null) text = '$text · $albumMessage';
     hintSnack(context, text, icon: icon);
     ref.read(shellIndexProvider.notifier).select(kTabCreate);
     Navigator.of(context).pop();
@@ -1127,6 +1142,11 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
       children: [
         _infoCard(scheme, reverse: true),
+        ImportAlbumOptions(
+          origin: widget.origin,
+          choice: _albumChoice,
+          onChanged: (v) => setState(() => _albumChoice = v),
+        ),
         const SizedBox(height: 16),
         Text(
           '反推结果',
@@ -1155,6 +1175,11 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _infoCard(scheme, noMeta: true),
+          ImportAlbumOptions(
+            origin: widget.origin,
+            choice: _albumChoice,
+            onChanged: (v) => setState(() => _albumChoice = v),
+          ),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -1201,6 +1226,11 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
       children: [
         _infoCard(scheme),
+        ImportAlbumOptions(
+          origin: widget.origin,
+          choice: _albumChoice,
+          onChanged: (v) => setState(() => _albumChoice = v),
+        ),
         const SizedBox(height: 16),
         // 跨家族:说清这是哪个模型的图,给一键切过去;不切就只导提示词
         if (_crossCategory) ...[

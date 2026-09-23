@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app_stores.dart';
+import '../../features/gallery/gallery_date_filter.dart';
 
 /// 零散界面偏好的统一出处:那些「选了一次就该一直是那样」、但又不值得各开一份
 /// 存储的小状态(页签、时间范围、排序、筛选)。
@@ -22,6 +23,9 @@ class UiPrefs {
     this.genSettingsTab = 'nai',
     this.completionByHeat = true,
     this.galleryDaysFilter = 0,
+    this.galleryDateFilter,
+    this.galleryBrowseAlbum = '',
+    this.gallerySaveAlbum = '',
     this.galleryGroupBy = 'day',
     this.galleryColumns = 3,
     this.inspirationColumns = const {},
@@ -42,6 +46,13 @@ class UiPrefs {
 
   /// 图库网格的时间筛选(0=全部 / 1=今天 / 7=近 7 天 / 30=近 30 天)。
   final int galleryDaysFilter;
+  final GalleryDateFilter? galleryDateFilter;
+  GalleryDateFilter get dateFilter =>
+      galleryDateFilter ?? GalleryDateFilter.legacy(galleryDaysFilter);
+
+  /// 空字符串代表全部作品，两个选择互相独立。
+  final String galleryBrowseAlbum;
+  final String gallerySaveAlbum;
 
   /// 图库网格的分组维度(`GalleryGroupBy` 的 name:`day` / `character` / `style`)。
   /// 存字符串而不是下标 —— 将来插一个维度不会把老用户的选择挪到别的档去。
@@ -64,6 +75,9 @@ class UiPrefs {
     String? genSettingsTab,
     bool? completionByHeat,
     int? galleryDaysFilter,
+    GalleryDateFilter? galleryDateFilter,
+    String? galleryBrowseAlbum,
+    String? gallerySaveAlbum,
     String? galleryGroupBy,
     int? galleryColumns,
     Map<String, int>? inspirationColumns,
@@ -73,6 +87,13 @@ class UiPrefs {
     genSettingsTab: genSettingsTab ?? this.genSettingsTab,
     completionByHeat: completionByHeat ?? this.completionByHeat,
     galleryDaysFilter: galleryDaysFilter ?? this.galleryDaysFilter,
+    galleryDateFilter:
+        galleryDateFilter ??
+        (galleryDaysFilter != null
+            ? GalleryDateFilter.legacy(galleryDaysFilter)
+            : this.galleryDateFilter),
+    galleryBrowseAlbum: galleryBrowseAlbum ?? this.galleryBrowseAlbum,
+    gallerySaveAlbum: gallerySaveAlbum ?? this.gallerySaveAlbum,
     galleryGroupBy: galleryGroupBy ?? this.galleryGroupBy,
     galleryColumns: galleryColumns ?? this.galleryColumns,
     inspirationColumns: inspirationColumns ?? this.inspirationColumns,
@@ -84,6 +105,9 @@ class UiPrefs {
     'genSettingsTab': genSettingsTab,
     'completionByHeat': completionByHeat,
     'galleryDaysFilter': galleryDaysFilter,
+    'galleryDateFilter': dateFilter.toJson(),
+    'galleryBrowseAlbum': galleryBrowseAlbum,
+    'gallerySaveAlbum': gallerySaveAlbum,
     'galleryGroupBy': galleryGroupBy,
     'galleryColumns': galleryColumns,
     'inspirationColumns': inspirationColumns,
@@ -109,6 +133,18 @@ class UiPrefs {
     galleryDaysFilter: const {0, 1, 7, 30}.contains(j['galleryDaysFilter'])
         ? j['galleryDaysFilter'] as int
         : 0,
+    galleryDateFilter: GalleryDateFilter.fromJson(
+      j['galleryDateFilter'],
+      legacyDays: j['galleryDaysFilter'] is int
+          ? j['galleryDaysFilter'] as int
+          : 0,
+    ),
+    galleryBrowseAlbum: j['galleryBrowseAlbum'] is String
+        ? j['galleryBrowseAlbum'] as String
+        : '',
+    gallerySaveAlbum: j['gallerySaveAlbum'] is String
+        ? j['gallerySaveAlbum'] as String
+        : '',
     galleryGroupBy: j['galleryGroupBy'] is String
         ? j['galleryGroupBy'] as String
         : 'day',

@@ -14,10 +14,14 @@ import '../../core/theme/theme_settings.dart';
 import '../assistant/assistant_page.dart';
 import '../assistant/assistant_state.dart';
 import '../gallery/gallery_page.dart';
+import '../gallery/gallery_state.dart';
+import '../gallery/albums/album_models.dart';
+import '../gallery/albums/album_state.dart';
 import '../generate/generate_page.dart';
 import '../generate/generation_controller.dart';
 import '../generate/widgets/common.dart' show hintSnack;
 import '../inspiration/inspiration_page.dart';
+import '../inpaint/inpaint_overlay.dart' show inpaintSessionProvider;
 import '../profile/profile_page.dart';
 import '../update/update_service.dart';
 import '../update/update_sheet.dart' show showUpdateSheet;
@@ -181,6 +185,40 @@ class _AppShellState extends ConsumerState<AppShell> {
       if (next == null || next.isEmpty) return;
       hintSnack(context, next, icon: Icons.info_outline);
       ref.read(genNoticeProvider.notifier).clear();
+    });
+
+    ref.listen<GalleryResultPreview?>(gallerySavedNoticeProvider, (_, next) {
+      if (next == null) return;
+      final name = ref.read(albumsProvider).name(next.target.albumId);
+      hintSnack(
+        context,
+        '新图片已保存到「$name」',
+        icon: Icons.photo_library_outlined,
+        actionLabel: '查看',
+        onAction: () {
+          if (!mounted) return;
+          if (ref.read(inpaintSessionProvider) != null) {
+            hintSnack(context, '结束编辑后可查看新图片');
+            return;
+          }
+          if (!ref
+              .read(galleryProvider)
+              .results
+              .any((r) => r.id == next.imageId)) {
+            hintSnack(context, '这张图片已被删除');
+            return;
+          }
+          final target = ref.read(albumsProvider).exists(next.target.albumId)
+              ? next.target
+              : const GallerySaveTarget.all();
+          ref.read(generationProvider.notifier).select(null);
+          ref
+              .read(galleryResultPreviewProvider.notifier)
+              .show(next.imageId, target);
+          ref.read(shellIndexProvider.notifier).select(kTabGallery);
+        },
+      );
+      ref.read(gallerySavedNoticeProvider.notifier).clear();
     });
 
     return Scaffold(

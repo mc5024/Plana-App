@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../features/assistant/session_store.dart';
 import '../../features/gallery/gallery_store.dart';
+import '../../features/gallery/albums/album_store.dart';
 import '../../features/generate/workspace_store.dart';
 import '../../features/stats/key_ledger.dart';
 import '../net/remote_image.dart';
@@ -24,11 +25,13 @@ class AppStores {
     this.ledger,
     this.assistant,
     this.prefs,
+    this.albums,
   );
 
   final BlobStore blobs;
   final WorkspaceStore workspace;
   final GalleryStore gallery;
+  final AlbumStore albums;
   final KeyLedgerStore ledger;
 
   /// AI 助手的对话存档,见 [AssistantStore]。
@@ -49,6 +52,7 @@ class AppStores {
       KeyLedgerStore(root),
       AssistantStore(blobs, root),
       PrefsStore.emptyForTest(root),
+      AlbumStore(root),
     );
   }
 
@@ -70,6 +74,7 @@ class AppStores {
     final blobs = BlobStore(root);
     final workspace = WorkspaceStore(blobs, root);
     final gallery = GalleryStore(blobs, root);
+    final albums = AlbumStore(root);
     final ledger = KeyLedgerStore(root);
     final assistant = AssistantStore(blobs, root);
     try {
@@ -79,9 +84,18 @@ class AppStores {
     final prefs = await PrefsStore.open(root);
     await workspace.load();
     await gallery.load();
+    await albums.load(liveImages: gallery.initialResults.map((r) => r.id).toSet());
     await ledger.load();
     await assistant.load();
-    return AppStores._(blobs, workspace, gallery, ledger, assistant, prefs);
+    return AppStores._(
+      blobs,
+      workspace,
+      gallery,
+      ledger,
+      assistant,
+      prefs,
+      albums,
+    );
   }
 
   /// 退后台/失焦即刻把防抖窗口里的挂起状态落盘(进程被杀不丢)。

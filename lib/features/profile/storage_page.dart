@@ -170,17 +170,18 @@ class _StoragePageState extends ConsumerState<StoragePage> {
         final n = _report?['gallery']?.count;
         final ok = await confirmDialog(
           context,
-          title: '清空图库',
+          title: '清空全部图库数据',
           message:
-              '将删除全部${n == null ? '' : ' $n 张'}作品与参数快照,不可恢复。'
+              '将删除全部${n == null ? '' : ' $n 张'}作品与参数快照，以及自建图库和封面，不可恢复。'
               '已保存到系统相册的图片不受影响。',
           confirmLabel: '清空',
         );
         if (!ok) return;
         // 快照没了,顺手清孤儿参考图;释放量把这部分也算进去
         await _run(const ['gallery', 'blobs'], () async {
-          ref.read(galleryProvider.notifier).clearAll();
+          await ref.read(galleryProvider.notifier).clearAll();
           await stores.gallery.idle;
+          await stores.albums.idle;
           await _gcBlobs();
         });
       case 'vibeEnc':

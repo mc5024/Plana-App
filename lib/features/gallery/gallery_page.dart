@@ -1,3 +1,5 @@
+import 'albums/album_state.dart';
+import 'albums/album_ui.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -57,14 +59,18 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
   /// 最近一次成功显示的原图字节。切到尚未读盘的老图时先继续画它,
   /// 避免空窗期露占位;新图解码完由 gaplessPlayback 无缝换掉。
   Uint8List? _lastShown;
+  String? _viewKey;
 
   /// 冷启动直接停在上次选中的那一页(索引查不到就落到最新一张)。
   late final int _initialPage = () {
-    final s = ref.read(galleryProvider);
+    final s = ref.read(galleryViewProvider);
     final i = s.results.indexWhere((r) => r.id == s.selectedId);
     return i < 0 ? 0 : i;
   }();
-  late final PageController _pv = PageController(initialPage: _initialPage);
+  late final PageController _pv = PageController(
+    initialPage: _initialPage,
+    keepPage: false,
+  );
 
   /// PageView **实际**停的页码,只由 [_onPageChanged] 写。build 里拿它和选中项
   /// 索引比对:不等 = 有人从外面改了选中(点胶片条/网格跳选、新图前插、删图后
@@ -73,6 +79,9 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
 
   /// 已排队等 post-frame 生效的跳页目标(去重,免得每帧都排一发)。
   int? _jumpTo;
+
+  /// 同步页码只反映已有选中项，不能被当成用户改选来打断新图入库。
+  bool _syncingPage = false;
 
   /// 当前这次滚动是不是手拖出来的(程序 jumpToPage 不算)。
   /// 只服务顶图层的抑制:手拖期间不许盖图,见 build 里 bridge 的注释。
@@ -103,7 +112,14 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
       _jumpTo = null;
       if (!mounted || t == null) return;
       // jumpToPage 会同步派 ScrollUpdate → onPageChanged 把 _pageAt 校正过来
-      if (_pv.hasClients && (_pv.page?.round() ?? -1) != t) _pv.jumpToPage(t);
+      if (_pv.hasClients && (_pv.page?.round() ?? -1) != t) {
+        _syncingPage = true;
+        try {
+          _pv.jumpToPage(t);
+        } finally {
+          _syncingPage = false;
+        }
+      }
       // 兜底:目标页恰好已经是当前页(列表裁剪把页码挤过去了),或控制器还没
       // 挂上 —— 这两种都不会有 onPageChanged,得自己把 _pageAt 收平,
       // 否则 desynced 永远为真,顶图层就一直盖着撤不掉。
@@ -112,10 +128,11 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
   }
 
   void _onPageChanged(int i) {
-    // 程序 jumpToPage 也会走这里,且此时选中项往往已经是目标 —— select 会早退
-    // 不触发重建,所以 _pageAt 必须自己 setState,否则顶图层撤不掉。
+    // 程序 jumpToPage 也会走这里；只校正实际页码，不回写用户选择。
+    // 否则新图前插导致的页码平移会增加 selectionRevision，阻止入库后选中新图。
     if (_pageAt != i) setState(() => _pageAt = i);
-    final results = ref.read(galleryProvider).results;
+    if (_syncingPage || ref.read(galleryResultPreviewProvider) != null) return;
+    final results = ref.read(galleryViewProvider).results;
     if (i < 0 || i >= results.length) return;
     ref.read(galleryProvider.notifier).select(results[i].id);
   }
@@ -174,7 +191,26 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final state = ref.watch(galleryProvider);
+    final history = ref.watch(galleryViewProvider);
+    final scope = ref.watch(galleryBrowseAlbumProvider);
+    final preview = ref.watch(galleryResultPreviewProvider);
+    final previewImage = preview == null
+        ? null
+        : ref
+              .watch(galleryProvider)
+              .results
+              .where((r) => r.id == preview.imageId)
+              .firstOrNull;
+    final state = previewImage == null
+        ? history
+        : GalleryState(results: [previewImage], selectedId: previewImage.id);
+    final viewKey = '${scope ?? ''}/${previewImage?.id ?? ''}';
+    final changedScope = _viewKey != viewKey;
+    if (changedScope) {
+      _viewKey = viewKey;
+      _lastShown = null;
+    }
+    final pool = ref.watch(generationProvider);
     final gen = ref.watch(genStatusProvider);
     final inpaint = ref.watch(inpaintSessionProvider);
     final selected = state.selected;
@@ -188,14 +224,18 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
 
     _maybeHint(!state.isEmpty);
 
-    if (!gen.busy && state.isEmpty && inpaint == null) {
-      return const _EmptyGallery();
+    if (!gen.busy && state.isEmpty && inpaint == null && pool.jobs.isEmpty) {
+      return const Column(
+        children: [
+          Expanded(child: _EmptyGallery()),
+          GalleryContextBar(),
+        ],
+      );
     }
 
     // 画布跟随哪条任务由任务池说了算(GenPool.selectedId):
     // 点历史缩略图 = 解除跟随(任务继续后台跑,进度在胶片条的卡上),
     // 点任务卡 = 跟随那一条。gen 就是被跟随那条的扁平视图,没跟随时它 idle。
-    final pool = ref.watch(generationProvider);
     final showGen = gen.busy;
 
     // 选中图字节不在内存(重启水合/RAM 减负)时按需从盘读。
@@ -227,7 +267,7 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
 
     // 选中项被外面改了(点胶片条/网格跳选、新图前插、删图平移)→ 排一次跳页。
     final desynced = selIdx >= 0 && selIdx != _pageAt;
-    if (desynced) _requestPage(selIdx);
+    if (desynced || changedScope) _requestPage(selIdx < 0 ? 0 : selIdx);
 
     // 顶图层:页码还没跟上的那一两帧、或老图字节还没读上来时,拿一张盖在
     // 分页画布上顶住 —— 优先当前选中的真身,退而求其次是上一张已显示的。
@@ -259,6 +299,7 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
                   NotificationListener<ScrollNotification>(
                     onNotification: _onScroll,
                     child: PageView.builder(
+                      key: ValueKey(viewKey),
                       controller: _pv,
                       physics: zoomed
                           ? const NeverScrollableScrollPhysics()
@@ -353,9 +394,44 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
                 ],
               ),
             ),
+            if (previewImage != null && !showGen)
+              Material(
+                color: context.scheme.surfaceContainer,
+                child: Row(
+                  children: [
+                    IconButton(
+                      tooltip: '返回历史',
+                      onPressed: () => ref
+                          .read(galleryResultPreviewProvider.notifier)
+                          .clear(),
+                      icon: const Icon(Icons.close),
+                    ),
+                    Expanded(
+                      child: Text(
+                        '已保存到 ${ref.watch(albumsProvider).name(preview!.target.albumId)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => ref
+                          .read(albumsProvider.notifier)
+                          .browse(
+                            ref
+                                    .read(albumsProvider)
+                                    .exists(preview.target.albumId)
+                                ? preview.target.albumId
+                                : null,
+                          ),
+                      child: const Text('浏览图库'),
+                    ),
+                  ],
+                ),
+              ),
+            const GalleryContextBar(),
             FilmStrip(
-              results: state.results,
-              selectedId: state.selectedId,
+              results: history.results,
+              selectedId: previewImage == null ? history.selectedId : null,
               onSelect: (id) {
                 // 生成中点历史图 = 解除跟随(任务继续);平时就是普通选图
                 ref.read(generationProvider.notifier).select(null);
@@ -366,8 +442,10 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
                   ref.read(galleryProvider.notifier).deleteResults([id]),
               jobs: pool.newestFirst,
               selectedJobId: pool.selectedId,
-              onSelectJob: (id) =>
-                  ref.read(generationProvider.notifier).select(id),
+              onSelectJob: (id) {
+                ref.read(galleryResultPreviewProvider.notifier).clear();
+                ref.read(generationProvider.notifier).select(id);
+              },
             ),
           ],
         ),
@@ -393,7 +471,9 @@ class _ResultPage extends ConsumerWidget {
         result.bytes ?? ref.watch(galleryImageProvider(result.id)).value;
     // 按住对比只作用在**当前这张**上:PageView 会把左右邻页也建出来,
     // 不判一下的话邻页也跟着换图(看不见,但白解码)。
-    final selected = ref.watch(galleryProvider).selectedId == result.id;
+    final selected =
+        ref.watch(galleryViewProvider).selectedId == result.id ||
+        ref.watch(galleryResultPreviewProvider)?.imageId == result.id;
     return _ZoomableImage(
       bytes: bytes,
       width: result.width,
@@ -454,17 +534,17 @@ class _ZoomableImageState extends ConsumerState<_ZoomableImage>
   );
   Animation<Matrix4>? _zoomAnim;
   Offset? _doubleTapPos;
+  late final GalleryZoomedNotifier _zoomed;
 
   double get _scale => _tc.value.getMaxScaleOnAxis();
 
   @override
   void initState() {
     super.initState();
+    _zoomed = ref.read(galleryZoomedProvider.notifier);
     // 缩放态如实上报(双向):捏大即锁翻页,捏回 1 即放开。
     // 1.02 的余量是给浮点残差留的,别改成 == 1。
-    _tc.addListener(
-      () => ref.read(galleryZoomedProvider.notifier).set(_scale > 1.02),
-    );
+    _tc.addListener(() => _zoomed.set(_scale > 1.02));
     _ac.addListener(() {
       final a = _zoomAnim;
       if (a != null) _tc.value = a.value;
@@ -474,8 +554,7 @@ class _ZoomableImageState extends ConsumerState<_ZoomableImage>
   @override
   void dispose() {
     // 离屏销毁时放开翻页锁;dispose 内不能同步改 provider → microtask
-    final notifier = ref.read(galleryZoomedProvider.notifier);
-    Future.microtask(() => notifier.set(false));
+    Future.microtask(() => _zoomed.set(false));
     _zoomCurve.dispose();
     _ac.dispose();
     _tc.dispose();
@@ -575,11 +654,11 @@ extension on _ZoomableImageState {
   }
 }
 
-class _EmptyGallery extends StatelessWidget {
+class _EmptyGallery extends ConsumerWidget {
   const _EmptyGallery();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = context.scheme;
     return Center(
       child: Column(
@@ -588,12 +667,41 @@ class _EmptyGallery extends StatelessWidget {
           Icon(Icons.photo_library_outlined, size: 56, color: scheme.outline),
           const SizedBox(height: 12),
           Text(
-            '还没有作品',
+            ref.watch(galleryBrowseAlbumProvider) == null
+                ? '还没有作品'
+                : '这个图库还没有照片',
             style: context.texts.titleMedium!.copyWith(
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 6),
+          TextButton(
+            onPressed: () => showAlbumLibrary(context),
+            child: const Text('选择 / 创建图库'),
+          ),
+          if (ref.watch(galleryBrowseAlbumProvider) != null) ...[
+            TextButton(
+              onPressed: () async {
+                final target = ref.read(galleryBrowseAlbumProvider);
+                final photo = await pickAlbumPhoto(context);
+                if (photo == null || !context.mounted || target == null) return;
+                try {
+                  await ref
+                      .read(albumsProvider.notifier)
+                      .organize({photo.id}, {target});
+                } catch (e) {
+                  if (context.mounted) albumError(context, e);
+                }
+              },
+              child: const Text('从全部作品添加'),
+            ),
+            TextButton(
+              onPressed: () => ref
+                  .read(albumsProvider.notifier)
+                  .setSave(ref.read(galleryBrowseAlbumProvider)),
+              child: const Text('将新图保存到这里'),
+            ),
+          ],
           Text(
             '去「创作」生成第一张',
             style: context.texts.bodySmall!.copyWith(color: scheme.outline),

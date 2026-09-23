@@ -1,3 +1,5 @@
+import '../gallery/albums/album_state.dart';
+import '../gallery/albums/album_ui.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -1109,6 +1111,7 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
       hintSnack(context, '先涂抹要打码的区域', icon: Icons.brush);
       return;
     }
+    final galleryTarget = ref.read(gallerySaveTargetProvider);
     setState(() => _firing = true);
     try {
       final png = await censorPng(
@@ -1136,9 +1139,10 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
         }
       }
       if (!mounted) return;
-      ref
+      await ref
           .read(galleryProvider.notifier)
-          .addResult(
+          .addResultToGallery(
+            target: galleryTarget,
             bytes: png,
             width: img.width,
             height: img.height,
@@ -1579,6 +1583,7 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
               ],
             ),
             const SizedBox(height: 10),
+            const GallerySaveTargetRow(compact: true),
             Row(
               children: [
                 _ParamChip(

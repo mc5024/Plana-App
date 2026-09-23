@@ -6,6 +6,7 @@
 library;
 
 import 'dart:typed_data';
+import '../gallery/albums/album_models.dart';
 
 /// 任务类型。重绘与普通出图并行不冲突,但**重绘之间仍是一次一条** ——
 /// 回贴信息(裁切框/原图)是随会话共享的,两条同时跑会串。
@@ -29,6 +30,9 @@ enum GenJobStage {
 
   /// 正在出图,[GenJob.step] / [GenJob.total] 此时才有意义。
   running,
+
+  /// 已收到终图，正在保存及归类；保留画布预览直到历史可以接管。
+  saving,
 }
 
 /// 一条在跑(或等着跑)的生成任务。
@@ -48,9 +52,11 @@ class GenJob {
     this.taskId,
     this.pasteUnder,
     this.pasteAt,
+    this.galleryTarget = const GallerySaveTarget.all(),
   });
 
   final String id;
+  final GallerySaveTarget galleryTarget;
   final GenJobKind kind;
   final GenJobStage stage;
 
@@ -110,6 +116,7 @@ class GenJob {
     String? taskId,
   }) => GenJob(
     id: id,
+    galleryTarget: galleryTarget,
     kind: kind,
     stage: stage ?? this.stage,
     width: width,

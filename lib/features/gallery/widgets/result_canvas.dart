@@ -1,3 +1,6 @@
+import '../albums/album_state.dart';
+import '../albums/album_models.dart';
+import '../albums/album_ui.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,6 +25,7 @@ import '../../../core/util/image_ops.dart';
 import '../gallery_state.dart';
 import '../models.dart';
 import '../save_pipeline.dart';
+import '../phone_gallery_save.dart';
 import '../save_settings.dart';
 import '../upscale_model.dart';
 import '../upscale_nai.dart';
@@ -110,7 +114,17 @@ class ResultChrome extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        Positioned(right: 12, bottom: 16, child: _ActionRail(result: result)),
+        Positioned(
+          right: 12,
+          top: 8,
+          bottom: 16,
+          child: LayoutBuilder(
+            builder: (context, size) => Align(
+              alignment: Alignment.bottomRight,
+              child: _ActionRail(result: result, maxHeight: size.maxHeight),
+            ),
+          ),
+        ),
         Positioned(left: 12, bottom: 16, child: _SeedChip(seed: result.seed)),
       ],
     );
@@ -156,11 +170,12 @@ class ProgressPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = context.scheme;
     final p = status.progress;
+    final cancel = status.saving ? null : onCancel;
     return Container(
       height: _h,
       padding: EdgeInsets.only(
         left: _pad,
-        right: onCancel == null ? _pad : _padR,
+        right: cancel == null ? _pad : _padR,
       ),
       decoration: BoxDecoration(
         color: scheme.surface.withValues(alpha: .95),
@@ -210,7 +225,7 @@ class ProgressPill extends StatelessWidget {
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
-          if (onCancel != null) ...[
+          if (cancel != null) ...[
             const SizedBox(width: 6),
             SizedBox(
               width: _btn,
@@ -220,7 +235,7 @@ class ProgressPill extends StatelessWidget {
                 shape: const CircleBorder(),
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
-                  onTap: onCancel,
+                  onTap: cancel,
                   child: Icon(
                     Icons.close_rounded,
                     size: _icon,
@@ -295,9 +310,10 @@ class _HoldingNotifier extends Notifier<bool> {
 }
 
 class _ActionRail extends ConsumerStatefulWidget {
-  const _ActionRail({required this.result});
+  const _ActionRail({required this.result, required this.maxHeight});
 
   final ResultImage result;
+  final double maxHeight;
 
   @override
   ConsumerState<_ActionRail> createState() => _ActionRailState();
@@ -328,83 +344,90 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
           _setCollapsed(true);
         }
       },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          // 收起的只有这四颗;「重新生成」永远露着 —— 它是这一屏的主动作,
-          // 藏起来就等于把最常点的那颗也一起收走了。
-          ClipRect(
-            child: AnimatedAlign(
-              duration: Motion.medium,
-              curve: Motion.standard,
-              alignment: Alignment.bottomRight,
-              heightFactor: collapsed ? 0 : 1,
-              child: AnimatedOpacity(
-                duration: Motion.fast,
-                opacity: collapsed ? 0 : 1,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    _RailButton(
-                      label: '重绘',
-                      icon: Icons.brush,
-                      onTap: () => _inpaint(context, ref),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: widget.maxHeight),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            // 收起的只有这四颗;「重新生成」永远露着 —— 它是这一屏的主动作,
+            // 藏起来就等于把最常点的那颗也一起收走了。
+            Flexible(
+              child: SingleChildScrollView(
+                child: ClipRect(
+                  child: AnimatedAlign(
+                    duration: Motion.medium,
+                    curve: Motion.standard,
+                    alignment: Alignment.bottomRight,
+                    heightFactor: collapsed ? 0 : 1,
+                    child: AnimatedOpacity(
+                      duration: Motion.fast,
+                      opacity: collapsed ? 0 : 1,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          _RailButton(
+                            label: '重绘',
+                            icon: Icons.brush,
+                            onTap: () => _inpaint(context, ref),
+                          ),
+                          const SizedBox(height: 10),
+                          _RailButton(
+                            label: '放大',
+                            icon: Icons.open_in_full,
+                            onTap: () => _upscale(context, ref),
+                          ),
+                          const SizedBox(height: 10),
+                          _RailButton(
+                            label: '保存',
+                            icon: Icons.download,
+                            onTap: () => _download(context, ref),
+                            onLongPress: () => _openSaveSheet(context, ref),
+                          ),
+                          const SizedBox(height: 10),
+                          _RailButton(
+                            label: '导入',
+                            icon: Icons.input,
+                            onTap: () => _import(context, ref),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 10),
-                    _RailButton(
-                      label: '放大',
-                      icon: Icons.open_in_full,
-                      onTap: () => _upscale(context, ref),
-                    ),
-                    const SizedBox(height: 10),
-                    _RailButton(
-                      label: '保存',
-                      icon: Icons.download,
-                      onTap: () => _download(context, ref),
-                      onLongPress: () => _openSaveSheet(context, ref),
-                    ),
-                    const SizedBox(height: 10),
-                    _RailButton(
-                      label: '导入',
-                      icon: Icons.input,
-                      onTap: () => _import(context, ref),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
-          _RailHandle(
-            collapsed: collapsed,
-            onTap: () => _setCollapsed(!collapsed),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              // 只有重绘产物才有「之前」可看;源图被删了也不给(取不到字节)。
-              if (result.inpaintFrom != null) ...[
+            _RailHandle(
+              collapsed: collapsed,
+              onTap: () => _setCollapsed(!collapsed),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // 只有重绘产物才有「之前」可看;源图被删了也不给(取不到字节)。
+                if (result.inpaintFrom != null) ...[
+                  _RailButton(
+                    label: '对比',
+                    icon: Icons.compare,
+                    onHold: (down) => _compare(context, ref, down),
+                    onTap: () {},
+                  ),
+                  const SizedBox(width: 10),
+                ],
                 _RailButton(
-                  label: '对比',
-                  icon: Icons.compare,
-                  onHold: (down) => _compare(context, ref, down),
-                  onTap: () {},
+                  label: '重新生成',
+                  icon: Icons.refresh,
+                  primary: true,
+                  onTap: () => _regenerate(context, ref),
                 ),
-                const SizedBox(width: 10),
               ],
-              _RailButton(
-                label: '重新生成',
-                icon: Icons.refresh,
-                primary: true,
-                onTap: () => _regenerate(context, ref),
-              ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -550,13 +573,17 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
       ),
     );
     if (picked == null || !context.mounted) return;
+    final galleryTarget = ref.read(gallerySaveTargetProvider);
+    final galleryRevision = ref
+        .read(galleryProvider.notifier)
+        .selectionRevision;
     await ref.read(upscaleSettingsProvider.notifier).set(picked);
     if (!context.mounted) return;
     final method = picked.method;
 
     // 重绘放大:走生成管线(画布流式预览),不弹放大对话框
     if (method == UpscaleMethod.redraw) {
-      await _redraw(context, ref, bytes, picked, redrawInput);
+      await _redraw(context, ref, bytes, picked, redrawInput, galleryTarget);
       return;
     }
 
@@ -584,9 +611,13 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
       final outH = r.height;
       // 入库:新条目 + 放大角标,沿用原图 seed/输入参数(快照懒读补齐)
       final input = await _inputOf(ref);
-      ref
+      await ref
           .read(galleryProvider.notifier)
-          .addResult(
+          .addResultToGallery(
+            target: galleryTarget,
+            canSelect: () =>
+                ref.read(galleryProvider.notifier).selectionRevision ==
+                galleryRevision,
             bytes: png,
             width: outW,
             height: outH,
@@ -627,6 +658,7 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
     Uint8List bytes,
     UpscaleSettings cfg,
     GenerateState? input,
+    GallerySaveTarget galleryTarget,
   ) async {
     final scale = cfg.enhanceScale;
     if (input == null) {
@@ -642,6 +674,7 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
       ref
           .read(generationProvider.notifier)
           .generate(
+            galleryTarget: galleryTarget,
             using: input.copyWith(
               img2img: Img2ImgConfig(
                 image: bytes,
@@ -664,6 +697,7 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
 
   /// 导入:当前图送进导入面板(解析内嵌元数据 / 用作参考),与创作页入口同一面板。
   Future<void> _import(BuildContext context, WidgetRef ref) async {
+    final origin = ref.read(albumsProvider.notifier).origin(result.id);
     final bytes = await _bytesOf(ref);
     if (!context.mounted) return;
     if (bytes == null) {
@@ -674,6 +708,7 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
       Navigator.of(context).push(
         sharedAxisRoute(
           ImportImagePanel(
+            origin: origin,
             bytes: bytes,
             fileName: 'plana_${result.seed}.png',
             displayName: 'plana_${result.seed}',
@@ -697,7 +732,11 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
       }
       final settings = await ref.read(saveSettingsProvider.future);
       final out = await processForSave(bytes, settings);
-      await Gal.putImageBytes(out, name: 'plana_${result.seed}');
+      await saveProcessedImageToPhone(
+        out,
+        image: result,
+        format: settings.format,
+      );
       if (context.mounted) {
         hintSnack(context, '已保存到相册', icon: Icons.check_circle_outline);
       }
@@ -720,11 +759,12 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
       hintSnack(context, '图片尚未就绪', icon: Icons.hourglass_empty);
       return;
     }
-    await showSaveSheet(context, bytes: bytes, seed: result.seed);
+    await showSaveSheet(context, bytes: bytes, image: result);
   }
 
   /// 按本图参数、换随机种子出一张新图(不改用户当前编辑器状态)。
   Future<void> _regenerate(BuildContext context, WidgetRef ref) async {
+    final galleryTarget = ref.read(gallerySaveTargetProvider);
     final input = await _inputOf(ref);
     if (!context.mounted) return;
     if (input == null) {
@@ -735,6 +775,7 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
       ref
           .read(generationProvider.notifier)
           .generate(
+            galleryTarget: galleryTarget,
             using: input.copyWith(params: input.params.copyWith(seed: '')),
           ),
     );
@@ -1058,6 +1099,7 @@ class _UpscalePanelState extends ConsumerState<_UpscalePanel> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // 支路:超分 = 只放大像素;图生图放大 = 重新生成,画面会变
+                  const GallerySaveTargetRow(),
                   SegmentedButton<bool>(
                     segments: [
                       ButtonSegment(

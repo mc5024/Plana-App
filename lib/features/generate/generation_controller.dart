@@ -3,6 +3,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
+import '../gallery/albums/album_models.dart';
+import '../gallery/albums/album_state.dart';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -47,6 +49,7 @@ import '../vibe_library/vibe_library.dart';
 class GenStatus {
   const GenStatus({
     this.busy = false,
+    this.saving = false,
     this.error,
     this.step = 0,
     this.total = 0,
@@ -60,6 +63,7 @@ class GenStatus {
   });
 
   final bool busy;
+  final bool saving;
   final String? error;
   final int step;
   final int total;
@@ -163,6 +167,7 @@ final inpaintStatusProvider = Provider<GenStatus>((ref) {
 
 GenStatus _statusOf(GenJob j) => GenStatus(
   busy: true,
+  saving: j.stage == GenJobStage.saving,
   total: j.total,
   width: j.width,
   height: j.height,
@@ -226,6 +231,7 @@ class GenerationNotifier extends Notifier<GenPool> {
   DateTime? _lastPush; // 通知节流游标
   final _runs = <String, _JobRun>{}; // 每条任务的运行时,键同 GenJob.id
   var _seq = 0; // 提交序号,只增
+  int _focusRevision = 0;
 
   // ---- 并发闸门 ----
   // 槽位用**下标**而不是计数:直连模式下「第 i 个槽」就是「第 i 把 Key」,
@@ -269,9 +275,12 @@ class GenerationNotifier extends Notifier<GenPool> {
   }
 
   /// 画布跟随哪条(null = 看成图/历史图)。
-  void select(String? jobId) => state = jobId == null
-      ? state.copyWith(clearSelected: true)
-      : state.copyWith(selectedId: jobId);
+  void select(String? jobId) {
+    _focusRevision++;
+    state = jobId == null
+        ? state.copyWith(clearSelected: true)
+        : state.copyWith(selectedId: jobId);
+  }
 
   // ---- 并发闸门 ----
 
@@ -337,6 +346,8 @@ class GenerationNotifier extends Notifier<GenPool> {
   /// 取消指定任务(任务卡上的取消入口)。不动循环/队列 —— 那是「停这一条」,
   /// 不是「别再续了」。
   void cancelJob(String id) {
+    // 终图已收到后必须完成本地保存，不能再向服务端发送取消。
+    if (_job(id)?.stage == GenJobStage.saving) return;
     final run = _runs[id];
     logi('[gen] cancel job=$id run=${run != null}');
     if (run == null) return;
@@ -399,6 +410,7 @@ class GenerationNotifier extends Notifier<GenPool> {
   /// AI 助手要拿它在对话里画逐帧预览和进度条。**建卡之前没有 await**,
   /// 所以同步调用方拿到它时这一单必定已经在池子里了。
   Future<GenOutcome> generate({
+    GallerySaveTarget? galleryTarget,
     GenerateState? using,
     bool stay = false,
     void Function(String jobId)? onJob,
@@ -442,6 +454,7 @@ class GenerationNotifier extends Notifier<GenPool> {
 
     // 挂占位卡:等位/拼载荷都可能要几秒,这段时间也得让用户看见任务已受理。
     final job = GenJob(
+      galleryTarget: galleryTarget ?? ref.read(gallerySaveTargetProvider),
       id: 'job${_seq++}',
       kind: s.inpaint != null ? GenJobKind.inpaint : GenJobKind.normal,
       stage: GenJobStage.waiting,
@@ -459,6 +472,7 @@ class GenerationNotifier extends Notifier<GenPool> {
       },
     );
     final run = _JobRun(GenAbort());
+    _focusRevision++;
     _runs[job.id] = run;
     state = state.copyWith(
       jobs: [...state.jobs, job],
@@ -1216,11 +1230,24 @@ class GenerationNotifier extends Notifier<GenPool> {
     // **不夺焦点**。并行之后这条最要紧:后台某一张出完就把你正看着的画面换掉,
     // 比不显示还糟。
     //
-    // ⚠ 这一问必须**赶在 _remove 之前**:移掉任务卡会让 selectedId 跟着变,
-    //   之后再问就永远是 false 了。原先只入一张时两句挨着,顺序不成问题;
-    //   现在中间隔着一个循环,得把它拎到最前面。
+    // 先记住跟随意图；异步保存期间用户切图或跟随其他任务时不再抢回画布。
     final followed = state.selectedId == jobId;
-    _remove(jobId);
+    final focusRevision = _focusRevision;
+    final galleryTarget =
+        _job(jobId)?.galleryTarget ?? const GallerySaveTarget.all();
+    // 保存/缩略图/图库归属都有异步间隙。此时撤任务会让画布短暂露出旧图，
+    // 必须保留终图，等主图选中（或建立跨图库临时预览）后再交给历史。
+    _patch(
+      jobId,
+      (j) => j.copyWith(
+        stage: GenJobStage.saving,
+        preview: batch.first,
+        step: j.total > 0 ? j.total : 1,
+        total: j.total > 0 ? j.total : 1,
+        prepPct: -1,
+        note: '保存中',
+      ),
+    );
     for (var i = 0; i < batch.length; i++) {
       await _storeOne(
         s,
@@ -1228,8 +1255,11 @@ class GenerationNotifier extends Notifier<GenPool> {
         seed,
         batchIndex: batch.length > 1 ? i : -1,
         select: followed && i == 0,
+        galleryTarget: galleryTarget,
+        canSelect: () => _focusRevision == focusRevision,
       );
     }
+    _remove(jobId);
     // 库来源的 vibe 回写「最近使用」(fire-and-forget,失败无害)
     final usedVibeIds = {
       for (final v in s.vibes)
@@ -1257,6 +1287,8 @@ class GenerationNotifier extends Notifier<GenPool> {
     int seed, {
     required int batchIndex,
     required bool select,
+    required GallerySaveTarget galleryTarget,
+    required bool Function() canSelect,
   }) async {
     final job = s.inpaint;
     var out = bytes;
@@ -1282,9 +1314,12 @@ class GenerationNotifier extends Notifier<GenPool> {
         logd('[gen] pasteBack failed: $e'); // 贴回失败退化为子图入库
       }
     }
-    ref
+    await ref
         .read(galleryProvider.notifier)
-        .addResult(
+        .addResultToGallery(
+          target: galleryTarget,
+          canSelect: canSelect,
+          notify: batchIndex <= 0,
           bytes: out,
           width: w,
           height: h,

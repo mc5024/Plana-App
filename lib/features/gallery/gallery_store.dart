@@ -205,19 +205,21 @@ class GalleryStore {
   /// 写入队列排空(存储管理在清空后等它,再做 GC/重扫)。
   Future<void> get idle => _chain;
 
-  void _enqueue(Future<void> Function() job) {
-    _chain = _chain.then((_) => job()).catchError((Object e) {
+  Future<void> _enqueue(Future<void> Function() job) {
+    final work = _chain.then((_) => job());
+    _chain = work.catchError((Object e) {
       logd('[gallery-store] 写入失败: $e');
     });
+    return work;
   }
 
   /// 新结果落盘:原图 + 缩略图 + 参数快照(有则)。
   /// 调用时机是 addResult 同帧,bytes/input 一定在内存里。
-  void persistResult(ResultImage r) {
+  Future<void> persistResult(ResultImage r) {
     final bytes = r.bytes;
-    if (bytes == null) return;
+    if (bytes == null) return Future.value();
     final input = r.input;
-    _enqueue(() async {
+    return _enqueue(() async {
       // 全部走原子写:半截 PNG 会变成永远打不开的坏图,半截快照 JSON 会让
       // 「重新生成」读不出参数(见 atomic_file.dart)
       await writeBytesAtomic(_imageFile(r.id), bytes);
@@ -242,6 +244,7 @@ class GalleryStore {
   List<ResultImage>? _idxItems;
   String? _idxSelected;
   int _idxSeq = 0;
+  Future<void> _indexWrite = Future.value();
 
   void scheduleIndex({
     required List<ResultImage> results,
@@ -256,14 +259,14 @@ class GalleryStore {
   }
 
   /// 立即写索引(前后台切换时由 AppStores.flushNow 调用)。
-  void flushIndex() {
+  Future<void> flushIndex() {
     final items = _idxItems;
-    if (items == null) return;
+    if (items == null) return _indexWrite;
     _idxItems = null;
     _idxTimer?.cancel();
     final selected = _idxSelected;
     final seq = _idxSeq;
-    _enqueue(() async {
+    return _indexWrite = _enqueue(() async {
       // 索引是最不能半截的一个文件:坏了会让整库看起来是空的(见 S1C-01)
       await writeStringAtomic(
         _indexFile,
@@ -309,10 +312,10 @@ class GalleryStore {
   /// 清空图库文件(存储管理「清空图库」):删光原图/缩略图/快照,
   /// 写空索引但**保留发号器**(id 永不复用)。作废挂起的索引写,
   /// 串行队列保证在途的 persistResult 先完成再删。
-  void clearAllFiles({required int seq}) {
+  Future<void> clearAllFiles({required int seq}) {
     _idxItems = null;
     _idxTimer?.cancel();
-    _enqueue(() async {
+    return _indexWrite = _enqueue(() async {
       for (final d in [_imagesDir, _thumbsDir, _inputsDir]) {
         try {
           await for (final ent in d.list()) {

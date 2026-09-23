@@ -1,3 +1,5 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../albums/album_state.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
@@ -288,7 +290,7 @@ double _aspectOf(int w, int h) => (w > 0 && h > 0) ? w / h : 1.0;
 
 /// 在跑的任务卡:逐帧预览(未到帧显斜纹)+ 底部细进度条。
 /// 点卡片让画布跟随这条;active 时亮选中环。取消在画布的进度胶囊上,不在这儿。
-class _GenThumb extends StatelessWidget {
+class _GenThumb extends ConsumerWidget {
   const _GenThumb({required this.job, required this.active, this.onTap});
 
   final GenJob job;
@@ -296,7 +298,7 @@ class _GenThumb extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = context.scheme;
     const h = _thumbH;
     final aspect = _aspectOf(job.width, job.height);
@@ -331,6 +333,24 @@ class _GenThumb extends StatelessWidget {
                   )
                 else
                   StripeThumb(width: w, height: h, radius: 0),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    color: scheme.surfaceContainer.withValues(alpha: .9),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 2,
+                    ),
+                    child: Text(
+                      '任务 · ${ref.watch(albumsProvider).name(job.galleryTarget.albumId)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.texts.labelSmall,
+                    ),
+                  ),
+                ),
                 Positioned(
                   left: 0,
                   right: 0,

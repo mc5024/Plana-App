@@ -42,6 +42,8 @@ Future<Uint8List> coverResizePng(
   /// 可它对**透明图**是致命的:透过 alpha 显出来,缩略图变黑方块、图生图底图
   /// 变黑底。所以凡是要保透明的调用方(缩略图、透明底图)都该传 true。
   bool keepAlpha = false,
+  double alignX = 0,
+  double alignY = 0,
 }) async {
   final codec = await ui.instantiateImageCodec(src);
   final frame = await codec.getNextFrame();
@@ -54,8 +56,8 @@ Future<Uint8List> coverResizePng(
   final scale = math.max(tw / iw, th / ih); // cover
   final sw = iw * scale;
   final sh = ih * scale;
-  final dx = (tw - sw) / 2;
-  final dy = (th - sh) / 2;
+  final dx = (tw - sw) * (alignX.clamp(-1.0, 1.0) + 1) / 2;
+  final dy = (th - sh) * (alignY.clamp(-1.0, 1.0) + 1) / 2;
 
   final recorder = ui.PictureRecorder();
   final canvas = ui.Canvas(recorder, ui.Rect.fromLTWH(0, 0, tw, th));
