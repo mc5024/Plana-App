@@ -21,6 +21,7 @@ import '../../../core/util/haptics.dart';
 import '../../../core/util/image_ops.dart';
 import '../gallery_state.dart';
 import '../models.dart';
+import '../phone_gallery_save.dart';
 import '../save_pipeline.dart';
 import '../save_settings.dart';
 import '../upscale_model.dart';
@@ -683,7 +684,7 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
     );
   }
 
-  /// 点按保存:按默认保存设置处理后存相册(gal;Android 10+ 免权限走 MediaStore)。
+  /// 点按保存:按默认保存设置处理后存相册，并保留生成时间。
   Future<void> _download(BuildContext context, WidgetRef ref) async {
     final bytes = await _bytesOf(ref);
     if (!context.mounted || bytes == null) return;
@@ -697,7 +698,11 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
       }
       final settings = await ref.read(saveSettingsProvider.future);
       final out = await processForSave(bytes, settings);
-      await Gal.putImageBytes(out, name: 'plana_${result.seed}');
+      await saveProcessedImageToPhone(
+        out,
+        image: result,
+        format: settings.format,
+      );
       if (context.mounted) {
         hintSnack(context, '已保存到相册', icon: Icons.check_circle_outline);
       }
@@ -720,7 +725,7 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
       hintSnack(context, '图片尚未就绪', icon: Icons.hourglass_empty);
       return;
     }
-    await showSaveSheet(context, bytes: bytes, seed: result.seed);
+    await showSaveSheet(context, bytes: bytes, image: result);
   }
 
   /// 按本图参数、换随机种子出一张新图(不改用户当前编辑器状态)。

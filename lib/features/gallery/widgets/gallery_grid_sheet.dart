@@ -28,6 +28,7 @@ import '../gallery_groups.dart';
 import '../gallery_search.dart';
 import '../gallery_state.dart';
 import '../models.dart';
+import '../phone_gallery_save.dart';
 import '../save_pipeline.dart';
 import '../save_settings.dart';
 import '../share_pipeline.dart';
@@ -1179,17 +1180,17 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     });
   }
 
-  /// 批量保存:按默认保存设置逐张处理后存相册;逐张计数,
+  /// 批量保存:按生成时间从旧到新，逐张处理并等待写入后再存下一张;逐张计数,
   /// 中途关闭弹层即中止(已存的保留)。
-  /// [album] 非空 = 存进该自定义相册(gal 会按需创建 `Pictures/<album>/`)。
+  /// [album] 非空 = 存进该手机相册(按需创建 `Pictures/<album>/`)。
   /// [only] 非空 = 只存这些(长按菜单的单张保存借道同一条管线,
   /// 权限申请、保存设置、失败计数一条都不用重写)。
   Future<void> _downloadPicked({String? album, Set<String>? only}) async {
     final want = only ?? _picked;
-    final items = [
+    final items = oldestFirstForSave([
       for (final r in ref.read(galleryProvider).results)
         if (want.contains(r.id)) r,
-    ];
+    ]);
     if (items.isEmpty) return;
     // 写自建相册**以外**的相册要额外权限位,按目标申请
     final toAlbum = album != null;
@@ -1218,7 +1219,12 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
           failed++;
         } else {
           final out = await processForSave(bytes, settings);
-          await Gal.putImageBytes(out, name: 'plana_${r.seed}', album: album);
+          await saveProcessedImageToPhone(
+            out,
+            image: r,
+            format: settings.format,
+            album: album,
+          );
           saved++;
         }
       } catch (_) {

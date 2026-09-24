@@ -203,7 +203,7 @@ class GalleryNotifier extends Notifier<GalleryState> {
   }
 
   /// 批量删除(展开网格多选):状态移除 + 盘上文件一并删。
-  /// 选中项被删时回退到剩余的最新一张。
+  /// 选中项被删时沿原顺序选下一张；没有下一张才选上一张。
   void deleteResults(List<String> ids) {
     if (ids.isEmpty) return;
     final drop = ids.toSet();
@@ -212,9 +212,25 @@ class GalleryNotifier extends Notifier<GalleryState> {
         if (!drop.contains(r.id)) r,
     ];
     if (keep.length == state.results.length) return;
-    final sel = keep.any((r) => r.id == state.selectedId)
-        ? state.selectedId
-        : (keep.isEmpty ? null : keep.first.id);
+    var sel = state.selectedId;
+    if (!keep.any((r) => r.id == sel)) {
+      final at = state.results.indexWhere((r) => r.id == sel);
+      sel = null;
+      for (var i = at < 0 ? 0 : at; i < state.results.length; i++) {
+        if (!drop.contains(state.results[i].id)) {
+          sel = state.results[i].id;
+          break;
+        }
+      }
+      if (sel == null) {
+        for (var i = at - 1; i >= 0; i--) {
+          if (!drop.contains(state.results[i].id)) {
+            sel = state.results[i].id;
+            break;
+          }
+        }
+      }
+    }
     state = GalleryState(results: keep, selectedId: sel);
     ref.read(appStoresProvider).gallery.deleteResultFiles(ids);
     ref.read(gallerySearchProvider.notifier).removeAll(ids);

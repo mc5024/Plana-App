@@ -5,7 +5,7 @@ import '../save_settings.dart';
 
 /// 选/建自定义相册名。确定返回清洗后的名字,取消返回 null。
 ///
-/// 只让用户输名字、不列系统已有相册 —— gal 恒写 `Pictures/<名字>/`,
+/// 只让用户输名字、不列系统已有相册 —— 固定写 `Pictures/<名字>/`,
 /// 而系统相册里大量条目住在别处(相机在 DCIM/Camera 等)。若列出来任选,
 /// 选了写不进去的那些会另建同名新相册,出现两个同名相册,极其迷惑。
 Future<String?> showAlbumNameSheet(
@@ -66,7 +66,7 @@ class _AlbumNameSheetState extends State<_AlbumNameSheet> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
                 child: Text(
-                  '保存到自定义相册',
+                  '保存到手机相册',
                   style: context.texts.titleMedium!.copyWith(
                     fontWeight: FontWeight.w700,
                   ),

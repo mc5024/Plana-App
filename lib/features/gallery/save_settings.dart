@@ -30,7 +30,7 @@ class SaveSettings {
   final String customPrompt;
 
   /// 用过的自定义相册名(最近在前,上限 [maxRecentAlbums])。
-  /// 只记名字不记路径 —— gal 恒写 `Pictures/<名字>/`,路径不由我们定。
+  /// 只记名字不记路径 —— 手机相册固定写 `Pictures/<名字>/`。
   final List<String> recentAlbums;
 
   static const maxRecentAlbums = 8;

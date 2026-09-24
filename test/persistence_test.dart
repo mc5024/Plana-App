@@ -312,7 +312,7 @@ void main() {
     expect([for (final r in stores2.gallery.initialResults) r.id], [b.id]);
   });
 
-  test('批量删除:状态移除、文件同删、选中回退最新', () async {
+  test('批量删除:状态移除、文件同删、选中保持相邻图片', () async {
     final root = Directory.systemTemp.createTempSync('plana_delete');
     addTearDown(() async {
       for (var i = 0; i < 10; i++) {
@@ -339,7 +339,7 @@ void main() {
     gal.deleteResults([ids[3], ids[0]]);
     final s = c.read(galleryProvider);
     expect([for (final r in s.results) r.id], [ids[2], ids[1]]);
-    expect(s.selectedId, ids[2]); // 选中项被删 → 回退剩余最新
+    expect(s.selectedId, ids[2]); // 最前面的选中项被删 → 相邻旧图
     await stores.gallery.idle;
     expect(
       File('${root.path}/gallery/images/${ids[3]}.png').existsSync(),

@@ -10,6 +10,9 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/ui/param_input.dart';
 import '../../generate/widgets/common.dart' show hintSnack;
 import '../save_pipeline.dart';
+import '../models.dart';
+import '../phone_gallery_save.dart';
+import '../phone_image_date.dart';
 import '../save_settings.dart';
 
 /// 保存设置面板(长按图库「保存」进入,对齐 web SaveModal):
@@ -18,20 +21,20 @@ import '../save_settings.dart';
 Future<void> showSaveSheet(
   BuildContext context, {
   required Uint8List bytes,
-  required int seed,
+  required ResultImage image,
 }) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    builder: (_) => _SaveSheet(bytes: bytes, seed: seed),
+    builder: (_) => _SaveSheet(bytes: bytes, image: image),
   );
 }
 
 class _SaveSheet extends ConsumerStatefulWidget {
-  const _SaveSheet({required this.bytes, required this.seed});
+  const _SaveSheet({required this.bytes, required this.image});
 
   final Uint8List bytes;
-  final int seed;
+  final ResultImage image;
 
   @override
   ConsumerState<_SaveSheet> createState() => _SaveSheetState();
@@ -73,8 +76,14 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 250), () async {
       try {
-        final out = await processForSave(widget.bytes, _current);
-        if (mounted && seq == _seq) setState(() => _size = out.length);
+        final settings = _current;
+        final out = await processForSave(widget.bytes, settings);
+        final dated = withPhoneCaptureDate(
+          out,
+          widget.image.createdAt,
+          settings.format,
+        );
+        if (mounted && seq == _seq) setState(() => _size = dated.length);
       } catch (_) {
         if (mounted && seq == _seq) setState(() => _size = null);
       }
@@ -84,6 +93,7 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
 
   Future<void> _saveOnce() async {
     if (_saving) return;
+    final settings = _current;
     setState(() => _saving = true);
     try {
       final ok = await Gal.hasAccess() || await Gal.requestAccess();
@@ -91,12 +101,16 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
         if (mounted) hintSnack(context, '未获相册权限', icon: Icons.error_outline);
         return;
       }
-      final out = await processForSave(widget.bytes, _current);
-      await Gal.putImageBytes(out, name: 'plana_${widget.seed}');
+      final out = await processForSave(widget.bytes, settings);
+      final savedSize = await saveProcessedImageToPhone(
+        out,
+        image: widget.image,
+        format: settings.format,
+      );
       if (!mounted) return;
       hintSnack(
         context,
-        '已保存到相册 · ${fmtBytes(out.length)}',
+        '已保存到相册 · ${fmtBytes(savedSize)}',
         icon: Icons.check_circle_outline,
       );
       Navigator.of(context).pop();
@@ -150,7 +164,7 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'plana_${widget.seed}.$ext',
+                          '${phoneGalleryImageName(widget.image)}.$ext',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: context.texts.bodyMedium!.copyWith(
@@ -213,7 +227,7 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
                       _set(_s.copyWith(quality: v.roundToDouble() / 100)),
                 ),
                 Text(
-                  'JPG 不保留元数据',
+                  'JPG 不保留生成参数；保存时保留生成日期',
                   style: context.texts.labelSmall!.copyWith(
                     color: scheme.outline,
                   ),
@@ -234,7 +248,7 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
                           contentPadding: EdgeInsets.zero,
                           title: Text(switch (m) {
                             SaveMeta.original => '保留原始元数据',
-                            SaveMeta.clean => '清除元数据',
+                            SaveMeta.clean => '清除生成信息（保留生成日期）',
                             SaveMeta.custom => '自定义提示词',
                           }, style: context.texts.bodyMedium),
                         ),

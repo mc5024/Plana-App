@@ -64,7 +64,10 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
     final i = s.results.indexWhere((r) => r.id == s.selectedId);
     return i < 0 ? 0 : i;
   }();
-  late final PageController _pv = PageController(initialPage: _initialPage);
+  late final PageController _pv = PageController(
+    initialPage: _initialPage,
+    keepPage: false,
+  );
 
   /// PageView **实际**停的页码,只由 [_onPageChanged] 写。build 里拿它和选中项
   /// 索引比对:不等 = 有人从外面改了选中(点胶片条/网格跳选、新图前插、删图后
@@ -73,6 +76,9 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
 
   /// 已排队等 post-frame 生效的跳页目标(去重,免得每帧都排一发)。
   int? _jumpTo;
+
+  /// 程序同步页码时不把回调误当成用户改选。
+  bool _syncingPage = false;
 
   /// 当前这次滚动是不是手拖出来的(程序 jumpToPage 不算)。
   /// 只服务顶图层的抑制:手拖期间不许盖图,见 build 里 bridge 的注释。
@@ -103,7 +109,14 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
       _jumpTo = null;
       if (!mounted || t == null) return;
       // jumpToPage 会同步派 ScrollUpdate → onPageChanged 把 _pageAt 校正过来
-      if (_pv.hasClients && (_pv.page?.round() ?? -1) != t) _pv.jumpToPage(t);
+      if (_pv.hasClients && (_pv.page?.round() ?? -1) != t) {
+        _syncingPage = true;
+        try {
+          _pv.jumpToPage(t);
+        } finally {
+          _syncingPage = false;
+        }
+      }
       // 兜底:目标页恰好已经是当前页(列表裁剪把页码挤过去了),或控制器还没
       // 挂上 —— 这两种都不会有 onPageChanged,得自己把 _pageAt 收平,
       // 否则 desynced 永远为真,顶图层就一直盖着撤不掉。
@@ -112,9 +125,9 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
   }
 
   void _onPageChanged(int i) {
-    // 程序 jumpToPage 也会走这里,且此时选中项往往已经是目标 —— select 会早退
-    // 不触发重建,所以 _pageAt 必须自己 setState,否则顶图层撤不掉。
+    // 程序 jumpToPage 只校正页码，不能回写为用户选择。
     if (_pageAt != i) setState(() => _pageAt = i);
+    if (_syncingPage) return;
     final results = ref.read(galleryProvider).results;
     if (i < 0 || i >= results.length) return;
     ref.read(galleryProvider.notifier).select(results[i].id);
@@ -444,6 +457,7 @@ class _ZoomableImage extends ConsumerStatefulWidget {
 class _ZoomableImageState extends ConsumerState<_ZoomableImage>
     with SingleTickerProviderStateMixin {
   final _tc = TransformationController();
+  late final GalleryZoomedNotifier _zoomNotifier;
   late final AnimationController _ac = AnimationController(
     vsync: this,
     duration: Motion.medium,
@@ -460,11 +474,10 @@ class _ZoomableImageState extends ConsumerState<_ZoomableImage>
   @override
   void initState() {
     super.initState();
+    _zoomNotifier = ref.read(galleryZoomedProvider.notifier);
     // 缩放态如实上报(双向):捏大即锁翻页,捏回 1 即放开。
     // 1.02 的余量是给浮点残差留的,别改成 == 1。
-    _tc.addListener(
-      () => ref.read(galleryZoomedProvider.notifier).set(_scale > 1.02),
-    );
+    _tc.addListener(() => _zoomNotifier.set(_scale > 1.02));
     _ac.addListener(() {
       final a = _zoomAnim;
       if (a != null) _tc.value = a.value;
@@ -474,8 +487,7 @@ class _ZoomableImageState extends ConsumerState<_ZoomableImage>
   @override
   void dispose() {
     // 离屏销毁时放开翻页锁;dispose 内不能同步改 provider → microtask
-    final notifier = ref.read(galleryZoomedProvider.notifier);
-    Future.microtask(() => notifier.set(false));
+    Future.microtask(() => _zoomNotifier.set(false));
     _zoomCurve.dispose();
     _ac.dispose();
     _tc.dispose();
