@@ -38,6 +38,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
 
   flutter_riverpod: ^3.3.2
   animations: ^2.2.0

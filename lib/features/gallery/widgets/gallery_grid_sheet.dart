@@ -23,6 +23,7 @@ import '../../../core/util/document_save.dart';
 import '../../generate/widgets/common.dart'
     show ExpandBody, hintSnack, sharedAxisRoute;
 import '../../import/import_panel.dart';
+import '../gallery_date_filter.dart';
 import '../gallery_dates.dart';
 import '../gallery_groups.dart';
 import '../gallery_search.dart';
@@ -33,6 +34,7 @@ import '../save_pipeline.dart';
 import '../save_settings.dart';
 import '../share_pipeline.dart';
 import 'album_name_sheet.dart';
+import 'gallery_date_sheet.dart';
 import 'result_badge_chip.dart';
 import 'result_thumb.dart';
 import 'zip_pack_sheet.dart';
@@ -96,7 +98,7 @@ class _GalleryGridSheet extends ConsumerStatefulWidget {
 }
 
 class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   bool _selecting = false;
   final Set<String> _picked = {};
   bool _saving = false;
@@ -115,9 +117,9 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
   bool _searchOpen = false;
   String _query = '';
   String? _modelFilter; // null=全部;''=未知(无参数快照的老图)
-  // 0=全部 / 1=今天 / 7=近7天 / 30=近30天。记住上次的 —— 常年只看近 7 天的人
-  // 不该每次开网格都先筛一遍。
-  late int _daysFilter = ref.read(uiPrefsProvider).galleryDaysFilter;
+  // 保存日历日期；相对日期跨日与恢复前台时重新计算。
+  late GalleryDateFilter _dateFilter = ref.read(uiPrefsProvider).dateFilter;
+  late final Timer _dateTick;
 
   // 分组维度,同样记住上次的。存的是枚举名,不是下标 —— 将来插一档不会把
   // 老用户的选择挪到别的维度去。
@@ -230,6 +232,10 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _dateTick = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted && _dateFilter.active) setState(() {});
+    });
     _morph.addStatusListener(_onMorphDone);
     _morph.addListener(_onMorphTick);
     _open.addListener(_onOpenTick);
@@ -414,6 +420,8 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _dateTick.cancel();
     _edgeTicker?.dispose();
     _morph.dispose();
     _open.dispose();
@@ -445,14 +453,11 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
 
   // ---- 筛选谓词(模型 × 时间 × 搜索,全 AND) ----
 
-  bool _passTime(ResultImage r) {
-    if (_daysFilter == 0) return true;
-    final now = DateTime.now();
-    // 「今天」按日历日;7/30 天按滚动窗口
-    final cut = _daysFilter == 1
-        ? DateTime(now.year, now.month, now.day)
-        : now.subtract(Duration(days: _daysFilter));
-    return r.createdAt >= cut.millisecondsSinceEpoch;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted && _dateFilter.active) {
+      setState(() {});
+    }
   }
 
   bool _passModel(ResultImage r, Map<String, GallerySearchMeta> byId) {
@@ -558,23 +563,14 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     );
   }
 
-  void _pickTimeFilter() {
-    _pickFilter<int>(
-      title: '按时间筛选',
-      current: _daysFilter,
-      options: const [
-        ('全部', 0, null),
-        ('今天', 1, null),
-        ('近 7 天', 7, null),
-        ('近 30 天', 30, null),
-      ],
-      onPick: (v) {
-        ref
-            .read(uiPrefsProvider.notifier)
-            .patch((p) => p.copyWith(galleryDaysFilter: v));
-        setState(() => _daysFilter = v);
-      },
-    );
+  Future<void> _pickTimeFilter() async {
+    _searchFocus.unfocus();
+    final filter = await showGalleryDateFilter(context, _dateFilter);
+    if (filter == null || !mounted) return;
+    ref
+        .read(uiPrefsProvider.notifier)
+        .patch((p) => p.copyWith(galleryDateFilter: filter));
+    setState(() => _dateFilter = filter);
   }
 
   void _pickGroupBy() {
@@ -598,12 +594,14 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
 
   Widget _chip(
     ColorScheme scheme, {
+    Key? key,
     required String label,
     required bool active,
     required VoidCallback onTap,
   }) {
     final fg = active ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
     return Material(
+      key: key,
       color: active ? scheme.secondaryContainer : scheme.surfaceContainerHigh,
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
@@ -1509,18 +1507,19 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     final state = ref.watch(galleryProvider);
     final results = state.results;
     final search = ref.watch(gallerySearchProvider);
+    final now = DateTime.now();
 
     // 筛选管线(先廉价的时间,再查表)
     final terms = searchTerms(_query);
     final filtered = <ResultImage>[
       for (final r in results)
-        if (_passTime(r) &&
+        if (_dateFilter.matches(r.createdAt, now) &&
             _passModel(r, search.byId) &&
             _passQuery(r, search.byId, terms))
           r,
     ];
     final filtering =
-        _query.isNotEmpty || _modelFilter != null || _daysFilter != 0;
+        _query.isNotEmpty || _modelFilter != null || _dateFilter.active;
 
     // 弹层开着期间条目可能被裁剪/删除/筛掉,勾选集随之收敛 ——
     // 批量操作永远只作用于当前可见集合,不留筛选外的"隐形勾选"。
@@ -1725,53 +1724,52 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
             // 分组 + 筛选 chips + 检索索引回填进度
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Row(
-                children: [
-                  _chip(
-                    scheme,
-                    label: _groupBy.label,
-                    active: _groupBy != GalleryGroupBy.day,
-                    onTap: _pickGroupBy,
-                  ),
-                  const SizedBox(width: 8),
-                  _chip(
-                    scheme,
-                    label: _modelFilter == null
-                        ? '模型'
-                        : (_modelFilter!.isEmpty ? '未知' : _modelFilter!),
-                    active: _modelFilter != null,
-                    onTap: () => _pickModelFilter(results, search.byId),
-                  ),
-                  const SizedBox(width: 8),
-                  _chip(
-                    scheme,
-                    label: switch (_daysFilter) {
-                      1 => '今天',
-                      7 => '近 7 天',
-                      30 => '近 30 天',
-                      _ => '时间',
-                    },
-                    active: _daysFilter != 0,
-                    onTap: _pickTimeFilter,
-                  ),
-                  if (search.building || grouping) ...[
-                    const Spacer(),
-                    const SizedBox(
-                      width: 12,
-                      height: 12,
-                      child: CircularProgressIndicator(strokeWidth: 1.8),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _chip(
+                      scheme,
+                      label: _groupBy.label,
+                      active: _groupBy != GalleryGroupBy.day,
+                      onTap: _pickGroupBy,
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      search.building
-                          ? '索引 ${search.done}/${search.total}'
-                          : '分组中',
-                      style: context.texts.bodySmall!.copyWith(
-                        color: scheme.outline,
+                    const SizedBox(width: 8),
+                    _chip(
+                      scheme,
+                      label: _modelFilter == null
+                          ? '模型'
+                          : (_modelFilter!.isEmpty ? '未知' : _modelFilter!),
+                      active: _modelFilter != null,
+                      onTap: () => _pickModelFilter(results, search.byId),
+                    ),
+                    const SizedBox(width: 8),
+                    _chip(
+                      scheme,
+                      key: const ValueKey('gallery-date-filter'),
+                      label: _dateFilter.label(now),
+                      active: _dateFilter.active,
+                      onTap: _pickTimeFilter,
+                    ),
+                    if (search.building || grouping) ...[
+                      const SizedBox(width: 12),
+                      const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(strokeWidth: 1.8),
                       ),
-                    ),
+                      const SizedBox(width: 6),
+                      Text(
+                        search.building
+                            ? '索引 ${search.done}/${search.total}'
+                            : '分组中',
+                        style: context.texts.bodySmall!.copyWith(
+                          color: scheme.outline,
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
             Expanded(
