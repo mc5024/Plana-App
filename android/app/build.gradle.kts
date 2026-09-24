@@ -116,6 +116,19 @@ flutter {
     source = "../.."
 }
 
+// 直接运行 Gradle 时可能缺少 Flutter 生成的插件注册文件。APK 仍可编译，
+// 但 jni_flutter 的类加载器未注册会在启动时触发 libdartjni.so 原生崩溃。
+val verifyFlutterPluginRegistrant = tasks.register("verifyFlutterPluginRegistrant") {
+    doLast {
+        check(file("src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java").isFile) {
+            "Missing Flutter plugin registrant. Run 'flutter pub get' in the project root before building."
+        }
+    }
+}
+tasks.named("preBuild") {
+    dependsOn(verifyFlutterPluginRegistrant)
+}
+
 dependencies {
     // NotificationCompat.ProgressStyle + setRequestPromotedOngoing:
     // 跨版本请求把进度通知提升上岛(状态栏胶囊/锁屏);低版本自动 no-op。
