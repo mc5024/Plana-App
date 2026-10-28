@@ -566,7 +566,9 @@ class _RelayRowState extends ConsumerState<_RelayRow> {
   Widget build(BuildContext context) {
     final scheme = context.scheme;
     final q = widget.quota;
-    String yuan(double v) => '¥${v.toStringAsFixed(2)}';
+    // 不足 1 分的到厘
+    String yuan(double v) =>
+        '¥${v.toStringAsFixed(3).replaceFirst(RegExp(r'0$'), '')}';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 5, 4, 11),
