@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:msgpack_dart/msgpack_dart.dart' as msgpack;
 
 import 'gen_abort.dart';
+import 'nai_chat_compat.dart';
 import 'nai_endpoint.dart';
 import 'nai_proxy.dart';
 
@@ -186,10 +187,19 @@ class NaiClient {
   /// [base] 为空 = 官方 [kNaiOfficialBase],此时开了 [proxy] 改经 [kNaiProxyBase];
   /// 非空则整条直连线改打它,[proxy] 不起作用。
   NaiClient({String base = '', bool proxy = false})
-    : _host = naiBaseOf(base, proxy: proxy);
+    : _host = naiBaseOf(base, proxy: proxy),
+      _chat = naiEndpointIsChat(base);
 
-  /// `/ai/*` 与 `/user/subscription` 的基址(已带协议、无尾斜杠)。
+  /// `/ai/*` 与 `/user/subscription` 的基址(已带协议、无尾斜杠);
+  /// OpenAI 兼容接口则是整条 chat 地址。
   final String _host;
+
+  /// OpenAI 兼容接口(见 `nai_chat_compat.dart`):只出图,没有点数查询、
+  /// Vibe 编码和超分。
+  final bool _chat;
+
+  /// 有没有逐步预览。OpenAI 兼容接口只回终图。
+  bool get streams => !_chat;
 
   /// 仅供测试观察。
   String get host => _host;
@@ -248,6 +258,11 @@ class NaiClient {
     required Map<String, dynamic> body,
     GenAbort? abort,
   }) async* {
+    if (_chat) {
+      final bytes = await _chatGenerate(token, body, abort);
+      yield (step: null, isFinal: true, bytes: bytes);
+      return;
+    }
     final uri = Uri.parse('$_host/ai/generate-image-stream');
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 30);
@@ -369,6 +384,7 @@ class NaiClient {
     required Map<String, dynamic> body,
     GenAbort? abort,
   }) async {
+    if (_chat) return _chatGenerate(token, body, abort);
     final uri = Uri.parse('$_host/ai/generate-image');
     final client = http.Client();
     abort?.whenAbort(() {
@@ -392,6 +408,47 @@ class NaiClient {
     }
 
     return _pngFromMaybeZip(resp.bodyBytes);
+  }
+
+  /// OpenAI 兼容接口出图:官方请求体转成 chat 请求,从回复里取图。
+  /// 取消同 [generateImage]。
+  Future<Uint8List> _chatGenerate(
+    String token,
+    Map<String, dynamic> body,
+    GenAbort? abort,
+  ) async {
+    final payload = jsonEncode(naiChatBody(body));
+    final client = http.Client();
+    abort?.whenAbort(() {
+      try {
+        client.close();
+      } catch (_) {}
+    });
+    final http.Response resp;
+    try {
+      resp = await client
+          .post(
+            Uri.parse(_host),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: payload,
+          )
+          .timeout(const Duration(seconds: 120));
+    } catch (e) {
+      throw NaiException('网络错误:$e');
+    } finally {
+      client.close();
+    }
+    final text = utf8.decode(resp.bodyBytes, allowMalformed: true);
+    if (resp.statusCode != 200) {
+      throw NaiException(
+        _errorTextRaw(text, resp.statusCode),
+        status: resp.statusCode,
+      );
+    }
+    return naiChatImage(text);
   }
 
   /// 从响应字节取 PNG:直接是 PNG(魔数 89 50 4E 47)就用,否则当 zip 解出第一个 png。
@@ -466,6 +523,7 @@ class NaiClient {
     String model = kNaiV5UpscaleModel,
     double declaredBlurSigma = 0,
   }) async {
+    if (_chat) throw NaiException('这个接口不支持超分');
     final uri = Uri.parse('$_host/ai/upscale');
     final http.Response resp;
     try {
@@ -493,6 +551,7 @@ class NaiClient {
   /// anlas = 固定额 + 已购额;isOpus = tier==3 且 active/宽限期(与 web `novelai.ts` 一致)。
   /// 同一份响应里还带 NAI 5 的额度电池(`usage`),见 [parseNaiUsage]。
   Future<NaiSubscription> subscription(String token) async {
+    if (_chat) throw NaiException('这个接口不提供账户状态');
     final uri = Uri.parse('$_host/user/subscription');
     final http.Response resp;
     try {
@@ -530,6 +589,7 @@ class NaiClient {
     required double infoExtracted,
     required String model,
   }) async {
+    if (_chat) throw NaiException('这个接口不支持 Vibe 参考');
     final uri = Uri.parse('$_host/ai/encode-vibe');
     final http.Response resp;
     try {
@@ -565,6 +625,9 @@ class NaiClient {
     try {
       final j = jsonDecode(body);
       if (j is Map && j['message'] is String) return j['message'] as String;
+      // OpenAI 风格:{"error": {"message": …}}
+      final e = j is Map ? j['error'] : null;
+      if (e is Map && e['message'] is String) return e['message'] as String;
     } catch (_) {}
     return switch (code) {
       401 => 'Token 无效或已过期',

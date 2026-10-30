@@ -45,6 +45,7 @@ class _TokenAddSheet extends ConsumerStatefulWidget {
 
 class _TokenAddSheetState extends ConsumerState<_TokenAddSheet> {
   _AddMode _mode = _AddMode.paste;
+  NaiApiFormat _format = NaiApiFormat.nai;
 
   final _token = TextEditingController();
   final _email = TextEditingController();
@@ -176,7 +177,7 @@ class _TokenAddSheetState extends ConsumerState<_TokenAddSheet> {
   /// 真不通出图时会报。
   Future<void> _addThird() async {
     final t = _thirdKey.text.trim();
-    final url = normalizeNaiBase(_url.text);
+    final url = naiEndpointFor(_url.text, _format);
     if (t.isEmpty || _busy) return;
     if (url.isEmpty || !naiBaseLooksValid(url)) {
       setState(() => _error = '请填 http:// 或 https:// 开头的接口地址');
@@ -389,8 +390,23 @@ class _TokenAddSheetState extends ConsumerState<_TokenAddSheet> {
     key: const ValueKey('third'),
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      SegmentedButton<NaiApiFormat>(
+        segments: [
+          for (final f in NaiApiFormat.values)
+            ButtonSegment(value: f, label: Text(f.label)),
+        ],
+        selected: {_format},
+        showSelectedIcon: false,
+        onSelectionChanged: _busy
+            ? null
+            : (v) {
+                setState(() => _format = v.first);
+                Haptics.selection();
+              },
+      ),
+      const SizedBox(height: 8),
       Text(
-        '兼容 NovelAI 接口的中转站或自建反代',
+        _format.hint,
         style: context.texts.labelSmall!.copyWith(color: scheme.outline),
       ),
       const SizedBox(height: 12),
@@ -404,7 +420,9 @@ class _TokenAddSheetState extends ConsumerState<_TokenAddSheet> {
         textInputAction: TextInputAction.next,
         style: mono(context, size: 13),
         decoration: _dec(
-          'https://example.com',
+          _format == NaiApiFormat.openai
+              ? 'https://example.com/v1'
+              : 'https://example.com',
           suffix: IconButton(
             onPressed: () => _paste(_url),
             icon: const Icon(Icons.content_paste, size: 20),

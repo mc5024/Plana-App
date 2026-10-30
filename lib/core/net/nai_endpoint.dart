@@ -59,3 +59,32 @@ bool naiBaseLooksValid(String url) {
 /// 只会把名字挤没,主机名才是「这把打哪儿」的答案。
 String naiBaseHost(String base) =>
     base.isEmpty ? '' : (Uri.tryParse(base)?.host ?? base);
+
+/// 第三方接口的请求格式,添加时选。
+enum NaiApiFormat {
+  /// NovelAI 官方格式:`/ai/generate-image(-stream)`。
+  nai('NovelAI 格式', '兼容 NovelAI 接口的中转站或自建反代 · /ai/generate-image'),
+
+  /// OpenAI 兼容:`/v1/chat/completions`,见 `nai_chat_compat.dart`。
+  openai('OpenAI 格式', 'OpenAI 兼容的中转站 · /v1/chat/completions');
+
+  const NaiApiFormat(this.label, this.hint);
+
+  final String label;
+  final String hint;
+}
+
+const _chatPath = '/chat/completions';
+
+/// OpenAI 兼容的接口存整条 `…/chat/completions` 地址,格式按路径认。
+bool naiEndpointIsChat(String endpoint) => endpoint.endsWith(_chatPath);
+
+/// 添加时填的地址 + 选的格式 → 存下的地址(已归一)。OpenAI 格式补全到
+/// `…/v1/chat/completions`:填根域名、带 `/v1`、整条贴进来都行。
+String naiEndpointFor(String url, NaiApiFormat format) {
+  final base = normalizeNaiBase(url);
+  if (format == NaiApiFormat.nai || base.isEmpty || naiEndpointIsChat(base)) {
+    return base;
+  }
+  return base.endsWith('/v1') ? '$base$_chatPath' : '$base/v1$_chatPath';
+}

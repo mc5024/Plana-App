@@ -502,6 +502,9 @@ class _AccessStepState extends ConsumerState<_AccessStep> {
   /// 直连卡里选的是第三方接口(地址跟这把令牌一起存,见 [NaiKey.endpoint])。
   bool _third = false;
 
+  /// 第三方接口的请求格式。
+  NaiApiFormat _format = NaiApiFormat.nai;
+
   /// 第三方地址填得不成形时的当场提示(官方那一路没有这一栏)。
   String? _urlError;
 
@@ -605,7 +608,7 @@ class _AccessStepState extends ConsumerState<_AccessStep> {
     if (t.isEmpty) return;
     // 第三方:地址跟这把 key 绑成一把存下。形态不对当场挡下;通不通不在这里探
     // —— 中转站多半没开 GET,探测失败反而拦住能用的地址。
-    final url = _third ? normalizeNaiBase(_urlCtrl.text) : '';
+    final url = _third ? naiEndpointFor(_urlCtrl.text, _format) : '';
     if (_third && (url.isEmpty || !naiBaseLooksValid(url))) {
       setState(() => _urlError = '请填 http:// 或 https:// 开头的接口地址');
       return;
@@ -679,11 +682,34 @@ class _AccessStepState extends ConsumerState<_AccessStep> {
               child: _third
                   ? Padding(
                       padding: const EdgeInsets.fromLTRB(0, 9, 0, 9),
-                      child: Text(
-                        '兼容 NovelAI 接口的中转站或自建反代',
-                        style: context.texts.labelSmall!.copyWith(
-                          color: scheme.outline,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SegmentedButton<NaiApiFormat>(
+                            segments: [
+                              for (final f in NaiApiFormat.values)
+                                ButtonSegment(value: f, label: Text(f.label)),
+                            ],
+                            selected: {_format},
+                            showSelectedIcon: false,
+                            style: SegmentedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              textStyle: context.texts.labelMedium,
+                            ),
+                            onSelectionChanged: (v) {
+                              setState(() => _format = v.first);
+                              Haptics.selection();
+                            },
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            _format.hint,
+                            style: context.texts.labelSmall!.copyWith(
+                              color: scheme.outline,
+                            ),
+                          ),
+                        ],
                       ),
                     )
                   : Padding(
@@ -737,7 +763,9 @@ class _AccessStepState extends ConsumerState<_AccessStep> {
                         style: mono(context, size: 12),
                         decoration: _fieldDec(
                           scheme,
-                          'https://example.com',
+                          _format == NaiApiFormat.openai
+                              ? 'https://example.com/v1'
+                              : 'https://example.com',
                           suffix: IconButton(
                             onPressed: () => _paste(_urlCtrl),
                             icon: const Icon(Icons.content_paste, size: 18),

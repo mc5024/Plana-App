@@ -642,7 +642,8 @@ class GenerationNotifier extends Notifier<GenPool> {
     final client = ref.read(naiClientProvider(run.base));
 
     // 走流式还是一次性,整单开头定一次:中途设置变了不该让这一单换端点。
-    final streaming = _streamGen;
+    // 接口没有逐步预览(OpenAI 兼容)时按一次性走,进度条显示不确定态。
+    final streaming = _streamGen && client.streams;
 
     final abort = run.abort;
 
