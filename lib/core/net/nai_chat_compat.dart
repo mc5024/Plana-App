@@ -1,16 +1,15 @@
 /// OpenAI 兼容中转的出图格式:`POST …/v1/chat/completions`,NAI 参数写成
 /// JSON 对象放进 user 消息,图以 `data:image/png;base64,…` 回在消息内容里。
 ///
-/// 消息内容的字段:
-///  · `prompt` 必填;`size` 是 `[宽, 高]`;`steps / scale / sampler / seed /
-///    cfg_rescale / noise_schedule / negative_prompt` 同官方字段名;
-///  · `quality` / `uc_preset` 不关的话中转会自己补质量词和负面预设;
-///  · 多角色 `characters[{prompt, negative_prompt, position}]`,位置只认
-///    `A1`..`E5` 格子;
+/// 消息内容 = 官方参数原样(认不认由对面定)+ 这种格式自己的字段:
+///  · `prompt`;`size` 是 `[宽, 高]`;
+///  · `quality: false` / `uc_preset: "none"`:预设文本已并进提示词,不让对面再补;
+///  · 多角色 `characters[{prompt, negative_prompt, position, center}]`,
+///    `position` 是 `A1`..`E5` 格子,`center` 是原始坐标;
 ///  · 图生图 `i2i{image, strength, noise}`,重绘 `inpaint{image, mask, strength}`,
-///    重绘模型由中转按底模自己挑;
-///  · 角色参考 `character_references[{image, type, fidelity, strength}]`,最多 1 张;
-///  · 没有 Vibe 和 Variety+。
+///    `model` 发底模;
+///  · 角色参考 `character_references[{image, type, fidelity, strength}]`。
+/// 搬进这些字段的图片不在官方参数里重复发,流式参数和预设开关也不带。
 library;
 
 import 'dart:convert';
@@ -21,28 +20,19 @@ import 'nai_client.dart' show NaiException;
 /// 官方请求体(`buildNaiPayload` 那份)→ chat 请求体。
 ///
 /// 预设文本在拼载荷前已并进提示词,`quality` / `uc_preset` 恒关。
-/// 带了 Vibe 直接报错,不悄悄丢掉。
 Map<String, dynamic> naiChatBody(Map<String, dynamic> body) {
   final p = body['parameters'] is Map
       ? (body['parameters'] as Map).cast<String, dynamic>()
       : const <String, dynamic>{};
-  final vibes = p['reference_image_multiple'];
-  if (vibes is List && vibes.isNotEmpty) {
-    throw NaiException('这个接口不支持 Vibe 参考');
-  }
   final action = body['action'];
   final chars = p['characterPrompts'];
   final refs = p['director_reference_images'];
   final payload = <String, dynamic>{
+    for (final e in p.entries)
+      if (!_notPassed.contains(e.key)) e.key: e.value,
     'prompt': body['input'],
     'negative_prompt': p['negative_prompt'] ?? '',
     'size': [p['width'], p['height']],
-    'steps': p['steps'],
-    'scale': p['scale'],
-    'sampler': p['sampler'],
-    'seed': p['seed'],
-    if (p['cfg_rescale'] != null) 'cfg_rescale': p['cfg_rescale'],
-    if (p['noise_schedule'] != null) 'noise_schedule': p['noise_schedule'],
     'quality': false,
     'uc_preset': 'none',
     if (chars is List && chars.isNotEmpty) ...{
@@ -53,6 +43,7 @@ Map<String, dynamic> naiChatBody(Map<String, dynamic> body) {
             'prompt': c['prompt'],
             'negative_prompt': c['uc'] ?? '',
             'position': _gridCell(c['center']),
+            'center': c['center'],
           },
       ],
     },
@@ -80,6 +71,24 @@ Map<String, dynamic> naiChatBody(Map<String, dynamic> body) {
     ],
   };
 }
+
+/// 不随官方参数原样发的:已搬进专用字段的图片与尺寸、流式参数、预设开关。
+const _notPassed = {
+  'image',
+  'mask',
+  'strength',
+  'noise',
+  'width',
+  'height',
+  'director_reference_images',
+  'director_reference_descriptions',
+  'director_reference_information_extracted',
+  'director_reference_strength_values',
+  'director_reference_secondary_strength_values',
+  'stream',
+  'qualityToggle',
+  'ucPreset',
+};
 
 Map<String, dynamic> _charRef(Map<String, dynamic> p, List refs, int i) {
   Object? at(String k) {

@@ -99,8 +99,18 @@ void main() {
     );
     expect(c['use_coords'], isTrue);
     expect(c['characters'], [
-      {'prompt': 'girl', 'negative_prompt': 'blue eyes', 'position': 'B2'},
-      {'prompt': 'boy', 'negative_prompt': '', 'position': 'C5'},
+      {
+        'prompt': 'girl',
+        'negative_prompt': 'blue eyes',
+        'position': 'B2',
+        'center': {'x': 0.3, 'y': 0.3},
+      },
+      {
+        'prompt': 'boy',
+        'negative_prompt': '',
+        'position': 'C5',
+        'center': {'x': 0.42, 'y': 0.95},
+      },
     ]);
   });
 
@@ -153,17 +163,31 @@ void main() {
     ]);
   });
 
-  test('带 Vibe 直接报错', () {
-    expect(
-      () => naiChatBody(
+  test('官方参数原样带上:Vibe、Variety+ 照发,图片不重复,流式与预设开关不带', () {
+    final c = _content(
+      naiChatBody(
         _body(
+          action: 'img2img',
           extra: {
+            'image': 'IMG',
+            'strength': 0.5,
+            'noise': 0,
             'reference_image_multiple': ['V'],
+            'reference_strength_multiple': [0.6],
+            'skip_cfg_above_sigma': 58,
+            'stream': 'msgpack',
           },
         ),
       ),
-      throwsA(isA<NaiException>()),
     );
+    expect(c['reference_image_multiple'], ['V']);
+    expect(c['reference_strength_multiple'], [0.6]);
+    expect(c['skip_cfg_above_sigma'], 58);
+    expect(c.containsKey('image'), isFalse);
+    expect(c.containsKey('stream'), isFalse);
+    expect(c.containsKey('qualityToggle'), isFalse);
+    expect(c.containsKey('ucPreset'), isFalse);
+    expect(c['i2i'], {'image': 'IMG', 'strength': 0.5, 'noise': 0});
   });
 
   test('回复取图;没有图时把文字当错误', () {

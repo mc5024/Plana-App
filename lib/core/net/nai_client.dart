@@ -194,8 +194,8 @@ class NaiClient {
   /// OpenAI 兼容接口则是整条 chat 地址。
   final String _host;
 
-  /// OpenAI 兼容接口(见 `nai_chat_compat.dart`):只出图,没有点数查询、
-  /// Vibe 编码和超分。
+  /// OpenAI 兼容接口(见 `nai_chat_compat.dart`):这种格式只有出图一个端点,
+  /// 点数查询、Vibe 编码、超分都没有对应的地址可打。
   final bool _chat;
 
   /// 有没有逐步预览。OpenAI 兼容接口只回终图。
@@ -523,7 +523,7 @@ class NaiClient {
     String model = kNaiV5UpscaleModel,
     double declaredBlurSigma = 0,
   }) async {
-    if (_chat) throw NaiException('这个接口不支持超分');
+    if (_chat) throw NaiException('这个接口没有超分');
     final uri = Uri.parse('$_host/ai/upscale');
     final http.Response resp;
     try {
@@ -589,7 +589,7 @@ class NaiClient {
     required double infoExtracted,
     required String model,
   }) async {
-    if (_chat) throw NaiException('这个接口不支持 Vibe 参考');
+    if (_chat) throw NaiException('这个接口没有 Vibe 编码');
     final uri = Uri.parse('$_host/ai/encode-vibe');
     final http.Response resp;
     try {
