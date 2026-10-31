@@ -281,6 +281,15 @@ class InpaintJob {
   /// 发送尺寸(宽, 高):遮罩与底图同尺寸,读遮罩的 PNG 头即得。重绘只能按这个
   /// 尺寸发 —— 声明的宽高和图对不上,服务端拒单,贴回也对不上框。读不出 null。
   (int, int)? get sendSize => pngSizeOf(mask);
+
+  InpaintJob copyWith({double? strength}) => InpaintJob(
+    image: image,
+    mask: mask,
+    strength: strength ?? this.strength,
+    paste: paste,
+    sourceId: sourceId,
+    grid: grid,
+  );
 }
 
 /// 只读 PNG 头拿宽高(IHDR 在 offset 16 / 20),不解码整图;不是 PNG 给 null。
@@ -1208,16 +1217,7 @@ class GenParams {
 }
 
 /// 折叠面板标识
-enum Panel {
-  prompt,
-  characters,
-  vibe,
-  charRef,
-  i2i,
-  lora,
-  hires,
-  kreaStyleRef,
-}
+enum Panel { prompt, characters, vibe, charRef, i2i, lora, hires, kreaStyleRef }
 
 /// 没选过预设时用的那一档:新用户的第一张画布、存档里没记的,同 web 默认档。
 const kDefaultPromptPresetId = 'heavy';

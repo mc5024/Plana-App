@@ -487,7 +487,7 @@ Future<Uint8List> pasteBack({
 class InpaintPrefs {
   const InpaintPrefs({
     this.brush = 50, // 笔刷直径(图像素),对齐 web 默认
-    this.strength = 0.7,
+    this.strength = 1,
     this.assist = false,
     this.mode = 'paint',
     this.censorStyle = 'mosaic',
@@ -523,7 +523,7 @@ class InpaintPrefs {
 
   factory InpaintPrefs.fromJson(Map<String, dynamic> j) => InpaintPrefs(
     brush: ((j['brush'] as num?)?.toDouble() ?? 50).clamp(4, 400),
-    strength: ((j['strength'] as num?)?.toDouble() ?? 0.7).clamp(0.01, 1.0),
+    strength: ((j['strength'] as num?)?.toDouble() ?? 1).clamp(0.01, 1.0),
     assist: j['assist'] == true,
     mode: switch (j['mode']) {
       'expand' => 'expand',

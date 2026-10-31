@@ -504,7 +504,7 @@ Future<GenerateState> decodeGenerateState(
       inpaint = InpaintJob(
         image: image,
         mask: mask,
-        strength: (e['strength'] as num?)?.toDouble() ?? 0.7,
+        strength: (e['strength'] as num?)?.toDouble() ?? 1,
         paste: paste,
         sourceId: e['sourceId'] as String?,
         grid: await img(e['grid']),

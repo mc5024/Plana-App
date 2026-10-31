@@ -247,6 +247,68 @@ void main() {
     });
   });
 
+  group('重绘强度', () {
+    final bytes = Uint8List.fromList([1, 2, 3]);
+    Map<String, dynamic> infill(String model, double strength) =>
+        buildNaiPayload(
+              _state(model).copyWith(
+                inpaint: InpaintJob(
+                  image: bytes,
+                  mask: bytes,
+                  strength: strength,
+                ),
+              ),
+              presetId: 'none',
+            ).body['parameters']
+            as Map<String, dynamic>;
+
+    test('不是 1:两个字段同值,带 img2img 块', () {
+      final p = infill('NAI 4.5 Full', .5);
+      expect(p['inpaintImg2ImgStrength'], .5);
+      expect(p['strength'], .5);
+      expect(p['img2img'], {'strength': .5, 'color_correct': true});
+    });
+
+    test('等于 1:不带 img2img 块', () {
+      final p = infill('NAI 4.5 Full', 1);
+      expect(p['inpaintImg2ImgStrength'], 1);
+      expect(p['strength'], 1);
+      expect(p.containsKey('img2img'), isFalse);
+    });
+
+    test('V5 Full Medium 不能调:恒发 1', () {
+      expect(inpaintStrengthSupported('NAI 5.0 Full Medium'), isFalse);
+      final p = infill('NAI 5.0 Full Medium', .5);
+      expect(p['inpaintImg2ImgStrength'], 1);
+      expect(p['strength'], 1);
+      expect(p.containsKey('img2img'), isFalse);
+    });
+
+    test('V5 Curated 回退 4.5 重绘模型,强度照发', () {
+      final p = infill('NAI 5.0 Curated', .5);
+      expect(p['inpaintImg2ImgStrength'], .5);
+      expect(p['img2img'], {'strength': .5, 'color_correct': true});
+    });
+
+    test('图生图不受影响', () {
+      final p =
+          buildNaiPayload(
+                _state('NAI 4.5 Full'),
+                presetId: 'none',
+                img2img: (
+                  image: 'x',
+                  strength: .7,
+                  noise: 0,
+                  upscaledEnhance: false,
+                ),
+              ).body['parameters']
+              as Map<String, dynamic>;
+      expect(p['strength'], .7);
+      expect(p['inpaintImg2ImgStrength'], 1);
+      expect(p.containsKey('img2img'), isFalse);
+    });
+  });
+
   // V5 的 Source 串里**不写 Full / Curated**,只有权重 hash。按字面找 curated
   // 永远不成立 —— 那样写会把每一张 V5 图都认成 Full(本仓 2026-08-24 前就是)。
   group('naiSourceIsV5Full:V5 认 hash 不认字面', () {

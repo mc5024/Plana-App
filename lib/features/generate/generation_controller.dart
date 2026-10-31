@@ -848,7 +848,7 @@ class GenerationNotifier extends Notifier<GenPool> {
             isOpus: isOpus,
             sendW: s.params.width,
             sendH: s.params.height,
-            strength: job.strength,
+            strength: effectiveInpaintStrength(s.params.model, job.strength),
             v5Charged: v5Charged,
           )
         : estimateCost(s, isOpus: isOpus, v5Charged: v5Charged);

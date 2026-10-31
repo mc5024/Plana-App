@@ -83,7 +83,7 @@ class _AdvancedSheetState extends ConsumerState<_AdvancedSheet> {
     final isAnima = isAnimaModel(draft.model);
     final isKrea = isKreaModel(draft.model);
     // V5 的 noise_schedule 请求前硬写回 karras;Medium 档步数、采样器固定,
-    // CFG Rescale 不发。这几项置灰显示实际生效值(见 [_Locked])。
+    // CFG Rescale 不发。这几项置灰显示实际生效值(见 [LockedParam])。
     final isV5 = isNai5Model(draft.model);
     final isMedium = isNai5MediumModel(draft.model);
     final name = modelName(draft.model);
@@ -303,7 +303,7 @@ class _AdvancedSheetState extends ConsumerState<_AdvancedSheet> {
                   ),
                 ],
               ] else ...[
-                _Locked(
+                LockedParam(
                   hint: isMedium ? '$name 步数固定为 $kNai5MediumSteps' : null,
                   child: ParamSlider(
                     label: '步数 Steps',
@@ -348,7 +348,7 @@ class _AdvancedSheetState extends ConsumerState<_AdvancedSheet> {
                   onChanged: (v) => _set(draft.copyWith(cfg: v)),
                 ),
                 const SizedBox(height: 12),
-                _Locked(
+                LockedParam(
                   hint: isMedium ? '$name 采样器固定为 $kNai5MediumSampler' : null,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -381,7 +381,7 @@ class _AdvancedSheetState extends ConsumerState<_AdvancedSheet> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                _Locked(
+                LockedParam(
                   hint: isV5 ? '$name 噪声调度固定为 karras' : null,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -491,7 +491,7 @@ class _AdvancedSheetState extends ConsumerState<_AdvancedSheet> {
               // CFG Rescale 是 NAI 独有的;两个 Modal 渠道都没有这个参数
               if (!isAnima && !isKrea) ...[
                 const SizedBox(height: 14),
-                _Locked(
+                LockedParam(
                   hint: isMedium ? '$name 不支持「CFG Rescale」' : null,
                   child: ParamSlider(
                     label: 'CFG Rescale',
@@ -606,26 +606,6 @@ class _SectionLabel extends StatelessWidget {
         fontWeight: FontWeight.w700,
         letterSpacing: 1.2,
       ),
-    );
-  }
-}
-
-/// 当前型号不可调的参数:照常显示实际生效值、压暗、不接手势,点一下弹 [hint]。
-/// hint 为 null = 可调,原样返回。
-class _Locked extends StatelessWidget {
-  const _Locked({required this.hint, required this.child});
-
-  final String? hint;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final h = hint;
-    if (h == null) return child;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => hintSnack(context, h),
-      child: IgnorePointer(child: Opacity(opacity: .45, child: child)),
     );
   }
 }

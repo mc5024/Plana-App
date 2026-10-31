@@ -11,6 +11,7 @@ import '../../shell/shell_state.dart';
 import '../canvas_state.dart';
 import '../generate_state.dart';
 import '../models.dart';
+import '../nai_request.dart' show inpaintStrengthSupported;
 import 'common.dart';
 import 'section_card.dart';
 
@@ -219,6 +220,8 @@ class _Img2ImgCardState extends ConsumerState<Img2ImgCard> {
     bool expanded,
   ) {
     final scheme = context.scheme;
+    final model = state.params.model;
+    final strengthOk = inpaintStrengthSupported(model);
     return SectionCard(
       icon: Icons.brush_outlined,
       title: '重绘',
@@ -297,14 +300,17 @@ class _Img2ImgCardState extends ConsumerState<Img2ImgCard> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: ParamSlider(
-                  label: '强度 Strength',
-                  help: Help.img2imgStrength,
-                  value: job.strength,
-                  min: 0.01,
-                  max: 0.99,
-                  divisions: 98,
-                  onChanged: notifier.updateInpaintStrength,
+                child: LockedParam(
+                  hint: strengthOk ? null : '${modelName(model)} 不支持「重绘强度」',
+                  child: ParamSlider(
+                    label: '强度 Strength',
+                    help: Help.img2imgStrength,
+                    value: strengthOk ? job.strength : 1,
+                    min: 0.01,
+                    max: 1,
+                    divisions: 99,
+                    onChanged: notifier.updateInpaintStrength,
+                  ),
                 ),
               ),
             ],

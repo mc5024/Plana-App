@@ -14,7 +14,8 @@ import '../generate/gen_modules.dart';
 import '../generate/generate_state.dart';
 import '../generate/models.dart';
 import '../generate/res_rules.dart' show kFreePixelThreshold;
-import '../generate/widgets/common.dart' show hintSnack;
+import '../generate/nai_request.dart' show inpaintStrengthSupported;
+import '../generate/widgets/common.dart' show LockedParam, hintSnack;
 import '../gallery/albums/album_state.dart' show gallerySaveTargetProvider;
 import '../gallery/gallery_state.dart';
 import '../gallery/models.dart' show ResultBadge;
@@ -140,7 +141,7 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
   Offset? _cropDragFrom;
   IntRect? _crop; // 发送框(w/h 恒 64 倍数,单边 ≤ _cropMaxSide)
   double _brush = 50; // 笔刷直径(图像素),对齐 web 默认
-  double _strength = 0.7;
+  double _strength = 1;
   _SliderTarget? _slider;
   bool _showOriginal = false;
   bool _firing = false;
@@ -1615,17 +1616,7 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
                 const SizedBox(width: 8),
                 // 打码:强度换成块大小(纯色模式与块无关,整条隐掉)
                 if (!_censorMode)
-                  _ParamChip(
-                    icon: Icons.tune,
-                    label: '强度',
-                    value: _strength.toStringAsFixed(2),
-                    active: _slider == _SliderTarget.strength,
-                    onTap: () => setState(
-                      () => _slider = _slider == _SliderTarget.strength
-                          ? null
-                          : _SliderTarget.strength,
-                    ),
-                  )
+                  _strengthChip()
                 else if (_censorStyle == CensorStyle.mosaic)
                   _ParamChip(
                     icon: Icons.grid_4x4,
@@ -1665,6 +1656,26 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
     );
   }
 
+  /// 强度按钮;所选模型不支持重绘强度时置灰、读数显示实际生效的 1。
+  Widget _strengthChip() {
+    final model = ref.watch(generateProvider.select((s) => s.params.model));
+    final ok = inpaintStrengthSupported(model);
+    return LockedParam(
+      hint: ok ? null : '${modelName(model)} 不支持「重绘强度」',
+      child: _ParamChip(
+        icon: Icons.tune,
+        label: '强度',
+        value: (ok ? _strength : 1.0).toStringAsFixed(2),
+        active: ok && _slider == _SliderTarget.strength,
+        onTap: () => setState(
+          () => _slider = _slider == _SliderTarget.strength
+              ? null
+              : _SliderTarget.strength,
+        ),
+      ),
+    );
+  }
+
   /// 扩图专属底面板:尺寸(点击弹窗直接输入)/强度/重置 + 全宽 CTA。
   Widget _buildExpandPanel() {
     final scheme = context.scheme;
@@ -1688,17 +1699,7 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
                   onTap: _editExpandSize,
                 ),
                 const SizedBox(width: 8),
-                _ParamChip(
-                  icon: Icons.tune,
-                  label: '强度',
-                  value: _strength.toStringAsFixed(2),
-                  active: _slider == _SliderTarget.strength,
-                  onTap: () => setState(
-                    () => _slider = _slider == _SliderTarget.strength
-                        ? null
-                        : _SliderTarget.strength,
-                  ),
-                ),
+                _strengthChip(),
                 const Spacer(),
                 Material(
                   color: scheme.surfaceContainerHigh,
@@ -1878,7 +1879,7 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
                   ),
                   _SliderTarget.strength => Slider(
                     value: _strength,
-                    min: 0.1,
+                    min: 0.01,
                     max: 1.0,
                     // 不传 divisions:离散 Slider 会用 75ms 曲线把滑块吸到
                     // 刻度,拖起来黏手。步长(0.01)就地量化。
@@ -1912,7 +1913,7 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
                 },
                 min: switch (t) {
                   _SliderTarget.brush => 5,
-                  _SliderTarget.strength => 0.1,
+                  _SliderTarget.strength => 0.01,
                   _SliderTarget.block => kCensorBlockMin * 8.0,
                 },
                 max: switch (t) {
@@ -1922,7 +1923,7 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
                 },
                 divisions: switch (t) {
                   _SliderTarget.brush => 195,
-                  _SliderTarget.strength => 90,
+                  _SliderTarget.strength => 99,
                   _SliderTarget.block => kCensorBlockMax - kCensorBlockMin,
                 },
               );

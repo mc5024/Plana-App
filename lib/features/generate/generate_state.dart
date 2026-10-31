@@ -744,14 +744,7 @@ class GenerateNotifier extends Notifier<GenerateState> {
   void updateInpaintStrength(double strength) {
     final cur = state.inpaint;
     if (cur == null) return;
-    state = state.copyWith(
-      inpaint: InpaintJob(
-        image: cur.image,
-        mask: cur.mask,
-        strength: strength,
-        paste: cur.paste,
-      ),
-    );
+    state = state.copyWith(inpaint: cur.copyWith(strength: strength));
   }
 
   void clearInpaint() => state = state.copyWith(inpaint: null);

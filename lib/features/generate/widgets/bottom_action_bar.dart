@@ -18,6 +18,7 @@ import '../models.dart'
         kNai5MediumSteps,
         modelName,
         stepsRangeOf;
+import '../nai_request.dart' show effectiveInpaintStrength;
 import '../vibe_encoder.dart';
 import '../../import/import_panel.dart';
 import 'advanced_sheet.dart';
@@ -130,7 +131,10 @@ class _BottomActionBarState extends ConsumerState<BottomActionBar> {
                 isOpus: isOpus,
                 sendW: sent.params.width,
                 sendH: sent.params.height,
-                strength: job.strength,
+                strength: effectiveInpaintStrength(
+                  sent.params.model,
+                  job.strength,
+                ),
                 v5Charged: v5Charged,
               )
             : estimateCost(sent, isOpus: isOpus, v5Charged: v5Charged)) +

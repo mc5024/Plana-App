@@ -822,6 +822,26 @@ void dropFocusSoon() {
 
 // ---- 顶部悬浮提示(全 app 统一;替代底部 SnackBar) ----
 
+/// 当前型号不可调的参数:照常显示实际生效值、压暗、不接手势,点一下弹 [hint]。
+/// hint 为 null = 可调,原样返回。
+class LockedParam extends StatelessWidget {
+  const LockedParam({super.key, required this.hint, required this.child});
+
+  final String? hint;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final h = hint;
+    if (h == null) return child;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => hintSnack(context, h),
+      child: IgnorePointer(child: Opacity(opacity: .45, child: child)),
+    );
+  }
+}
+
 OverlayEntry? _activeToast;
 
 void _removeActiveToast() {

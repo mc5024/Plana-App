@@ -393,6 +393,29 @@ void main() {
     expect(sent(), (832, 1216));
   });
 
+  test('改重绘强度:涂抹网格与图库 id 不丢', () {
+    final png = Uint8List.fromList(
+      img.encodePng(img.Image(width: 64, height: 64)),
+    );
+    final grid = Uint8List.fromList([1, 2, 3]);
+    gen.setInpaint(
+      InpaintJob(
+        image: png,
+        mask: png,
+        strength: 1,
+        sourceId: 'g1',
+        grid: grid,
+      ),
+      width: 64,
+      height: 64,
+    );
+    gen.updateInpaintStrength(0.5);
+    final job = c.read(generateProvider).inpaint!;
+    expect(job.strength, 0.5);
+    expect(job.sourceId, 'g1');
+    expect(job.grid, grid);
+  });
+
   test('下载途中切走了底模：占位条在收起来的那份里转正', () {
     gen.setModel('Anima Turbo');
     gen.applyLoraSelection([
