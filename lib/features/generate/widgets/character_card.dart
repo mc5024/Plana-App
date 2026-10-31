@@ -78,23 +78,29 @@ class CharacterCard extends ConsumerWidget {
       chevronPlaceholder: chars.isEmpty,
       body: chars.isEmpty
           ? null
-          // 长按卡片拖动排序。删除只走行内按钮(删了给撤销条),不做横滑删除
-          // —— 横滑一下就抹掉整份角色配置(提示词/站位/开关),太容易误触。
-          : ReorderableListView(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              proxyDecorator: dragProxy,
-              onReorderStart: dragStartHaptic,
-              onReorderEnd: dragEndHaptic,
-              onReorderItem: notifier.reorderCharacters,
-              children: [
-                for (var i = 0; i < chars.length; i++)
-                  Padding(
-                    key: ValueKey('char${chars[i].id}'),
-                    padding: EdgeInsets.only(top: i > 0 ? 9 : 0),
-                    child: _CharacterTile(char: chars[i], index: i),
-                  ),
-              ],
+          // 增删角色时高度平滑过渡(第一个由卡片展开动画负责)
+          : AnimatedSize(
+              duration: Motion.medium,
+              curve: Motion.emphasized,
+              alignment: Alignment.topCenter,
+              // 长按卡片拖动排序。删除只走行内按钮(删了给撤销条),不做横滑删除
+              // —— 横滑一下就抹掉整份角色配置(提示词/站位/开关),太容易误触。
+              child: ReorderableListView(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                proxyDecorator: dragProxy,
+                onReorderStart: dragStartHaptic,
+                onReorderEnd: dragEndHaptic,
+                onReorderItem: notifier.reorderCharacters,
+                children: [
+                  for (var i = 0; i < chars.length; i++)
+                    Padding(
+                      key: ValueKey('char${chars[i].id}'),
+                      padding: EdgeInsets.only(top: i > 0 ? 9 : 0),
+                      child: _CharacterTile(char: chars[i], index: i),
+                    ),
+                ],
+              ),
             ),
     );
   }

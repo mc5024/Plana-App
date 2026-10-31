@@ -202,35 +202,42 @@ class _PromptCardState extends ConsumerState<PromptCard> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (sections.isEmpty)
-                // 正面:段落预览
-                InkWell(
-                  onTap: () => _openEditor(context, positive: true),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(15, 12, 15, 10),
-                    child: Text(
-                      state.prompt.isEmpty ? '点击编辑正面提示词…' : state.prompt,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.texts.bodyLarge!.copyWith(
-                        height: 1.5,
-                        color: state.prompt.isEmpty
-                            ? scheme.outline
-                            : scheme.onSurface,
+              // 段落预览 / 分区行切换与增删分区时,高度平滑过渡
+              AnimatedSize(
+                duration: Motion.medium,
+                curve: Motion.emphasized,
+                alignment: Alignment.topCenter,
+                child: sections.isEmpty
+                    // 正面:段落预览
+                    ? InkWell(
+                        onTap: () => _openEditor(context, positive: true),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(15, 12, 15, 10),
+                          child: Text(
+                            state.prompt.isEmpty
+                                ? '点击编辑正面提示词…'
+                                : state.prompt,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.texts.bodyLarge!.copyWith(
+                              height: 1.5,
+                              color: state.prompt.isEmpty
+                                  ? scheme.outline
+                                  : scheme.onSurface,
+                            ),
+                          ),
+                        ),
+                      )
+                    : Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: _SectionRows(
+                          selecting: selecting,
+                          picked: _picked,
+                          onToggle: _togglePick,
+                          onHold: _enterSelect,
+                        ),
                       ),
-                    ),
-                  ),
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: _SectionRows(
-                    selecting: selecting,
-                    picked: _picked,
-                    onToggle: _togglePick,
-                    onHold: _enterSelect,
-                  ),
-                ),
+              ),
               // 负面:块标 + 单行(+N)+ 独立计数
               InkWell(
                 onTap: () => _openEditor(context, positive: false),
