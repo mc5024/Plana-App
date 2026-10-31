@@ -682,6 +682,7 @@ class GenerationNotifier extends Notifier<GenPool> {
           presetId: preset.presetId,
           qualityToggle: preset.qualityToggle,
           straightAlpha: _straightAlpha,
+          thirdParty: run.base.isNotEmpty,
           vibes: [
             for (final v in prepared)
               (encoded: v.encoded, strength: v.strength),

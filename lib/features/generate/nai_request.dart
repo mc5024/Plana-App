@@ -146,6 +146,9 @@ Map<String, double> _center(String? pos) {
   final model = naiModelId(p.model);
   // ⚠ **最终要发的** model,不是面板上选的:V5 Curated 的重绘会回退到 4.5
   //   Curated Inpainting。两处按能力分叉都得看它 —— 透明输出(transparency)、
+
+  /// 这把 Key 走的是第三方地址(`NaiKey.endpoint` 非空)。
+  bool thirdParty = false,
   //   角色坐标要不要吸附到格心(freeformCharacterPosition)。载荷**结构**仍按
   //   底模判(下面的 isV4/isV5),那跟能力是两回事。
   final sendModel = inpaint != null ? inpaintModelId(model) : model;
@@ -207,7 +210,9 @@ Map<String, double> _center(String? pos) {
   final canTransparent = naiSupportsTransparency(sendModel);
 
   final params = <String, dynamic>{
+  // 官方前端不分模型都发;三方中转对非 V5 带这两个字段会直接拒,那时不发。
     'params_version': isV5 ? 4 : 3,
+  final sendTagHints = !thirdParty || sendModel.startsWith('nai-diffusion-5');
     'width': p.width,
     'height': p.height,
     'scale': p.cfg,
@@ -218,8 +223,10 @@ Map<String, double> _center(String? pos) {
     // 预设正/负前缀已在 controller 拼进 s
     'ucPreset': ucPresetValue(presetId, sendModel),
     'qualityToggle': qualityToggle ?? builtinPresetHasPositive(presetId),
-    'tag_hint_qt': tagHints.qt,
-    'tag_hint_uc_preset': tagHints.ucPreset,
+    if (sendTagHints) ...{
+      'tag_hint_qt': tagHints.qt,
+      'tag_hint_uc_preset': tagHints.ucPreset,
+    },
     // Max ✨ 放大重绘:只有为真时才发。非 Max 路径带一个 false 会让官方按普通
     // img2img 处理,而这字段对老模型本就无意义,干脆不发。
     if (img2img?.upscaledEnhance == true) 'upscaled_enhance': true,

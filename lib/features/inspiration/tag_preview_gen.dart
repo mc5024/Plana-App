@@ -131,13 +131,6 @@ Future<Uint8List> generateTagPreview(
     return out.first;
   }
 
-  final built = buildNaiPayload(
-    s,
-    presetId: 'none',
-    vibes: const [],
-    img2img: null,
-    charRefs: const [],
-  );
   // 同超分:预览也吃直连那条账号限额,得和生成抢同一个闸门,否则生成中开预览
   // 两边一起 429。整段流都在槽里 —— 拿到首帧就放槽的话后半程仍在占着连接。
   // paid:预览就是一张正经的图,该扣的点一分不少,所以没勾「参与点数生成」的 Key
@@ -154,6 +147,14 @@ Future<Uint8List> generateTagPreview(
     }
     // 打哪台机器跟着闸门给的那把 Key 走。
     final client = ref.read(naiClientProvider(base));
+    final built = buildNaiPayload(
+      s,
+      presetId: 'none',
+      thirdParty: base.isNotEmpty,
+      vibes: const [],
+      img2img: null,
+      charRefs: const [],
+    );
     if (!streaming) {
       return client.generateImage(token: token, body: built.body);
     }
