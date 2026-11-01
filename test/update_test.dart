@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:plana_app/core/store/prefs_store.dart';
 import 'package:plana_app/features/update/release_notes.dart';
 import 'package:plana_app/features/update/update_service.dart';
@@ -122,6 +124,48 @@ void main() {
     test('展示名:release 标题为空时回落到 tag', () {
       final r = pickNewer('1.0.0', [rel('v1.2.0')]);
       expect(r?.display, 'v1.2.0');
+    });
+  });
+
+  group('fetchLatestRelease', () {
+    Future<GithubRelease?> fetch(
+      int status, {
+      String body = '[]',
+      Map<String, String> headers = const {},
+    }) => http.runWithClient(
+      () => fetchLatestRelease('1.0.0', repo: 'x/y'),
+      () => MockClient(
+        (_) async => http.Response(body, status, headers: headers),
+      ),
+    );
+
+    Matcher failsWith(String text) => throwsA(
+      isA<UpdateException>().having(
+        (e) => e.message,
+        'message',
+        contains(text),
+      ),
+    );
+
+    test('200 且无更新 → null', () async {
+      expect(await fetch(200), isNull);
+    });
+
+    test('限流 → 报错,不当成已是最新', () async {
+      await expectLater(
+        fetch(403, headers: {'x-ratelimit-remaining': '0'}),
+        failsWith('上限'),
+      );
+      await expectLater(fetch(429), failsWith('上限'));
+    });
+
+    test('其他非 200(含 403 / 404)→ 报错', () async {
+      await expectLater(fetch(403), failsWith('HTTP 403'));
+      await expectLater(fetch(404), failsWith('HTTP 404'));
+    });
+
+    test('200 但不是 JSON → 报错', () async {
+      await expectLater(fetch(200, body: '<html></html>'), failsWith('失败'));
     });
   });
 
