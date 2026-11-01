@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../theme/app_skin.dart';
 import '../theme/app_theme.dart';
 
 /// 抬起菜单的一项:图标 + 文字,点了把 [value] 作为结果交回。
@@ -186,7 +187,7 @@ class _Lifted<T> extends StatelessWidget {
   Widget _menu(BuildContext context) {
     final scheme = context.scheme;
     return Material(
-      color: scheme.surfaceContainerHigh,
+      color: context.raisedFill(scheme.surfaceContainerHigh),
       elevation: 6,
       borderRadius: BorderRadius.circular(14),
       clipBehavior: Clip.antiAlias,

@@ -279,22 +279,13 @@ class _PickSheetState extends ConsumerState<_PickSheet> {
     return _pc!;
   }
 
-  /// 页签:同灵感页顶栏那条;某类勾了几个跟在名字后面。
+  /// 页签:同灵感页顶栏那条。
   Widget _tabs(TagLibraryState lib) {
     final keys = _keys(lib);
     final pc = _controller(keys);
-    int pickedIn(String k) => k == kCodexTabKey
-        ? _picks.values.where((p) => p.codex != null).length
-        : _picks.values
-              .where((p) => p.tag != null && _keyOf(p.tag!.entry.category) == k)
-              .length;
-    String label(String k) {
-      final name = k == kCodexTabKey
-          ? codexTabLabel()
-          : tagCategoryDef(tagCategoryByWebId(k)!).label;
-      final n = pickedIn(k);
-      return n > 0 ? '$name $n' : name;
-    }
+    String label(String k) => k == kCodexTabKey
+        ? codexTabLabel()
+        : tagCategoryDef(tagCategoryByWebId(k)!).label;
 
     return CategoryTabs(
       labels: [for (final k in keys) label(k)],
@@ -302,6 +293,7 @@ class _PickSheetState extends ConsumerState<_PickSheet> {
       position: _pagePos,
       // 同灵感页顶栏的胶囊 + 白底滑块
       capsule: true,
+      capsuleColor: context.scheme.surfaceContainerHigh,
       leftPad: _pad,
       rightPad: _pad,
       onTap: (i) =>

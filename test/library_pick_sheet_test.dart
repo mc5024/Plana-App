@@ -170,7 +170,7 @@ void main() {
     });
   });
 
-  testWidgets('页签上标出各类已勾几个;取消选择一次清掉全部', (tester) async {
+  testWidgets('页签不标已勾几个;取消选择一次清掉全部', (tester) async {
     await _open(tester);
     await _switchTo(tester, '画风');
     await tester.tap(_tagCard('a12'));
@@ -182,12 +182,11 @@ void main() {
     expect(find.text('加入 (3)'), findsOneWidget);
 
     // 各类都在一排页签上;「其他」不放进来
-    for (final label in ['场景', '法典']) {
+    for (final label in ['画风', '角色', '场景', '法典']) {
       expect(find.text(label), findsOneWidget);
     }
     expect(find.text('其他'), findsNothing);
-    expect(find.text('画风 2'), findsOneWidget);
-    expect(find.text('角色 1'), findsOneWidget);
+    expect(find.text('画风 2'), findsNothing);
     await _switchTo(tester, '画风');
 
     await tester.tap(find.text('取消选择'));

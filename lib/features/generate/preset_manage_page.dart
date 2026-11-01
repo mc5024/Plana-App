@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import 'prompt_presets.dart';
 import 'widgets/common.dart';
@@ -146,126 +147,129 @@ class _PresetTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    return Material(
-      color: scheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: active
-            ? BorderSide(color: scheme.primary, width: 1.4)
-            : BorderSide.none,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
-          child: Row(
-            children: [
-              Icon(
-                active ? Icons.radio_button_checked : Icons.radio_button_off,
-                size: 20,
-                color: active ? scheme.primary : scheme.outline,
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            preset.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: context.texts.bodyMedium!.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        if (preset.isDefault) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: scheme.surfaceContainerHigh,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            // 带系列的内置档直接报系列 —— 4.5 的 Light 和 V5 的
-                            // Light 同名,只挂个「默认」两条会长得一模一样。
+    return Lifted(
+      radius: BorderRadius.circular(16),
+      child: Material(
+        color: scheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: active
+              ? BorderSide(color: scheme.primary, width: 1.4)
+              : BorderSide.none,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+            child: Row(
+              children: [
+                Icon(
+                  active ? Icons.radio_button_checked : Icons.radio_button_off,
+                  size: 20,
+                  color: active ? scheme.primary : scheme.outline,
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
                             child: Text(
-                              switch (preset.scope) {
-                                'v5' => 'V5',
-                                'legacy' => '4.5 及更早',
-                                _ => '默认',
-                              },
-                              style: context.texts.labelSmall!.copyWith(
-                                color: scheme.onSurfaceVariant,
+                              preset.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: context.texts.bodyMedium!.copyWith(
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
+                          if (preset.isDefault) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: scheme.surfaceContainerHigh,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              // 带系列的内置档直接报系列 —— 4.5 的 Light 和 V5 的
+                              // Light 同名,只挂个「默认」两条会长得一模一样。
+                              child: Text(
+                                switch (preset.scope) {
+                                  'v5' => 'V5',
+                                  'legacy' => '4.5 及更早',
+                                  _ => '默认',
+                                },
+                                style: context.texts.labelSmall!.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    if (preset.positive.isEmpty && preset.negative.isEmpty)
-                      Text(
-                        '无前缀',
-                        style: context.texts.labelSmall!.copyWith(
-                          color: scheme.outline,
-                        ),
-                      )
-                    else ...[
-                      if (preset.positive.isNotEmpty)
+                      ),
+                      const SizedBox(height: 3),
+                      if (preset.positive.isEmpty && preset.negative.isEmpty)
                         Text(
-                          '+ ${preset.positive}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: context.texts.labelSmall!.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
-                        ),
-                      if (preset.negative.isNotEmpty)
-                        Text(
-                          '- ${preset.negative}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          '无前缀',
                           style: context.texts.labelSmall!.copyWith(
                             color: scheme.outline,
                           ),
-                        ),
+                        )
+                      else ...[
+                        if (preset.positive.isNotEmpty)
+                          Text(
+                            '+ ${preset.positive}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.texts.labelSmall!.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        if (preset.negative.isNotEmpty)
+                          Text(
+                            '- ${preset.negative}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.texts.labelSmall!.copyWith(
+                              color: scheme.outline,
+                            ),
+                          ),
+                      ],
                     ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                tooltip: preset.isDefault ? '查看' : '编辑',
-                visualDensity: VisualDensity.compact,
-                onPressed: onEdit,
-                icon: Icon(
-                  preset.isDefault
-                      ? Icons.visibility_outlined
-                      : Icons.edit_outlined,
-                  size: 19,
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-              if (onDelete != null)
-                IconButton(
-                  tooltip: '删除',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: onDelete,
-                  icon: Icon(
-                    Icons.delete_outline,
-                    size: 19,
-                    color: scheme.error.withValues(alpha: .85),
                   ),
                 ),
-            ],
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: preset.isDefault ? '查看' : '编辑',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onEdit,
+                  icon: Icon(
+                    preset.isDefault
+                        ? Icons.visibility_outlined
+                        : Icons.edit_outlined,
+                    size: 19,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                if (onDelete != null)
+                  IconButton(
+                    tooltip: '删除',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onDelete,
+                    icon: Icon(
+                      Icons.delete_outline,
+                      size: 19,
+                      color: scheme.error.withValues(alpha: .85),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

@@ -3,6 +3,64 @@ import 'package:material_color_utilities/material_color_utilities.dart'
     show Hct, SchemeTonalSpot;
 
 import '../ui/slide_back_transitions.dart';
+import 'app_skin.dart';
+
+/// 浮卡主题的一档主色。主色的色度、明度与蓝色对齐,只换色相;深色底是把
+/// 「夜空」各层转到同一色相。
+class FloatAccent {
+  const FloatAccent(this.key, this.label, this.light, this.dark, this.onDark);
+
+  final String key;
+  final String label;
+
+  /// 浅色主色(上面放白字)
+  final Color light;
+
+  /// 深色主色及其上的字色
+  final Color dark;
+  final Color onDark;
+}
+
+const kFloatBlue = FloatAccent(
+  'blue',
+  '蓝',
+  Color(0xFF1F80C6),
+  Color(0xFF6CB8F6),
+  Color(0xFF06223D),
+);
+
+/// 浮卡档位,按色环排列。
+const floatAccents = <FloatAccent>[
+  FloatAccent(
+    'orange',
+    '橙',
+    Color(0xFFC15F36),
+    Color(0xFFFF966C),
+    Color(0xFF3A1708),
+  ),
+  FloatAccent(
+    'rose',
+    '粉',
+    Color(0xFFBF5A7C),
+    Color(0xFFFA92B2),
+    Color(0xFF391521),
+  ),
+  FloatAccent(
+    'violet',
+    '紫',
+    Color(0xFF896AC7),
+    Color(0xFFC0A3FA),
+    Color(0xFF261B3C),
+  ),
+  kFloatBlue,
+  FloatAccent(
+    'green',
+    '绿',
+    Color(0xFF008D62),
+    Color(0xFF5CC497),
+    Color(0xFF002718),
+  ),
+];
 
 /// 全局主题。当前阶段使用 M3 默认配色(基准种子色),
 /// 组件一律走语义角色(primary/surfaceContainer* 等),
@@ -17,12 +75,231 @@ abstract final class AppTheme {
   static ThemeData dark([Color? seedColor]) =>
       _build(Brightness.dark, seedColor ?? seed);
 
-  static ThemeData _build(Brightness brightness, Color seedColor) {
-    final scheme = _widenSurfaces(
+  /// 浮卡:固定配色,不走种子取色,[accent] 只换主色。
+  /// 浅色:页面浅灰,卡片 / 弹层白(Low);卡内凹槽 / 按钮(Container / High /
+  /// Highest)比页面深一档。深色:夜空(蓝色为海军蓝,其余转到各自色相),
+  /// 卡片比页面亮一档、带细边。选中态为实心主色;次级按钮(secondaryContainer)为凹槽灰;
+  /// 底栏白底无胶囊。
+  static ThemeData float(
+    Brightness brightness, [
+    FloatAccent accent = kFloatBlue,
+  ]) {
+    final dark = brightness == Brightness.dark;
+    final scheme = _floatScheme(accent, dark);
+    final base = _theme(scheme);
+    Color navColor(Set<WidgetState> s) => s.contains(WidgetState.selected)
+        ? scheme.primary
+        : scheme.onSurfaceVariant;
+    bool on(Set<WidgetState> s) =>
+        s.contains(WidgetState.selected) && !s.contains(WidgetState.disabled);
+    Color onControl(Set<WidgetState> s) {
+      if (s.contains(WidgetState.disabled)) {
+        return scheme.onSurface.withValues(alpha: .38);
+      }
+      return on(s) ? scheme.onPrimary : scheme.onSurfaceVariant;
+    }
+
+    return base.copyWith(
+      extensions: [
+        !dark
+            ? AppSkin.floatLight
+            : accent == kFloatBlue
+            ? AppSkin.floatDark
+            : AppSkin(
+                float: true,
+                edge: _nightHue(AppSkin.floatDark.edge!, accent),
+              ),
+      ],
+      navigationBarTheme: base.navigationBarTheme.copyWith(
+        backgroundColor: scheme.surfaceContainerLow,
+        indicatorColor: Colors.transparent,
+        iconTheme: WidgetStateProperty.resolveWith(
+          (s) => IconThemeData(size: 24, color: navColor(s)),
+        ),
+        // 选中加粗;中文标签不留字距
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (s) => base.textTheme.labelMedium!.copyWith(
+            color: navColor(s),
+            letterSpacing: 0,
+            fontWeight: s.contains(WidgetState.selected)
+                ? FontWeight.w700
+                : FontWeight.w500,
+          ),
+        ),
+      ),
+      // 分段按钮:凹槽底、无描边,选中实心主色
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (s) => on(s) ? scheme.primary : scheme.surfaceContainerHigh,
+          ),
+          foregroundColor: WidgetStateProperty.resolveWith(onControl),
+          iconColor: WidgetStateProperty.resolveWith(onControl),
+          side: const WidgetStatePropertyAll(BorderSide.none),
+        ),
+      ),
+      chipTheme: base.chipTheme.copyWith(
+        backgroundColor: scheme.surfaceContainerLow,
+        selectedColor: scheme.primary,
+        checkmarkColor: scheme.onPrimary,
+        labelStyle: base.textTheme.labelLarge!.copyWith(
+          color: WidgetStateColor.resolveWith(onControl),
+        ),
+      ),
+      // 下面几处 M3 默认取 Container / High,在这套里是凹槽灰,改成卡片白
+      dialogTheme: DialogThemeData(backgroundColor: scheme.surfaceContainerLow),
+      datePickerTheme: DatePickerThemeData(
+        backgroundColor: scheme.surfaceContainerLow,
+      ),
+      popupMenuTheme: PopupMenuThemeData(color: scheme.surfaceContainerLow),
+      menuTheme: MenuThemeData(
+        style: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(scheme.surfaceContainerLow),
+        ),
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        linearTrackColor: scheme.surfaceContainerHighest,
+        circularTrackColor: Colors.transparent,
+      ),
+      sliderTheme: SliderThemeData(
+        inactiveTrackColor: scheme.surfaceContainerHighest,
+      ),
+    );
+  }
+
+  /// 浮卡浅色卡内凹槽 / 按钮的灰。
+  static const Color _floatGrey = Color(0xFFEBEDF0);
+
+  /// 蓝色原样;其余主色容器色取自各自种子,深色底转到各自色相。
+  /// 第三色(点数胶囊、计数徽章的粉)照种子主题的取法:蓝色取旧版浅蓝档,
+  /// 其余取各自种子。
+  static ColorScheme _floatScheme(FloatAccent a, bool dark) {
+    final brightness = dark ? Brightness.dark : Brightness.light;
+    final tert = ColorScheme.fromSeed(
+      seedColor: a == kFloatBlue ? seed : a.light,
+      brightness: brightness,
+    );
+    final base = (dark ? _floatDark : _floatLight).copyWith(
+      tertiary: tert.tertiary,
+      onTertiary: tert.onTertiary,
+      tertiaryContainer: tert.tertiaryContainer,
+      onTertiaryContainer: tert.onTertiaryContainer,
+      tertiaryFixed: tert.tertiaryFixed,
+      tertiaryFixedDim: tert.tertiaryFixedDim,
+      onTertiaryFixed: tert.onTertiaryFixed,
+      onTertiaryFixedVariant: tert.onTertiaryFixedVariant,
+    );
+    if (a == kFloatBlue) return base;
+    final own = ColorScheme.fromSeed(
+      seedColor: a.light,
+      brightness: brightness,
+    );
+    final s = base.copyWith(
+      primary: dark ? a.dark : a.light,
+      onPrimary: dark ? a.onDark : const Color(0xFFFFFFFF),
+      primaryContainer: own.primaryContainer,
+      onPrimaryContainer: own.onPrimaryContainer,
+      primaryFixed: own.primaryFixed,
+      primaryFixedDim: own.primaryFixedDim,
+      onPrimaryFixed: own.onPrimaryFixed,
+      onPrimaryFixedVariant: own.onPrimaryFixedVariant,
+      surfaceTint: own.surfaceTint,
+      inversePrimary: dark ? a.light : a.dark,
+    );
+    if (!dark) return s;
+    Color n(Color c) => _nightHue(c, a);
+    return s.copyWith(
+      secondary: n(s.secondary),
+      onSecondary: n(s.onSecondary),
+      secondaryContainer: n(s.secondaryContainer),
+      onSecondaryContainer: n(s.onSecondaryContainer),
+      surface: n(s.surface),
+      surfaceBright: n(s.surfaceBright),
+      surfaceContainerLowest: n(s.surfaceContainerLowest),
+      surfaceContainerLow: n(s.surfaceContainerLow),
+      surfaceContainer: n(s.surfaceContainer),
+      surfaceContainerHigh: n(s.surfaceContainerHigh),
+      surfaceContainerHighest: n(s.surfaceContainerHighest),
+      onSurface: n(s.onSurface),
+      onSurfaceVariant: n(s.onSurfaceVariant),
+      outline: n(s.outline),
+      outlineVariant: n(s.outlineVariant),
+    );
+  }
+
+  /// 夜空里的一色转到 [a] 的色相(按两档主色的色相差平移),色度、明度不变。
+  static Color _nightHue(Color c, FloatAccent a) {
+    final shift =
+        Hct.fromInt(a.light.toARGB32()).hue -
+        Hct.fromInt(kFloatBlue.light.toARGB32()).hue;
+    final h = Hct.fromInt(c.toARGB32());
+    return Color(Hct.from((h.hue + shift) % 360, h.chroma, h.tone).toInt());
+  }
+
+  static final ColorScheme _floatLight =
+      ColorScheme.fromSeed(seedColor: kFloatBlue.light).copyWith(
+        primary: kFloatBlue.light,
+        onPrimary: const Color(0xFFFFFFFF),
+        primaryContainer: const Color(0xFFCEE5FF),
+        onPrimaryContainer: const Color(0xFF00466E),
+        secondary: const Color(0xFF5B6A79),
+        onSecondary: const Color(0xFFFFFFFF),
+        secondaryContainer: _floatGrey,
+        onSecondaryContainer: const Color(0xFF14191F),
+        surface: const Color(0xFFF3F4F6),
+        surfaceBright: const Color(0xFFFFFFFF),
+        surfaceContainerLowest: const Color(0xFFFFFFFF),
+        surfaceContainerLow: const Color(0xFFFFFFFF),
+        surfaceContainer: _floatGrey,
+        surfaceContainerHigh: _floatGrey,
+        surfaceContainerHighest: _floatGrey,
+        onSurface: const Color(0xFF14191F),
+        onSurfaceVariant: const Color(0xFF4A515B),
+        outline: const Color(0xFF6B727C),
+        outlineVariant: const Color(0xFFDADEE4),
+        inverseSurface: const Color(0xFF2B3136),
+        onInverseSurface: const Color(0xFFEFF1F5),
+        inversePrimary: kFloatBlue.dark,
+      );
+
+  static final ColorScheme _floatDark =
+      ColorScheme.fromSeed(
+        seedColor: kFloatBlue.light,
+        brightness: Brightness.dark,
+      ).copyWith(
+        primary: kFloatBlue.dark,
+        onPrimary: kFloatBlue.onDark,
+        primaryContainer: const Color(0xFF004A76),
+        onPrimaryContainer: const Color(0xFFD0E5FD),
+        secondary: const Color(0xFFAEBDCF),
+        onSecondary: const Color(0xFF1F2D3B),
+        secondaryContainer: const Color(0xFF0B1220),
+        onSecondaryContainer: const Color(0xFFE6EDF7),
+        surface: const Color(0xFF0B1220),
+        surfaceBright: const Color(0xFF141D2E),
+        surfaceContainerLowest: const Color(0xFF141D2E),
+        surfaceContainerLow: const Color(0xFF141D2E),
+        surfaceContainer: const Color(0xFF0B1220),
+        surfaceContainerHigh: const Color(0xFF0B1220),
+        surfaceContainerHighest: const Color(0xFF0B1220),
+        onSurface: const Color(0xFFE6EDF7),
+        onSurfaceVariant: const Color(0xFF9DAAC0),
+        outline: const Color(0xFF718099),
+        outlineVariant: const Color(0xFF22304A),
+        inverseSurface: const Color(0xFFE1E2E6),
+        onInverseSurface: const Color(0xFF2B3136),
+        inversePrimary: kFloatBlue.light,
+      );
+
+  static ThemeData _build(Brightness brightness, Color seedColor) => _theme(
+    _widenSurfaces(
       ColorScheme.fromSeed(seedColor: seedColor, brightness: brightness),
       seedColor,
       brightness,
-    );
+    ),
+  );
+
+  static ThemeData _theme(ColorScheme scheme) {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,

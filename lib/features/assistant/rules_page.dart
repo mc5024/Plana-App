@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/auth/bot_session_store.dart';
 import '../../core/net/backend_config.dart';
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/util/haptics.dart';
 import '../generate/widgets/common.dart' show confirmDialog, hintSnack;
@@ -368,123 +369,127 @@ class _PresetCard extends StatelessWidget {
       for (final f in RulesFamily.values)
         if (models.contains(f) && !inUse.contains(f)) f,
     ];
-    return Material(
-      color: scheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: inUse.isNotEmpty
-            ? BorderSide(color: scheme.primary, width: 1.4)
-            : BorderSide.none,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        // 点卡片 = 支持的模型都改用这份。两个模型想分开用的,点完再点另一个模型
-        // 要用的那张卡(比如它的默认规则),那个模型就换回去了
-        onTap: notInUse.isEmpty
-            ? null
-            : () {
-                for (final f in notInUse) {
-                  onUse(f);
-                }
-              },
-        child: Stack(
-          children: [
-            Padding(
-              // 上下对称,标题那两行在卡片里垂直居中。角标是叠在上面的
-              // (Positioned),不占高度;上边距留够了,它压不到标题和右边的按钮
-              padding: const EdgeInsets.fromLTRB(16, 16, 6, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: context.texts.bodyLarge!.copyWith(
-                                  fontWeight: FontWeight.w700,
+    return Lifted(
+      radius: BorderRadius.circular(16),
+      child: Material(
+        color: scheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: inUse.isNotEmpty
+              ? BorderSide(color: scheme.primary, width: 1.4)
+              : BorderSide.none,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          // 点卡片 = 支持的模型都改用这份。两个模型想分开用的,点完再点另一个模型
+          // 要用的那张卡(比如它的默认规则),那个模型就换回去了
+          onTap: notInUse.isEmpty
+              ? null
+              : () {
+                  for (final f in notInUse) {
+                    onUse(f);
+                  }
+                },
+          child: Stack(
+            children: [
+              Padding(
+                // 上下对称,标题那两行在卡片里垂直居中。角标是叠在上面的
+                // (Positioned),不占高度;上边距留够了,它压不到标题和右边的按钮
+                padding: const EdgeInsets.fromLTRB(16, 16, 6, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: context.texts.bodyLarge!.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
-                            ),
-                            if (isDefault) const _Tag('默认'),
-                            for (final f in RulesFamily.values)
-                              if (models.contains(f)) _Tag(rulesFamilyLabel(f)),
-                          ],
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          subtitle,
-                          style: context.texts.labelSmall!.copyWith(
-                            color: scheme.outline,
+                              if (isDefault) const _Tag('默认'),
+                              for (final f in RulesFamily.values)
+                                if (models.contains(f))
+                                  _Tag(rulesFamilyLabel(f)),
+                            ],
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // 与提示词预设页同一排按钮:编辑、导出直接摆出来,不收进菜单
-                  const SizedBox(width: 4),
-                  IconButton(
-                    tooltip: '编辑',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: onEdit,
-                    icon: Icon(
-                      Icons.edit_outlined,
-                      size: 19,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '导出',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: onExport,
-                    icon: Icon(
-                      Icons.ios_share,
-                      size: 19,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                  if (onDelete != null)
-                    IconButton(
-                      tooltip: '删除',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: onDelete,
-                      icon: Icon(
-                        Icons.delete_outline,
-                        size: 19,
-                        color: scheme.error.withValues(alpha: .85),
+                          const SizedBox(height: 3),
+                          Text(
+                            subtitle,
+                            style: context.texts.labelSmall!.copyWith(
+                              color: scheme.outline,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                ],
-              ),
-            ),
-            if (badge != null)
-              Positioned(
-                top: 0,
-                right: 0,
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(8, 1, 11, 2),
-                  decoration: BoxDecoration(
-                    color: scheme.primary,
-                    borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(10),
+                    // 与提示词预设页同一排按钮:编辑、导出直接摆出来,不收进菜单
+                    const SizedBox(width: 4),
+                    IconButton(
+                      tooltip: '编辑',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onEdit,
+                      icon: Icon(
+                        Icons.edit_outlined,
+                        size: 19,
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    badge,
-                    style: context.texts.labelSmall!.copyWith(
-                      color: scheme.onPrimary,
-                      height: 1.2,
-                      fontWeight: FontWeight.w700,
+                    IconButton(
+                      tooltip: '导出',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onExport,
+                      icon: Icon(
+                        Icons.ios_share,
+                        size: 19,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    if (onDelete != null)
+                      IconButton(
+                        tooltip: '删除',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: onDelete,
+                        icon: Icon(
+                          Icons.delete_outline,
+                          size: 19,
+                          color: scheme.error.withValues(alpha: .85),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (badge != null)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(8, 1, 11, 2),
+                    decoration: BoxDecoration(
+                      color: scheme.primary,
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(10),
+                      ),
+                    ),
+                    child: Text(
+                      badge,
+                      style: context.texts.labelSmall!.copyWith(
+                        color: scheme.onPrimary,
+                        height: 1.2,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

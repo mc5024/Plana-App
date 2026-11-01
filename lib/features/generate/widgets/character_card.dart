@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/theme_settings.dart';
 import '../../../core/util/nai_tokenizer.dart';
@@ -317,9 +318,12 @@ class _CharacterTile extends ConsumerWidget {
         ),
       ),
     );
+    // 浮卡样式下角色块是凹槽灰,块里的圆钮反用卡片白
+    final btnFill = context.skin.float ? scheme.surfaceContainerLow : null;
     final toggleBtn = RoundIconBtn(
       Icons.power_settings_new,
       size: controlSize,
+      background: btnFill,
       color: enabled ? scheme.primary : scheme.outline,
       onTap: () => notifier.updateCharacter(char.id, enabled: !enabled),
       tooltip: enabled ? '停用(保留配置)' : '启用',
@@ -327,6 +331,7 @@ class _CharacterTile extends ConsumerWidget {
     final deleteBtn = RoundIconBtn(
       Icons.delete_outline,
       size: controlSize,
+      background: btnFill,
       color: scheme.error,
       onTap: () => _remove(context, ref),
       tooltip: '删除角色',
@@ -442,6 +447,7 @@ class _CharacterTile extends ConsumerWidget {
                         RoundIconBtn(
                           Icons.location_on_outlined,
                           size: controlSize,
+                          background: btnFill,
                           color: posColor,
                           onTap: openPosition,
                           tooltip: positionTip,
@@ -479,6 +485,7 @@ class _CharacterTile extends ConsumerWidget {
                               RoundIconBtn(
                                 Icons.location_on_outlined,
                                 size: controlSize,
+                                background: btnFill,
                                 color: posColor,
                                 onTap: openPosition,
                                 tooltip: positionTip,
@@ -545,7 +552,9 @@ class _PositionChip extends StatelessWidget {
     final scheme = context.scheme;
     final filled = enabled && !auto;
     return Material(
-      color: filled ? scheme.primaryContainer : Colors.transparent,
+      color: filled
+          ? context.solidFill(scheme.primaryContainer)
+          : Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(6),
         side: filled
@@ -563,7 +572,7 @@ class _PositionChip extends StatelessWidget {
             style: context.texts.labelMedium!.copyWith(
               fontWeight: FontWeight.w600,
               color: filled
-                  ? scheme.onPrimaryContainer
+                  ? context.onSolidFill(scheme.onPrimaryContainer)
                   : enabled
                   ? scheme.onSurfaceVariant
                   : scheme.outline,
@@ -604,7 +613,9 @@ class _Avatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = context.scheme;
     final slot = ColoredBox(
-      color: scheme.surfaceContainerHighest,
+      color: context.skin.float
+          ? scheme.surfaceContainerLow
+          : scheme.surfaceContainerHighest,
       child: Center(
         child: Icon(
           Icons.person_search_outlined,

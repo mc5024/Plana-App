@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../store/app_stores.dart';
 import '../store/prefs_store.dart';
+import 'app_theme.dart';
 
 /// 主题色档位。
 class ThemeSeed {
@@ -18,21 +19,46 @@ class ThemeSeed {
 // 按色环排列(新增档位只管加,持久化按 key 不受顺序影响)。
 const themeSeeds = <ThemeSeed>[
   ThemeSeed('gold', '金', Color(0xFFD4A72C)),
-  ThemeSeed('orange', '橙', Color(0xFFEF6C00)),
-  ThemeSeed('red', '红', Color(0xFFC62828)),
   ThemeSeed('rose', '粉', Color(0xFFD81B60)),
-  ThemeSeed('plum', '梅', Color(0xFF8E24AA)),
   ThemeSeed('violet', '紫', Color(0xFF6750A4)),
-  ThemeSeed('indigo', '靛', Color(0xFF3949AB)),
   ThemeSeed('sky', '浅蓝', Color(0xFF4FA3E3)),
   ThemeSeed('teal', '青', Color(0xFF00897B)),
-  ThemeSeed('green', '绿', Color(0xFF2E7D32)),
-  ThemeSeed('brown', '棕', Color(0xFF795548)),
-  ThemeSeed('grey', '灰', Color(0xFF607D8B)),
 ];
+
+/// 下架的档位就近归到留下的那档。
+const _retiredSeeds = {
+  'orange': 'gold',
+  'brown': 'gold',
+  'red': 'rose',
+  'plum': 'violet',
+  'indigo': 'sky',
+  'grey': 'sky',
+  'green': 'teal',
+};
 
 /// 默认主题色(未选过时的档位)。
 const kDefaultSeedKey = 'sky';
+
+/// 浮卡主题:固定配色 + 组件外观,不走种子取色。和种子档位共用
+/// [ThemeSettings.seedKey]:蓝色是 `float`,其余 `float:<档位>`。
+const kFloatThemeKey = 'float';
+
+String floatThemeKey(FloatAccent a) =>
+    a == kFloatBlue ? kFloatThemeKey : '$kFloatThemeKey:${a.key}';
+
+FloatAccent? _floatAccentOf(String key) {
+  for (final a in floatAccents) {
+    if (floatThemeKey(a) == key) return a;
+  }
+  return null;
+}
+
+/// 认得的档位原样留,下架的就近归档,其余回退默认。
+String _seedKeyOf(Object? v) {
+  if (v is! String) return kDefaultSeedKey;
+  if (_floatAccentOf(v) != null || themeSeeds.any((s) => s.key == v)) return v;
+  return _retiredSeeds[v] ?? kDefaultSeedKey;
+}
 
 /// 外观与触感设置(持久化):深浅模式 + 主题色 + 振动总开关 + 版式偏好。
 class ThemeSettings {
@@ -70,6 +96,12 @@ class ThemeSettings {
     orElse: () => themeSeeds.firstWhere((s) => s.key == kDefaultSeedKey),
   );
 
+  /// 选的浮卡档位;种子档位为 null。
+  FloatAccent? get floatAccent => _floatAccentOf(seedKey);
+
+  /// 选的是浮卡主题,不是种子档位。
+  bool get float => floatAccent != null;
+
   ThemeSettings copyWith({
     ThemeMode? mode,
     String? seedKey,
@@ -86,12 +118,10 @@ class ThemeSettings {
     systemPicker: systemPicker ?? this.systemPicker,
   );
 
-  /// 脏数据(旧版本/已下架的档位,如早先那档深蓝)回退默认。
+  /// 脏数据(旧版本/早先那档深蓝等)回退默认。
   factory ThemeSettings.fromJson(Map<String, dynamic> j) => ThemeSettings(
     mode: ThemeMode.values.asNameMap()[j['mode']] ?? ThemeMode.light,
-    seedKey: themeSeeds.any((s) => s.key == j['seed'])
-        ? j['seed'] as String
-        : kDefaultSeedKey,
+    seedKey: _seedKeyOf(j['seed']),
     haptics: j['haptics'] != false,
     showAssistant: j['showAssistant'] != false,
     compactCharCards: j['compactCharCards'] == true,

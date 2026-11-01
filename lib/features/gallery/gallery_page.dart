@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/store/app_stores.dart';
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../generate/generation_controller.dart';
 import '../generate/widgets/common.dart' show hintSnack;
@@ -387,7 +388,7 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
             ),
             if (previewImage != null && !showGen)
               Material(
-                color: context.scheme.surfaceContainer,
+                color: context.raisedFill(context.scheme.surfaceContainer),
                 child: Row(
                   children: [
                     IconButton(

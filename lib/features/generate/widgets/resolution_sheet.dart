@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/util/haptics.dart';
 import '../generate_state.dart';
@@ -786,12 +787,12 @@ class _PresetCard extends StatelessWidget {
     const box = 44.0;
     final w = ratio >= 1 ? box : box * ratio;
     final h = ratio >= 1 ? box / ratio : box;
+    // 浮卡选中是实心主色,框和小字换成前景色
+    final solid = selected && context.skin.float;
     return AnimatedContainer(
       duration: Motion.fast,
       decoration: BoxDecoration(
-        color: selected
-            ? scheme.secondaryContainer
-            : scheme.surfaceContainerHigh,
+        color: selected ? context.selectedFill : scheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: selected ? scheme.primary : Colors.transparent,
@@ -820,7 +821,11 @@ class _PresetCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(5),
                         border: Border.all(
-                          color: selected ? scheme.primary : scheme.outline,
+                          color: solid
+                              ? context.onSelectedFill
+                              : selected
+                              ? scheme.primary
+                              : scheme.outline,
                           width: 2,
                         ),
                       ),
@@ -834,25 +839,26 @@ class _PresetCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: context.texts.bodySmall!.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: selected
-                        ? scheme.onSecondaryContainer
-                        : scheme.onSurface,
+                    color: selected ? context.onSelectedFill : scheme.onSurface,
                   ),
                 ),
                 Text(
                   preset.ratio,
                   style: TextStyle(
                     fontSize: 10,
-                    color: scheme.onSurfaceVariant,
+                    color: solid
+                        ? context.onSelectedFill
+                        : scheme.onSurfaceVariant,
                   ),
                 ),
                 Text(
                   '${preset.width}×${preset.height}',
-                  style: mono(
-                    context,
-                    size: 9.5,
-                    weight: FontWeight.w500,
-                  ).copyWith(color: scheme.outline),
+                  style: mono(context, size: 9.5, weight: FontWeight.w500)
+                      .copyWith(
+                        color: solid
+                            ? context.onSelectedFill.withValues(alpha: .8)
+                            : scheme.outline,
+                      ),
                 ),
               ],
             ),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+
+import '../../../core/theme/app_skin.dart';
 import '../gallery_date_filter.dart';
 import 'gallery_range_picker.dart';
 
@@ -143,10 +145,10 @@ class _DateFilterSheet extends StatelessWidget {
                         ),
                         textStyle: labelStyle,
                         backgroundColor: current.kind == value
-                            ? scheme.secondaryContainer
+                            ? context.selectedFill
                             : scheme.surfaceContainerHigh,
                         foregroundColor: current.kind == value
-                            ? scheme.onSecondaryContainer
+                            ? context.onSelectedFill
                             : scheme.onSurfaceVariant,
                       ),
                       onPressed: () => Navigator.pop(context, value),
@@ -200,13 +202,17 @@ class _CustomDateOption extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final foreground = selected ? scheme.onPrimaryContainer : scheme.onSurface;
+    final foreground = selected
+        ? context.onSolidFill(scheme.onPrimaryContainer)
+        : scheme.onSurface;
     final radius = BorderRadius.circular(16);
     return Semantics(
       selected: selected,
       button: true,
       child: Material(
-        color: selected ? scheme.primaryContainer : scheme.surfaceContainer,
+        color: selected
+            ? context.solidFill(scheme.primaryContainer)
+            : scheme.surfaceContainer,
         borderRadius: radius,
         child: InkWell(
           borderRadius: radius,
@@ -232,7 +238,7 @@ class _CustomDateOption extends StatelessWidget {
                         subtitle,
                         style: theme.textTheme.bodyMedium!.copyWith(
                           color: selected
-                              ? scheme.onPrimaryContainer
+                              ? context.onSolidFill(scheme.onPrimaryContainer)
                               : scheme.onSurfaceVariant,
                         ),
                       ),

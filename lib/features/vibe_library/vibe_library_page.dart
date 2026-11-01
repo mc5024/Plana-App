@@ -10,6 +10,7 @@ import '../../core/auth/bot_session_store.dart';
 import '../../core/net/anlas_provider.dart';
 import '../../core/net/backend_client.dart';
 import '../../core/net/remote_image.dart';
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/fast_scroll_handle.dart';
 import '../../core/ui/scroll_memory.dart';
@@ -938,7 +939,7 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
                 hintText: '搜索名称或标签…',
                 prefixIcon: const Icon(Icons.search, size: 20),
                 filled: true,
-                fillColor: scheme.surfaceContainerHigh,
+                fillColor: context.pageControlFill,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -984,7 +985,7 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
       height: 42,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: scheme.surfaceContainerHigh,
+          color: context.pageControlFill,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Stack(
@@ -1008,7 +1009,7 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
                             width: segW - 6,
                             child: DecoratedBox(
                               decoration: BoxDecoration(
-                                color: scheme.surface,
+                                color: context.segThumb,
                                 borderRadius: BorderRadius.circular(9),
                                 boxShadow: [
                                   BoxShadow(
@@ -1063,7 +1064,11 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
   Widget _segLabel(int i, IconData icon, String label, double t) {
     final scheme = context.scheme;
     final sel = i == 0 ? 1 - t : t; // 越靠近该 tab 越接近 1
-    final color = Color.lerp(scheme.onSurfaceVariant, scheme.primary, sel);
+    final color = Color.lerp(
+      scheme.onSurfaceVariant,
+      context.segLabel(scheme.primary),
+      sel,
+    );
     return Expanded(
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1129,7 +1134,7 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
               color: sel ? scheme.onPrimary : scheme.onSurfaceVariant,
             ),
             selectedColor: scheme.primary,
-            backgroundColor: scheme.surfaceContainerHigh,
+            backgroundColor: context.pageControlFill,
             side: BorderSide.none,
             showCheckmark: false,
           ),
@@ -1571,92 +1576,95 @@ class _VibeCardShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: checked
-            ? scheme.primaryContainer.withValues(alpha: .28)
-            : scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      // 边框放前景层:选中态加粗高亮只是绘制,不占布局。
-      foregroundDecoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
+    return Lifted(
+      radius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
           color: checked
-              ? scheme.primary.withValues(alpha: .7)
-              : scheme.outlineVariant.withValues(alpha: .3),
-          width: checked ? 1.8 : 1,
+              ? scheme.primaryContainer.withValues(alpha: .28)
+              : scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(16),
         ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: busy ? null : onTap,
-        onLongPress: busy ? null : onLongPress,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 缩略图区(占卡片上部剩余空间)
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  thumbnail,
-                  if (checked)
-                    Container(color: scheme.primary.withValues(alpha: .18)),
-                  Positioned(top: 8, left: 8, child: _checkbox(scheme)),
-                  if (busy)
-                    Container(
-                      color: Colors.black.withValues(alpha: .42),
-                      child: const Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+        // 边框放前景层:选中态加粗高亮只是绘制,不占布局。
+        foregroundDecoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: checked
+                ? scheme.primary.withValues(alpha: .7)
+                : scheme.outlineVariant.withValues(alpha: .3),
+            width: checked ? 1.8 : 1,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: busy ? null : onTap,
+          onLongPress: busy ? null : onLongPress,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 缩略图区(占卡片上部剩余空间)
+              Expanded(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    thumbnail,
+                    if (checked)
+                      Container(color: scheme.primary.withValues(alpha: .18)),
+                    Positioned(top: 8, left: 8, child: _checkbox(scheme)),
+                    if (busy)
+                      Container(
+                        color: Colors.black.withValues(alpha: .42),
+                        child: const Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
-              ),
-            ),
-            // 卡片体:文本列(名称 + 副行)+ 右侧更多菜单(相对整块垂直居中)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 6, 6, 9),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: context.texts.bodyMedium!.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: compatible
-                                ? (checked ? scheme.primary : null)
-                                : scheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        // 副行:标签(有则显示)+ 编码状态(模型名 / 未编码)
-                        _metaRow(context),
-                      ],
-                    ),
-                  ),
-                  if (nameTrailing != null) ...[
-                    const SizedBox(width: 2),
-                    nameTrailing!,
                   ],
-                ],
+                ),
               ),
-            ),
-          ],
+              // 卡片体:文本列(名称 + 副行)+ 右侧更多菜单(相对整块垂直居中)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 6, 6, 9),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.texts.bodyMedium!.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: compatible
+                                  ? (checked ? scheme.primary : null)
+                                  : scheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          // 副行:标签(有则显示)+ 编码状态(模型名 / 未编码)
+                          _metaRow(context),
+                        ],
+                      ),
+                    ),
+                    if (nameTrailing != null) ...[
+                      const SizedBox(width: 2),
+                      nameTrailing!,
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

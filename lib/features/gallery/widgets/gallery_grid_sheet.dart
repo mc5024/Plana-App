@@ -19,6 +19,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../core/store/app_stores.dart';
 import '../../../core/store/ui_prefs.dart';
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/ui/fast_scroll_handle.dart';
 import '../../../core/util/document_save.dart';
@@ -815,10 +816,10 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     required bool active,
     required VoidCallback onTap,
   }) {
-    final fg = active ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
+    final fg = active ? context.onSelectedFill : scheme.onSurfaceVariant;
     return Material(
       key: key,
-      color: active ? scheme.secondaryContainer : scheme.surfaceContainerHigh,
+      color: active ? context.selectedFill : scheme.surfaceContainerHigh,
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -3389,7 +3390,7 @@ class _LiftedThumb extends ConsumerWidget {
   Widget _menu(BuildContext context) {
     final scheme = context.scheme;
     return Material(
-      color: scheme.surfaceContainerHigh,
+      color: context.raisedFill(scheme.surfaceContainerHigh),
       elevation: 6,
       borderRadius: BorderRadius.circular(14),
       clipBehavior: Clip.antiAlias,

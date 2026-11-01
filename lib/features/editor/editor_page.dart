@@ -1594,7 +1594,9 @@ class _EditorPageState extends ConsumerState<EditorPage>
             }
           },
           child: Scaffold(
+            // 底边安全区由底栏自己垫,底栏的底色才能铺到屏幕底
             body: SafeArea(
+              bottom: false,
               child: Column(
                 children: [
                   // 滚动正文时、或权重面板在时整栏收起:贴底对齐 + 裁切,

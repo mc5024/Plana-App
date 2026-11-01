@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../generate/widgets/common.dart' show hintSnack, sharedAxisRoute;
 import 'image_metadata.dart';
@@ -47,26 +48,32 @@ class MetadataDetailPage extends StatelessWidget {
         ],
       ),
       bottomNavigationBar: standalone && meta.isNovelAI
-          ? SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
-                child: FilledButton.icon(
-                  onPressed: () => Navigator.of(context).push(
-                    sharedAxisRoute(
-                      ImportImagePanel(
-                        bytes: bytes,
-                        fileName: fileName,
-                        displayName: fileName.replaceAll(
-                          RegExp(r'\.[^.]+$'),
-                          '',
+          ? Docked(
+              child: ColoredBox(
+                color: context.raisedFill(Colors.transparent),
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        sharedAxisRoute(
+                          ImportImagePanel(
+                            bytes: bytes,
+                            fileName: fileName,
+                            displayName: fileName.replaceAll(
+                              RegExp(r'\.[^.]+$'),
+                              '',
+                            ),
+                          ),
                         ),
                       ),
+                      icon: const Icon(Icons.download, size: 18),
+                      label: const Text('去导入面板(导入参数 / 用作参考)'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(46),
+                      ),
                     ),
-                  ),
-                  icon: const Icon(Icons.download, size: 18),
-                  label: const Text('去导入面板(导入参数 / 用作参考)'),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(46),
                   ),
                 ),
               ),
@@ -251,7 +258,8 @@ class MetadataDetailPage extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.all(11),
           decoration: BoxDecoration(
-            color: scheme.surfaceContainerHigh,
+            color: context.raisedFill(scheme.surfaceContainerHigh),
+            border: context.edgeBorder,
             borderRadius: BorderRadius.circular(11),
           ),
           // 可选中:整段复制走右上角按钮,这里是给"只要其中几个 tag"的场景
@@ -291,7 +299,8 @@ class MetadataDetailPage extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHigh,
+        color: context.raisedFill(scheme.surfaceContainerHigh),
+        border: context.edgeBorder,
         borderRadius: BorderRadius.circular(11),
       ),
       child: Column(
@@ -371,7 +380,8 @@ class MetadataDetailPage extends StatelessWidget {
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: scheme.surfaceContainerHigh,
+                        color: context.raisedFill(scheme.surfaceContainerHigh),
+                        border: context.edgeBorder,
                         borderRadius: BorderRadius.circular(9),
                       ),
                       child: Column(
@@ -415,7 +425,8 @@ class MetadataDetailPage extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               decoration: BoxDecoration(
-                color: scheme.surfaceContainerHigh,
+                color: context.raisedFill(scheme.surfaceContainerHigh),
+                border: context.edgeBorder,
                 borderRadius: BorderRadius.circular(9),
               ),
               child: Row(
@@ -461,7 +472,8 @@ class MetadataDetailPage extends StatelessWidget {
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: scheme.surfaceContainerHigh,
+                        color: context.raisedFill(scheme.surfaceContainerHigh),
+                        border: context.edgeBorder,
                         borderRadius: BorderRadius.circular(9),
                       ),
                       child: Column(
@@ -513,7 +525,8 @@ class MetadataDetailPage extends StatelessWidget {
           constraints: const BoxConstraints(maxHeight: 260),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: scheme.surfaceContainerHigh,
+            color: context.raisedFill(scheme.surfaceContainerHigh),
+            border: context.edgeBorder,
             borderRadius: BorderRadius.circular(11),
           ),
           child: SingleChildScrollView(

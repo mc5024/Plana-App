@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/auth/bot_session_store.dart';
 import '../../core/net/backend_client.dart';
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../generate/generate_state.dart';
 import '../generate/models.dart';
@@ -700,7 +701,7 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
                         },
                       ),
                 filled: true,
-                fillColor: scheme.surfaceContainerHigh,
+                fillColor: context.pageControlFill,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -736,7 +737,7 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
       height: 42,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: scheme.surfaceContainerHigh,
+          color: context.pageControlFill,
           borderRadius: BorderRadius.circular(12),
         ),
         child: AnimatedBuilder(
@@ -756,7 +757,7 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
                       width: segW - 6,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: scheme.surface,
+                          color: context.segThumb,
                           borderRadius: BorderRadius.circular(9),
                           boxShadow: [
                             BoxShadow(
@@ -789,7 +790,11 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
   Widget _segLabel(int index, IconData icon, String text, double t) {
     final scheme = context.scheme;
     final sel = (1 - (t - index).abs()).clamp(0.0, 1.0);
-    final color = Color.lerp(scheme.onSurfaceVariant, scheme.onSurface, sel)!;
+    final color = Color.lerp(
+      scheme.onSurfaceVariant,
+      context.segLabel(scheme.onSurface),
+      sel,
+    )!;
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(9),
@@ -1950,40 +1955,49 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
   }
 
   Widget _bottomBar(ColorScheme scheme, {required bool ready}) {
-    return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(_kEdge, 8, _kEdge, 10),
+    return Docked(
+      child: DecoratedBox(
         decoration: BoxDecoration(
-          color: scheme.surface,
-          border: Border(
-            top: BorderSide(color: scheme.outlineVariant.withValues(alpha: .4)),
-          ),
-        ),
-        child: Row(
-          children: [
-            TextButton(
-              onPressed: _selected.isEmpty
-                  ? null
-                  : () => setState(_selected.clear),
-              child: Text(
-                '清空',
-                style: TextStyle(
-                  color: _selected.isEmpty ? null : scheme.error,
+          color: context.raisedFill(scheme.surface),
+          border: context.skin.float
+              ? null
+              : Border(
+                  top: BorderSide(
+                    color: scheme.outlineVariant.withValues(alpha: .4),
+                  ),
                 ),
-              ),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(_kEdge, 8, _kEdge, 10),
+            child: Row(
+              children: [
+                TextButton(
+                  onPressed: _selected.isEmpty
+                      ? null
+                      : () => setState(_selected.clear),
+                  child: Text(
+                    '清空',
+                    style: TextStyle(
+                      color: _selected.isEmpty ? null : scheme.error,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('取消'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  // 全集没加载出来时确认会把已挂的误清空,禁掉
+                  onPressed: ready ? _confirm : null,
+                  child: Text('确认挂载 (${_selected.length})'),
+                ),
+              ],
             ),
-            const Spacer(),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('取消'),
-            ),
-            const SizedBox(width: 8),
-            FilledButton(
-              // 全集没加载出来时确认会把已挂的误清空,禁掉
-              onPressed: ready ? _confirm : null,
-              child: Text('确认挂载 (${_selected.length})'),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -2114,26 +2128,29 @@ class _CardShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    return Material(
-      color: selected
-          ? scheme.primary.withValues(alpha: .08)
-          : scheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(14),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(10, 9, 6, 9),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: selected
-                  ? scheme.primary
-                  : scheme.outlineVariant.withValues(alpha: .35),
-              width: selected ? 1.5 : 1,
+    return Lifted(
+      radius: BorderRadius.circular(14),
+      child: Material(
+        color: selected
+            ? scheme.primary.withValues(alpha: .08)
+            : scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(14),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(10, 9, 6, 9),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: selected
+                    ? scheme.primary
+                    : scheme.outlineVariant.withValues(alpha: .35),
+                width: selected ? 1.5 : 1,
+              ),
             ),
+            child: child,
           ),
-          child: child,
         ),
       ),
     );

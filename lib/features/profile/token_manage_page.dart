@@ -6,6 +6,7 @@ import '../../core/auth/nai_keys.dart';
 import '../../core/net/nai_client.dart';
 import '../../core/net/nai_endpoint.dart';
 import '../../core/net/nai_key_status.dart';
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/util/haptics.dart';
 import '../generate/widgets/common.dart'
@@ -302,226 +303,231 @@ class _KeyTile extends ConsumerWidget {
   }
 
   Widget _tile(BuildContext context, ColorScheme scheme, bool named) {
-    return AnimatedContainer(
-      duration: Motion.fast,
-      curve: Motion.standard,
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
-        // 描边两态同宽,只变色 —— 变宽度会让整块内容跟着抖一下。
-        border: Border.all(
-          color: primary
-              ? scheme.primary.withValues(alpha: .45)
-              : Colors.transparent,
+    return Lifted(
+      radius: BorderRadius.circular(14),
+      child: AnimatedContainer(
+        duration: Motion.fast,
+        curve: Motion.standard,
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(14),
+          // 描边两态同宽,只变色 —— 变宽度会让整块内容跟着抖一下。
+          border: Border.all(
+            color: primary
+                ? scheme.primary.withValues(alpha: .45)
+                : Colors.transparent,
+          ),
         ),
-      ),
-      // 整卡可点 = 设为主账号。内边距搁在 InkWell **里面**,水波才铺满整块
-      // (搁外层的话右下角会短一截)。改名/删除两颗按钮和两个勾选项各有自己的
-      // 点击区,按在它们身上时子级先接手,不会误切主账号。
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: primary ? null : onPrimary,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(6, 4, 8, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: Row(
-                          children: [
-                            // 单选钮:主账号是这一列里**只能有一个**的东西,
-                            // 正是单选的语义。分组由外层 RadioGroup 管。
-                            IgnorePointer(
-                              child: Radio<String>(
-                                value: k.id,
-                                materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            // 完全不参与的(副账号两个条件都没勾)压暗:它还在列表
-                            // 里,但一眼要能看出「这把现在不干活」。
-                            Flexible(
-                              child: AnimatedOpacity(
-                                duration: Motion.fast,
-                                opacity: primary || k.joins ? 1 : .45,
-                                child: Text(
-                                  naiKeyTitle(k),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: named
-                                      ? context.texts.bodyMedium!.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                        )
-                                      : mono(context, size: 13),
+        // 整卡可点 = 设为主账号。内边距搁在 InkWell **里面**,水波才铺满整块
+        // (搁外层的话右下角会短一截)。改名/删除两颗按钮和两个勾选项各有自己的
+        // 点击区,按在它们身上时子级先接手,不会误切主账号。
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: primary ? null : onPrimary,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(6, 4, 8, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Row(
+                            children: [
+                              // 单选钮:主账号是这一列里**只能有一个**的东西,
+                              // 正是单选的语义。分组由外层 RadioGroup 管。
+                              IgnorePointer(
+                                child: Radio<String>(
+                                  value: k.id,
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
                                 ),
                               ),
-                            ),
-                            // 第三方那把挂上主机名:两把 key 摆在一起,不写地址
-                            // 就看不出哪把在打哪儿 —— 而它们的点数、限流、能不能
-                            // 出图全是各算各的。官方那几把不挂,那是默认。
-                            if (k.isThirdParty) ...[
                               const SizedBox(width: 6),
+                              // 完全不参与的(副账号两个条件都没勾)压暗:它还在列表
+                              // 里,但一眼要能看出「这把现在不干活」。
                               Flexible(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 7,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: scheme.surfaceContainerHighest,
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
+                                child: AnimatedOpacity(
+                                  duration: Motion.fast,
+                                  opacity: primary || k.joins ? 1 : .45,
                                   child: Text(
-                                    naiBaseHost(k.endpoint),
+                                    naiKeyTitle(k),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: mono(
-                                      context,
-                                      size: 10,
-                                    ).copyWith(color: scheme.onSurfaceVariant),
+                                    style: named
+                                        ? context.texts.bodyMedium!.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          )
+                                        : mono(context, size: 13),
                                   ),
                                 ),
                               ),
-                            ],
-                            // 主账号明标出来:圆钮只说明「选中的是它」,说不出这个
-                            // 身份意味着什么,而它跟副账号的差别(强制生成 + 强制
-                            // 花点数)是实打实的。
-                            AnimatedSize(
-                              duration: Motion.fast,
-                              curve: Motion.standard,
-                              child: AnimatedOpacity(
-                                duration: Motion.fast,
-                                opacity: primary ? 1 : 0,
-                                child: primary
-                                    ? Padding(
-                                        padding: const EdgeInsets.only(left: 8),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 7,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: scheme.primaryContainer,
-                                            borderRadius: BorderRadius.circular(
-                                              6,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            '主账号',
-                                            style: context.texts.labelSmall!
-                                                .copyWith(
-                                                  fontWeight: FontWeight.w700,
-                                                  color:
-                                                      scheme.onPrimaryContainer,
-                                                ),
-                                          ),
-                                        ),
-                                      )
-                                    : const SizedBox.shrink(),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    _TileIcon(
-                      icon: Icons.copy_outlined,
-                      tooltip: '复制令牌',
-                      color: scheme.outline,
-                      onPressed: onCopy,
-                    ),
-                    _TileIcon(
-                      icon: Icons.edit_outlined,
-                      tooltip: '重命名',
-                      color: scheme.outline,
-                      onPressed: onRename,
-                    ),
-                    _TileIcon(
-                      icon: Icons.delete_outline,
-                      tooltip: '删除',
-                      color: scheme.error,
-                      onPressed: onDelete,
-                    ),
-                  ],
-                ),
-                Padding(
-                  // 左边缩进对齐名字(让开那颗单选钮)
-                  padding: const EdgeInsets.fromLTRB(32, 0, 4, 6),
-                  child: AnimatedOpacity(
-                    duration: Motion.fast,
-                    opacity: primary || k.joins ? 1 : .45,
-                    child: NaiKeyStatusLine(
-                      k: k,
-                      // 起过名的才补尾号:没起名时标题本身就是尾号,写两遍是复述。
-                      prefix: named ? naiKeyTail(k.token) : null,
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 28, right: 4),
-                  // 定高:主账号那行(一句说明)天生比副账号那行(两个勾选项)矮,
-                  // 不钉死的话换主账号时整块会一涨一缩。钉死之后只剩内容交叉淡入。
-                  child: SizedBox(
-                    height: _kOptionRowHeight,
-                    child: AnimatedSwitcher(
-                      duration: Motion.fast,
-                      child: primary
-                          // 主账号没有开关:它是「一定会被用到」的那个 —— 点数读数、
-                          // 超分、预览、续期都认它,再给个「不参与生成」的开关就自相
-                          // 矛盾了。想换成别的号,去选别人那块。
-                          ? Row(
-                              key: const ValueKey('primary'),
-                              children: [
-                                Icon(
-                                  Icons.lock_outline,
-                                  size: 14,
-                                  color: scheme.outline,
-                                ),
+                              // 第三方那把挂上主机名:两把 key 摆在一起,不写地址
+                              // 就看不出哪把在打哪儿 —— 而它们的点数、限流、能不能
+                              // 出图全是各算各的。官方那几把不挂,那是默认。
+                              if (k.isThirdParty) ...[
                                 const SizedBox(width: 6),
                                 Flexible(
-                                  child: Text(
-                                    '生成与点数都用它,不可关闭',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: context.texts.labelMedium!.copyWith(
-                                      color: scheme.outline,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 7,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: scheme.surfaceContainerHighest,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      naiBaseHost(k.endpoint),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: mono(context, size: 10).copyWith(
+                                        color: scheme.onSurfaceVariant,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ],
-                            )
-                          : Row(
-                              key: const ValueKey('secondary'),
-                              children: [
-                                Expanded(
-                                  child: _CheckOption(
-                                    label: '参与免费生成',
-                                    value: k.joinFree,
-                                    onChanged: (v) => onToggle('free', v),
-                                  ),
+                              // 主账号明标出来:圆钮只说明「选中的是它」,说不出这个
+                              // 身份意味着什么,而它跟副账号的差别(强制生成 + 强制
+                              // 花点数)是实打实的。
+                              AnimatedSize(
+                                duration: Motion.fast,
+                                curve: Motion.standard,
+                                child: AnimatedOpacity(
+                                  duration: Motion.fast,
+                                  opacity: primary ? 1 : 0,
+                                  child: primary
+                                      ? Padding(
+                                          padding: const EdgeInsets.only(
+                                            left: 8,
+                                          ),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 7,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: context.solidFill(
+                                                scheme.primaryContainer,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              '主账号',
+                                              style: context.texts.labelSmall!
+                                                  .copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                    color: context.onSolidFill(
+                                                      scheme.onPrimaryContainer,
+                                                    ),
+                                                  ),
+                                            ),
+                                          ),
+                                        )
+                                      : const SizedBox.shrink(),
                                 ),
-                                Expanded(
-                                  child: _CheckOption(
-                                    label: '参与点数生成',
-                                    value: k.joinPaid,
-                                    onChanged: (v) => onToggle('paid', v),
-                                  ),
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      _TileIcon(
+                        icon: Icons.copy_outlined,
+                        tooltip: '复制令牌',
+                        color: scheme.outline,
+                        onPressed: onCopy,
+                      ),
+                      _TileIcon(
+                        icon: Icons.edit_outlined,
+                        tooltip: '重命名',
+                        color: scheme.outline,
+                        onPressed: onRename,
+                      ),
+                      _TileIcon(
+                        icon: Icons.delete_outline,
+                        tooltip: '删除',
+                        color: scheme.error,
+                        onPressed: onDelete,
+                      ),
+                    ],
+                  ),
+                  Padding(
+                    // 左边缩进对齐名字(让开那颗单选钮)
+                    padding: const EdgeInsets.fromLTRB(32, 0, 4, 6),
+                    child: AnimatedOpacity(
+                      duration: Motion.fast,
+                      opacity: primary || k.joins ? 1 : .45,
+                      child: NaiKeyStatusLine(
+                        k: k,
+                        // 起过名的才补尾号:没起名时标题本身就是尾号,写两遍是复述。
+                        prefix: named ? naiKeyTail(k.token) : null,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  Padding(
+                    padding: const EdgeInsets.only(left: 28, right: 4),
+                    // 定高:主账号那行(一句说明)天生比副账号那行(两个勾选项)矮,
+                    // 不钉死的话换主账号时整块会一涨一缩。钉死之后只剩内容交叉淡入。
+                    child: SizedBox(
+                      height: _kOptionRowHeight,
+                      child: AnimatedSwitcher(
+                        duration: Motion.fast,
+                        child: primary
+                            // 主账号没有开关:它是「一定会被用到」的那个 —— 点数读数、
+                            // 超分、预览、续期都认它,再给个「不参与生成」的开关就自相
+                            // 矛盾了。想换成别的号,去选别人那块。
+                            ? Row(
+                                key: const ValueKey('primary'),
+                                children: [
+                                  Icon(
+                                    Icons.lock_outline,
+                                    size: 14,
+                                    color: scheme.outline,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      '生成与点数都用它,不可关闭',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: context.texts.labelMedium!
+                                          .copyWith(color: scheme.outline),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Row(
+                                key: const ValueKey('secondary'),
+                                children: [
+                                  Expanded(
+                                    child: _CheckOption(
+                                      label: '参与免费生成',
+                                      value: k.joinFree,
+                                      onChanged: (v) => onToggle('free', v),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: _CheckOption(
+                                      label: '参与点数生成',
+                                      value: k.joinPaid,
+                                      onChanged: (v) => onToggle('paid', v),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

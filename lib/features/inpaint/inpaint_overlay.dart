@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/store/app_stores.dart';
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/param_input.dart';
 import '../generate/canvas_state.dart';
@@ -1024,7 +1025,7 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
     final scheme = context.scheme;
     final picked = await showModalBottomSheet<int>(
       context: context,
-      backgroundColor: scheme.surfaceContainer,
+      backgroundColor: context.raisedFill(scheme.surfaceContainer),
       showDragHandle: true,
       builder: (ctx) => SafeArea(
         child: Padding(
@@ -1312,7 +1313,9 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
                   child: ClipRect(
                     child: ColoredBox(
                       // 与图库画布同底色,原地切换视觉连续
-                      color: scheme.surfaceContainerHigh,
+                      color: context.skin.float
+                          ? scheme.surface
+                          : scheme.surfaceContainerHigh,
                       child: img == null
                           ? const Center(child: CircularProgressIndicator())
                           : LayoutBuilder(
@@ -1481,8 +1484,9 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
     return Container(
       height: 46,
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHigh,
+        color: context.pageControlFill,
         borderRadius: BorderRadius.circular(14),
+        border: context.edgeBorder,
       ),
       padding: const EdgeInsets.all(4),
       // 一块会平移的实心色块 + 触感,不做任何"这边灭那边亮"。
@@ -1545,112 +1549,114 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
     final grid = _grid;
     final canUndo = _undo.isNotEmpty;
     final canClear = !(grid?.isEmpty ?? true);
-    return Material(
-      color: scheme.surfaceContainer,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _ToolBtn(
-                  icon: _assist ? Icons.my_location : Icons.brush,
-                  label: _assist ? '偏位' : '画笔',
-                  active: _tool == _Tool.brush,
-                  onTap: () => _tapTool(_Tool.brush),
-                ),
-                _ToolBtn(
-                  icon: Icons.cleaning_services,
-                  label: '橡皮',
-                  active: _tool == _Tool.eraser,
-                  onTap: () => _tapTool(_Tool.eraser),
-                ),
-                // 局部框是「发送范围」,打码不发送 —— 那一格换成样式切换。
-                // (自动识别不在这排,它挂在 CTA 上,见 _buildCensorCta)
-                if (_censorMode)
+    return Docked(
+      child: Material(
+        color: context.raisedFill(scheme.surfaceContainer),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
                   _ToolBtn(
-                    icon: _censorStyle == CensorStyle.mosaic
-                        ? Icons.blur_on
-                        : Icons.square_rounded,
-                    label: _censorStyle.label,
-                    onTap: _toggleCensorStyle,
-                  )
-                else
+                    icon: _assist ? Icons.my_location : Icons.brush,
+                    label: _assist ? '偏位' : '画笔',
+                    active: _tool == _Tool.brush,
+                    onTap: () => _tapTool(_Tool.brush),
+                  ),
                   _ToolBtn(
-                    icon: Icons.crop,
-                    label: '局部',
-                    active: _cropMode,
-                    onTap: _toggleCrop,
+                    icon: Icons.cleaning_services,
+                    label: '橡皮',
+                    active: _tool == _Tool.eraser,
+                    onTap: () => _tapTool(_Tool.eraser),
                   ),
-                _ToolBtn(
-                  icon: Icons.undo,
-                  label: '撤销',
-                  enabled: canUndo,
-                  onTap: _undoOnce,
-                ),
-                _ToolBtn(
-                  icon: Icons.restart_alt,
-                  label: '清空',
-                  enabled: canClear,
-                  tint: scheme.error,
-                  onTap: _clearAll,
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                _ParamChip(
-                  icon: Icons.line_weight,
-                  label: '笔刷',
-                  value: '${_brush.round()}',
-                  active: _slider == _SliderTarget.brush,
-                  onTap: () => setState(
-                    () => _slider = _slider == _SliderTarget.brush
-                        ? null
-                        : _SliderTarget.brush,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // 打码:强度换成块大小(纯色模式与块无关,整条隐掉)
-                if (!_censorMode)
-                  _strengthChip()
-                else if (_censorStyle == CensorStyle.mosaic)
-                  _ParamChip(
-                    icon: Icons.grid_4x4,
-                    label: '块',
-                    value: '${_censorBlock * 8}',
-                    active: _slider == _SliderTarget.block,
-                    onTap: () => setState(
-                      () => _slider = _slider == _SliderTarget.block
-                          ? null
-                          : _SliderTarget.block,
+                  // 局部框是「发送范围」,打码不发送 —— 那一格换成样式切换。
+                  // (自动识别不在这排,它挂在 CTA 上,见 _buildCensorCta)
+                  if (_censorMode)
+                    _ToolBtn(
+                      icon: _censorStyle == CensorStyle.mosaic
+                          ? Icons.blur_on
+                          : Icons.square_rounded,
+                      label: _censorStyle.label,
+                      onTap: _toggleCensorStyle,
+                    )
+                  else
+                    _ToolBtn(
+                      icon: Icons.crop,
+                      label: '局部',
+                      active: _cropMode,
+                      onTap: _toggleCrop,
                     ),
-                  )
-                else
-                  // 纯色没有块大小可调,那一格改放填充色
+                  _ToolBtn(
+                    icon: Icons.undo,
+                    label: '撤销',
+                    enabled: canUndo,
+                    onTap: _undoOnce,
+                  ),
+                  _ToolBtn(
+                    icon: Icons.restart_alt,
+                    label: '清空',
+                    enabled: canClear,
+                    tint: scheme.error,
+                    onTap: _clearAll,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
                   _ParamChip(
-                    icon: Icons.palette_outlined,
-                    swatch: Color(_censorColor),
-                    label: '颜色',
-                    value: censorColorLabel(_censorColor),
-                    active: false,
-                    onTap: _pickCensorColor,
+                    icon: Icons.line_weight,
+                    label: '笔刷',
+                    value: '${_brush.round()}',
+                    active: _slider == _SliderTarget.brush,
+                    onTap: () => setState(
+                      () => _slider = _slider == _SliderTarget.brush
+                          ? null
+                          : _SliderTarget.brush,
+                    ),
                   ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: SizedBox(
-                    height: 46,
-                    child: _censorMode
-                        ? _buildCensorCta()
-                        : _buildCtaArea('保存遮罩', onPressed: _fire),
+                  const SizedBox(width: 8),
+                  // 打码:强度换成块大小(纯色模式与块无关,整条隐掉)
+                  if (!_censorMode)
+                    _strengthChip()
+                  else if (_censorStyle == CensorStyle.mosaic)
+                    _ParamChip(
+                      icon: Icons.grid_4x4,
+                      label: '块',
+                      value: '${_censorBlock * 8}',
+                      active: _slider == _SliderTarget.block,
+                      onTap: () => setState(
+                        () => _slider = _slider == _SliderTarget.block
+                            ? null
+                            : _SliderTarget.block,
+                      ),
+                    )
+                  else
+                    // 纯色没有块大小可调,那一格改放填充色
+                    _ParamChip(
+                      icon: Icons.palette_outlined,
+                      swatch: Color(_censorColor),
+                      label: '颜色',
+                      value: censorColorLabel(_censorColor),
+                      active: false,
+                      onTap: _pickCensorColor,
+                    ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: SizedBox(
+                      height: 46,
+                      child: _censorMode
+                          ? _buildCensorCta()
+                          : _buildCtaArea('保存遮罩', onPressed: _fire),
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1682,53 +1688,55 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
     final img = _img;
     final tw = img == null ? 0 : img.width + _padL + _padR;
     final th = img == null ? 0 : img.height + _padT + _padB;
-    return Material(
-      color: scheme.surfaceContainer,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                _ParamChip(
-                  icon: Icons.aspect_ratio,
-                  label: '尺寸',
-                  value: '$tw×$th',
-                  active: _hasExpand,
-                  onTap: _editExpandSize,
-                ),
-                const SizedBox(width: 8),
-                _strengthChip(),
-                const Spacer(),
-                Material(
-                  color: scheme.surfaceContainerHigh,
-                  borderRadius: BorderRadius.circular(13),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: _hasExpand ? () => setState(_resetPad) : null,
-                    child: SizedBox(
-                      width: 46,
-                      height: 46,
-                      child: Icon(
-                        Icons.restart_alt,
-                        size: 20,
-                        color: _hasExpand
-                            ? scheme.error
-                            : scheme.onSurfaceVariant.withValues(alpha: .35),
+    return Docked(
+      child: Material(
+        color: context.raisedFill(scheme.surfaceContainer),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  _ParamChip(
+                    icon: Icons.aspect_ratio,
+                    label: '尺寸',
+                    value: '$tw×$th',
+                    active: _hasExpand,
+                    onTap: _editExpandSize,
+                  ),
+                  const SizedBox(width: 8),
+                  _strengthChip(),
+                  const Spacer(),
+                  Material(
+                    color: scheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(13),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: _hasExpand ? () => setState(_resetPad) : null,
+                      child: SizedBox(
+                        width: 46,
+                        height: 46,
+                        child: Icon(
+                          Icons.restart_alt,
+                          size: 20,
+                          color: _hasExpand
+                              ? scheme.error
+                              : scheme.onSurfaceVariant.withValues(alpha: .35),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 46,
-              width: double.infinity,
-              child: _buildCtaArea('保存扩图', disabled: !_hasExpand),
-            ),
-          ],
+                ],
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 46,
+                width: double.infinity,
+                child: _buildCtaArea('保存扩图', disabled: !_hasExpand),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1847,18 +1855,7 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
     return Container(
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(
-        color: scheme.surface.withValues(alpha: .85),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .7)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .14),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+      decoration: context.floatingPill(24),
       child: Row(
         children: [
           Text(
@@ -2456,16 +2453,18 @@ class _RoundBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    return Material(
-      color: scheme.surfaceContainerHigh,
-      shape: const CircleBorder(),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: SizedBox(
-          width: 46,
-          height: 46,
-          child: Icon(icon, size: 21, color: scheme.onSurface),
+    return Lifted(
+      child: Material(
+        color: context.pageControlFill,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 46,
+            height: 46,
+            child: Icon(icon, size: 21, color: scheme.onSurface),
+          ),
         ),
       ),
     );
@@ -2548,11 +2547,13 @@ class _ToolBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    final bg = active ? scheme.primaryContainer : Colors.transparent;
+    final bg = active
+        ? context.solidFill(scheme.primaryContainer)
+        : Colors.transparent;
     final fg = !enabled
         ? scheme.onSurfaceVariant.withValues(alpha: .35)
         : active
-        ? scheme.onPrimaryContainer
+        ? context.onSolidFill(scheme.onPrimaryContainer)
         : (tint ?? scheme.onSurfaceVariant);
     return Material(
       color: bg,
@@ -2790,20 +2791,7 @@ class _CompareButton extends StatelessWidget {
       child: Container(
         height: 40,
         padding: const EdgeInsets.symmetric(horizontal: 15),
-        decoration: BoxDecoration(
-          color: scheme.surface.withValues(alpha: .85),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: scheme.outlineVariant.withValues(alpha: .7),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: .14),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
+        decoration: context.floatingPill(20),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

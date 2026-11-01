@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/fast_scroll_handle.dart';
 import '../../core/ui/selection_bar.dart';
@@ -258,7 +259,7 @@ class _CharLibraryPageState extends ConsumerState<CharLibraryPage> {
                 hintText: '搜索名称…',
                 prefixIcon: const Icon(Icons.search, size: 20),
                 filled: true,
-                fillColor: scheme.surfaceContainerHigh,
+                fillColor: context.pageControlFill,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -394,77 +395,81 @@ class _CharCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: checked
-            ? scheme.primaryContainer.withValues(alpha: .28)
-            : scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      // 边框放前景层:选中态加粗高亮只是绘制,不占布局。
-      foregroundDecoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
+    return Lifted(
+      radius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
           color: checked
-              ? scheme.primary.withValues(alpha: .7)
-              : scheme.outlineVariant.withValues(alpha: .3),
-          width: checked ? 1.8 : 1,
+              ? scheme.primaryContainer.withValues(alpha: .28)
+              : scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(16),
         ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 缩略图区(占卡片上部剩余空间)
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.file(
-                    thumb,
-                    fit: BoxFit.cover,
-                    gaplessPlayback: true,
-                    errorBuilder: (_, _, _) => ColoredBox(
-                      color: scheme.surfaceContainerHigh,
-                      child: Icon(
-                        Icons.broken_image_outlined,
-                        color: scheme.outline,
+        // 边框放前景层:选中态加粗高亮只是绘制,不占布局。
+        foregroundDecoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: checked
+                ? scheme.primary.withValues(alpha: .7)
+                : scheme.outlineVariant.withValues(alpha: .3),
+            width: checked ? 1.8 : 1,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 缩略图区(占卡片上部剩余空间)
+              Expanded(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.file(
+                      thumb,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                      errorBuilder: (_, _, _) => ColoredBox(
+                        color: scheme.surfaceContainerHigh,
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: scheme.outline,
+                        ),
                       ),
                     ),
-                  ),
-                  if (checked)
-                    Container(color: scheme.primary.withValues(alpha: .18)),
-                  Positioned(top: 8, left: 8, child: _checkbox(scheme)),
-                ],
+                    if (checked)
+                      Container(color: scheme.primary.withValues(alpha: .18)),
+                    Positioned(top: 8, left: 8, child: _checkbox(scheme)),
+                  ],
+                ),
               ),
-            ),
-            // 卡片体:名称 + 右侧更多菜单
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 6, 6, 9),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Text(
-                      entry.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.texts.bodyMedium!.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: checked ? scheme.primary : null,
+              // 卡片体:名称 + 右侧更多菜单
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 6, 6, 9),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        entry.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.texts.bodyMedium!.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: checked ? scheme.primary : null,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 2),
-                  _CharMenuButton(
-                    onSelected: (v) => v == 'rename' ? onRename() : onDelete(),
-                  ),
-                ],
+                    const SizedBox(width: 2),
+                    _CharMenuButton(
+                      onSelected: (v) =>
+                          v == 'rename' ? onRename() : onDelete(),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

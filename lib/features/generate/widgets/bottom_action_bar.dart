@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/net/anlas_provider.dart';
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/ui/param_input.dart';
 import '../../../core/util/haptics.dart';
@@ -142,142 +143,148 @@ class _BottomActionBarState extends ConsumerState<BottomActionBar> {
     // 按**会发出去**的那份参数判(见 sentParamsProvider)
     final batchable = sent.params.batchable;
 
-    return Material(
-      color: scheme.surfaceContainer,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 9),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 两种排法,按有没有「张数」分:
-            //  · anima / krea 四颗 —— 均分。左边挤成一堆的话 Spacer 被压没,
-            //    张数会和「高级」贴在一起;
-            //  · NAI 三颗 —— 还是「左边一串 + 高级钉右边」。三颗均分会把步数
-            //    甩到正中间,中间那片空白比贴在一起更晃眼。
-            Row(
-              mainAxisAlignment: batchable
-                  ? MainAxisAlignment.spaceBetween
-                  : MainAxisAlignment.start,
-              children: [
-                _ReadoutChip(
-                  caption: '尺寸',
-                  value: '${p.width}×${p.height}',
-                  onTap: () => showResolutionSheet(context),
-                ),
-                if (!batchable) const SizedBox(width: 8),
-                const _StepsChip(),
-                // 张数只有 anima / krea 有(NAI 那条路一单一张)。**不给它常驻
-                // 一个位置**:NAI 下摆个恒为 1、点了还得解释「这个模型不支持」
-                // 的读数,只是白占那条本来就挤的行。
-                if (batchable) const _BatchChip() else const Spacer(),
-                _ReadoutChip(
-                  icon: Icons.tune,
-                  value: '高级',
-                  valueMuted: true,
-                  onTap: () => showAdvancedSheet(context),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                // 导入图片:选相册图 → 解析元数据/用作参考的全屏导入面板
-                Tooltip(
-                  message: '导入图片',
-                  child: AnimatedContainer(
-                    duration: Motion.fast,
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: scheme.outline.withValues(alpha: .9),
-                        width: 1.5,
+    // 浮卡样式:白底,和底栏连成一块
+    return Docked(
+      child: Material(
+        color: context.raisedFill(scheme.surfaceContainer),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 9),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 两种排法,按有没有「张数」分:
+              //  · anima / krea 四颗 —— 均分。左边挤成一堆的话 Spacer 被压没,
+              //    张数会和「高级」贴在一起;
+              //  · NAI 三颗 —— 还是「左边一串 + 高级钉右边」。三颗均分会把步数
+              //    甩到正中间,中间那片空白比贴在一起更晃眼。
+              Row(
+                mainAxisAlignment: batchable
+                    ? MainAxisAlignment.spaceBetween
+                    : MainAxisAlignment.start,
+                children: [
+                  _ReadoutChip(
+                    caption: '尺寸',
+                    value: '${p.width}×${p.height}',
+                    onTap: () => showResolutionSheet(context),
+                  ),
+                  if (!batchable) const SizedBox(width: 8),
+                  const _StepsChip(),
+                  // 张数只有 anima / krea 有(NAI 那条路一单一张)。**不给它常驻
+                  // 一个位置**:NAI 下摆个恒为 1、点了还得解释「这个模型不支持」
+                  // 的读数,只是白占那条本来就挤的行。
+                  if (batchable) const _BatchChip() else const Spacer(),
+                  _ReadoutChip(
+                    icon: Icons.tune,
+                    value: '高级',
+                    valueMuted: true,
+                    onTap: () => showAdvancedSheet(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  // 导入图片:选相册图 → 解析元数据/用作参考的全屏导入面板
+                  Tooltip(
+                    message: '导入图片',
+                    child: AnimatedContainer(
+                      duration: Motion.fast,
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: scheme.outline.withValues(alpha: .9),
+                          width: 1.5,
+                        ),
                       ),
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(15),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: () => openImportPanel(context),
-                        child: Center(
-                          child: Icon(
-                            Icons.input,
-                            size: 22,
-                            color: scheme.primary,
+                      child: Material(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(15),
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: () => openImportPanel(context),
+                          child: Center(
+                            child: Icon(
+                              Icons.input,
+                              size: 22,
+                              color: scheme.primary,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 9),
-                // 循环伴钮:进循环面板(选张数并开始);运行中高亮,面板里可停
-                Tooltip(
-                  message: '循环生成',
-                  child: AnimatedContainer(
-                    duration: Motion.fast,
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: loop.active
-                          ? scheme.primaryContainer
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
+                  const SizedBox(width: 9),
+                  // 循环伴钮:进循环面板(选张数并开始);运行中高亮,面板里可停
+                  Tooltip(
+                    message: '循环生成',
+                    child: AnimatedContainer(
+                      duration: Motion.fast,
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
                         color: loop.active
-                            ? scheme.primary
-                            : scheme.outline.withValues(alpha: .9),
-                        width: 1.5,
+                            ? context.solidFill(scheme.primaryContainer)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: loop.active
+                              ? scheme.primary
+                              : scheme.outline.withValues(alpha: .9),
+                          width: 1.5,
+                        ),
                       ),
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(15),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: () => showLoopSheet(context),
-                        child: Center(
-                          child: Icon(
-                            Icons.autorenew,
-                            size: 22,
-                            color: loop.active
-                                ? scheme.onPrimaryContainer
-                                : scheme.primary,
+                      child: Material(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(15),
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: () => showLoopSheet(context),
+                          child: Center(
+                            child: Icon(
+                              Icons.autorenew,
+                              size: 22,
+                              color: loop.active
+                                  ? context.onSolidFill(
+                                      scheme.onPrimaryContainer,
+                                    )
+                                  : scheme.primary,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 9),
-                // 生成主按钮。**并行之后它一直是「生成」**:再点就是再投一条。
-                // 有任务在跑时按钮**内部**右侧长出一段停止区(带进度环)——
-                // 创作页看不见图库的任务卡,没它就整页看不到进度、也没处取消。
-                Expanded(
-                  child: _GenerateButton(
-                    cost: totalCost,
-                    onGenerate: () {
-                      _hintDisabledVibes(context, ref);
-                      ref.read(generationProvider.notifier).generate();
-                    },
-                    progress: pool.busy ? gen.progress : null,
-                    runningCount: pool.busy ? pool.jobs.length : 0,
-                    stopIcon: loop.active && !loop.stopping
-                        ? Icons.stop_rounded
-                        : Icons.close_rounded,
-                    // 循环:第一次点=软停(本张跑完后停),**再点一次=强制取消**。
-                    // 软停后绝不能变成 null —— 那会在当前张卡住时(断网最常见)
-                    // 关掉唯一的退路,只能干等超时。实测反馈。
-                    onStop: loop.active && !loop.stopping
-                        ? () => ref.read(loopStatusProvider.notifier).stop()
-                        : () => ref.read(generationProvider.notifier).cancel(),
+                  const SizedBox(width: 9),
+                  // 生成主按钮。**并行之后它一直是「生成」**:再点就是再投一条。
+                  // 有任务在跑时按钮**内部**右侧长出一段停止区(带进度环)——
+                  // 创作页看不见图库的任务卡,没它就整页看不到进度、也没处取消。
+                  Expanded(
+                    child: _GenerateButton(
+                      cost: totalCost,
+                      onGenerate: () {
+                        _hintDisabledVibes(context, ref);
+                        ref.read(generationProvider.notifier).generate();
+                      },
+                      progress: pool.busy ? gen.progress : null,
+                      runningCount: pool.busy ? pool.jobs.length : 0,
+                      stopIcon: loop.active && !loop.stopping
+                          ? Icons.stop_rounded
+                          : Icons.close_rounded,
+                      // 循环:第一次点=软停(本张跑完后停),**再点一次=强制取消**。
+                      // 软停后绝不能变成 null —— 那会在当前张卡住时(断网最常见)
+                      // 关掉唯一的退路,只能干等超时。实测反馈。
+                      onStop: loop.active && !loop.stopping
+                          ? () => ref.read(loopStatusProvider.notifier).stop()
+                          : () =>
+                                ref.read(generationProvider.notifier).cancel(),
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -734,20 +741,7 @@ class _PillShell extends StatelessWidget {
       child: Container(
         height: 48,
         padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          color: scheme.surface.withValues(alpha: .85),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: scheme.outlineVariant.withValues(alpha: .7),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: .14),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
+        decoration: context.floatingPill(24),
         child: Row(
           children: [
             Text(

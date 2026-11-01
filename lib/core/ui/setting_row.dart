@@ -10,6 +10,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../features/editor/widgets/tag_panel.dart' show RepeatBtn;
+import '../theme/app_skin.dart';
 import '../theme/app_theme.dart';
 import '../util/haptics.dart';
 
@@ -380,7 +381,7 @@ class SettingSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = context.scheme;
     return Material(
-      color: scheme.surfaceContainer,
+      color: context.raisedFill(scheme.surfaceContainer),
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       child: ConstrainedBox(
         constraints: BoxConstraints(

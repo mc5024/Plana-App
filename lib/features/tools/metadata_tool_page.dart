@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
 
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/util/image_pick.dart';
 import '../../core/util/png_meta.dart';
@@ -310,68 +311,75 @@ class _MetadataToolViewState extends ConsumerState<MetadataToolView> {
   }
 
   Widget _batchBar(ColorScheme scheme) {
-    return SafeArea(
+    return Docked(
       child: Material(
-        color: scheme.surfaceContainer,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_mode == _BatchMode.custom) ...[
-                TextField(
-                  controller: _customPrompt,
-                  style: mono(context, size: 12, weight: FontWeight.w400),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: scheme.surfaceContainerHigh,
-                    hintText: '要覆写进图片的提示词…',
-                    hintStyle: TextStyle(color: scheme.outline, fontSize: 12),
-                    isDense: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-              ],
-              Row(
-                children: [
-                  SegmentedButton<_BatchMode>(
-                    segments: const [
-                      ButtonSegment(value: _BatchMode.clean, label: Text('清除')),
-                      ButtonSegment(
-                        value: _BatchMode.custom,
-                        label: Text('覆写'),
+        color: context.raisedFill(scheme.surfaceContainer),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_mode == _BatchMode.custom) ...[
+                  TextField(
+                    controller: _customPrompt,
+                    style: mono(context, size: 12, weight: FontWeight.w400),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: scheme.surfaceContainerHigh,
+                      hintText: '要覆写进图片的提示词…',
+                      hintStyle: TextStyle(color: scheme.outline, fontSize: 12),
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
                       ),
-                    ],
-                    selected: {_mode},
-                    onSelectionChanged: (s) => setState(() => _mode = s.first),
-                    showSelectedIcon: false,
-                    style: const ButtonStyle(
-                      visualDensity: VisualDensity.compact,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                     ),
                   ),
-                  const Spacer(),
-                  FilledButton.icon(
-                    onPressed: _processing ? null : _saveSelected,
-                    icon: _processing
-                        ? const SizedBox(
-                            width: 15,
-                            height: 15,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.save_alt, size: 18),
-                    label: Text('存相册 ($_selectedCount)'),
-                  ),
+                  const SizedBox(height: 8),
                 ],
-              ),
-            ],
+                Row(
+                  children: [
+                    SegmentedButton<_BatchMode>(
+                      segments: const [
+                        ButtonSegment(
+                          value: _BatchMode.clean,
+                          label: Text('清除'),
+                        ),
+                        ButtonSegment(
+                          value: _BatchMode.custom,
+                          label: Text('覆写'),
+                        ),
+                      ],
+                      selected: {_mode},
+                      onSelectionChanged: (s) =>
+                          setState(() => _mode = s.first),
+                      showSelectedIcon: false,
+                      style: const ButtonStyle(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                    const Spacer(),
+                    FilledButton.icon(
+                      onPressed: _processing ? null : _saveSelected,
+                      icon: _processing
+                          ? const SizedBox(
+                              width: 15,
+                              height: 15,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.save_alt, size: 18),
+                      label: Text('存相册 ($_selectedCount)'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

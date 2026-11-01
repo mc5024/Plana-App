@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/net/remote_image.dart';
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../editor/editor_models.dart' show draftOf, outputOf, pickEditorText;
 import '../../generate/generate_state.dart';
@@ -1565,11 +1566,7 @@ class _BlurredBackdropState extends State<_BlurredBackdrop> {
 /// 对照表在这层 watch 而不是交给芯片自己:表到了芯片换字、宽度会变,
 /// 这层跟着重建才会重新量一遍。
 class _PromptFace extends ConsumerStatefulWidget {
-  const _PromptFace({
-    required this.codexId,
-    required this.entry,
-    this.bgUrl,
-  });
+  const _PromptFace({required this.codexId, required this.entry, this.bgUrl});
 
   final String codexId;
   final CodexEntry entry;
@@ -1713,8 +1710,11 @@ class _PickerSheet extends ConsumerWidget {
     bool sel,
   ) {
     final scheme = context.scheme;
+    final solid = sel && context.skin.float;
     return Material(
-      color: sel ? scheme.primaryContainer : scheme.surfaceContainerHigh,
+      color: sel
+          ? context.solidFill(scheme.primaryContainer)
+          : scheme.surfaceContainerHigh,
       borderRadius: BorderRadius.circular(14),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -1738,16 +1738,25 @@ class _PickerSheet extends ConsumerWidget {
                             overflow: TextOverflow.ellipsis,
                             style: context.texts.bodyLarge!.copyWith(
                               fontWeight: FontWeight.w700,
+                              color: solid ? scheme.onPrimary : null,
                             ),
                           ),
                         ),
                         if (m.type.label.isNotEmpty) ...[
                           const SizedBox(width: 6),
-                          _tag(context, m.type.label, scheme.secondary),
+                          _tag(
+                            context,
+                            m.type.label,
+                            solid ? scheme.onPrimary : scheme.secondary,
+                          ),
                         ],
                         if (m.nsfw) ...[
                           const SizedBox(width: 4),
-                          _tag(context, 'R18', scheme.error),
+                          _tag(
+                            context,
+                            'R18',
+                            solid ? scheme.onPrimary : scheme.error,
+                          ),
                         ],
                       ],
                     ),
@@ -1758,13 +1767,20 @@ class _PickerSheet extends ConsumerWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: context.texts.labelSmall!.copyWith(
-                        color: scheme.onSurfaceVariant,
+                        color: solid
+                            ? scheme.onPrimary.withValues(alpha: .8)
+                            : scheme.onSurfaceVariant,
                       ),
                     ),
                   ],
                 ),
               ),
-              if (sel) Icon(Icons.check, size: 18, color: scheme.primary),
+              if (sel)
+                Icon(
+                  Icons.check,
+                  size: 18,
+                  color: solid ? scheme.onPrimary : scheme.primary,
+                ),
             ],
           ),
         ),
@@ -2168,11 +2184,12 @@ class _CategorySheetState extends ConsumerState<_CategorySheet> {
   }) {
     final path = [..._cursor, n.name];
     final off = block.hides(path);
+    final selected = !off && _isCurrent(path);
     return _tile(
       scheme,
       label: n.name,
       count: off ? n.count : left(path, n.count),
-      selected: !off && _isCurrent(path),
+      selected: selected,
       dimmed: off,
       // 有子级 → 点进去(下钻);叶子 → 直接选中
       drillable: n.children.isNotEmpty,
@@ -2185,18 +2202,33 @@ class _CategorySheetState extends ConsumerState<_CategorySheet> {
             })
           : () => Navigator.pop(context, path),
       chevronSlot: chevronSlot,
-      trailing: _blockButton(scheme, block, path),
+      trailing: _blockButton(
+        scheme,
+        block,
+        path,
+        onSolid: selected && context.skin.float,
+      ),
     );
   }
 
   /// 分类卡右侧的屏蔽钮:睁眼 = 显示,闭眼 = 已屏蔽。
-  Widget _blockButton(ColorScheme scheme, CodexBlock block, List<String> path) {
+  /// [onSolid]:压在实心主色的选中卡上。
+  Widget _blockButton(
+    ColorScheme scheme,
+    CodexBlock block,
+    List<String> path, {
+    bool onSolid = false,
+  }) {
     final on = block.contains(path);
     return RoundIconBtn(
       on ? Icons.visibility_off_outlined : Icons.visibility_outlined,
       size: MediaQuery.sizeOf(context).width < 350 ? 32 : 36,
-      color: on ? scheme.primary : scheme.onSurfaceVariant,
-      background: scheme.surfaceContainerHighest,
+      color: onSolid
+          ? scheme.onPrimary
+          : (on ? scheme.primary : scheme.onSurfaceVariant),
+      background: onSolid
+          ? scheme.onPrimary.withValues(alpha: .18)
+          : scheme.surfaceContainerHighest,
       tooltip: on ? '解除屏蔽' : '屏蔽',
       onTap: () {
         Haptics.selection();
@@ -2337,14 +2369,15 @@ class _CategorySheetState extends ConsumerState<_CategorySheet> {
     bool chevronSlot = false,
     Widget? trailing,
   }) {
-    final fg = selected
-        ? scheme.onPrimaryContainer
-        : (dimmed ? scheme.outline : scheme.onSurface);
+    final onSel = context.onSolidFill(scheme.onPrimaryContainer);
+    final fg = selected ? onSel : (dimmed ? scheme.outline : scheme.onSurface);
     final sub = selected
-        ? scheme.onPrimaryContainer
+        ? onSel
         : (dimmed ? scheme.outline : scheme.onSurfaceVariant);
     return Material(
-      color: selected ? scheme.primaryContainer : scheme.surfaceContainerHigh,
+      color: selected
+          ? context.solidFill(scheme.primaryContainer)
+          : scheme.surfaceContainerHigh,
       borderRadius: BorderRadius.circular(14),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -2360,7 +2393,7 @@ class _CategorySheetState extends ConsumerState<_CategorySheet> {
                 Icon(
                   Icons.apps,
                   size: 18,
-                  color: selected ? scheme.onPrimaryContainer : scheme.primary,
+                  color: selected ? onSel : scheme.primary,
                 ),
                 const SizedBox(width: 10),
               ],

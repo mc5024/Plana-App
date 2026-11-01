@@ -12,8 +12,10 @@ import '../../core/net/nai_client.dart';
 import '../../core/net/nai_endpoint.dart';
 import '../../core/net/nai_proxy.dart';
 import '../../core/store/gen_settings.dart';
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_settings.dart';
+import '../../core/ui/theme_swatches.dart';
 import '../profile/widgets/credential_login_sheet.dart';
 import '../profile/widgets/token_status.dart';
 import '../../core/util/haptics.dart';
@@ -246,10 +248,14 @@ class _Step extends StatelessWidget {
                 width: 68,
                 height: 68,
                 decoration: BoxDecoration(
-                  color: scheme.primaryContainer,
+                  color: context.solidFill(scheme.primaryContainer),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, size: 32, color: scheme.onPrimaryContainer),
+                child: Icon(
+                  icon,
+                  size: 32,
+                  color: context.onSolidFill(scheme.onPrimaryContainer),
+                ),
               ),
             ),
             const SizedBox(height: 20),
@@ -407,7 +413,6 @@ class _AppearanceStep extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final ts = ref.watch(themeSettingsProvider);
     final notifier = ref.read(themeSettingsProvider.notifier);
-    final scheme = context.scheme;
     return _Step(
       active: active,
       icon: Icons.color_lens_outlined,
@@ -426,56 +431,17 @@ class _AppearanceStep extends ConsumerWidget {
               onSelectionChanged: (s) =>
                   notifier.patch((x) => x.copyWith(mode: s.first)),
               showSelectedIcon: false,
+              // 直接压在页面上:浮卡样式未选段用白底
+              style: context.skin.float
+                  ? SegmentedButton.styleFrom(
+                      backgroundColor: context.pageControlFill,
+                      selectedBackgroundColor: context.scheme.primary,
+                    )
+                  : null,
             ),
           ),
           const SizedBox(height: 24),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            alignment: WrapAlignment.center,
-            children: [
-              for (final s in themeSeeds)
-                InkWell(
-                  onTap: () =>
-                      notifier.patch((x) => x.copyWith(seedKey: s.key)),
-                  customBorder: const CircleBorder(),
-                  child: AnimatedContainer(
-                    duration: Motion.fast,
-                    width: 42,
-                    height: 42,
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        width: 2,
-                        color: s.key == ts.seed.key
-                            ? scheme.onSurface
-                            : Colors.transparent,
-                      ),
-                    ),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: s.color,
-                        shape: BoxShape.circle,
-                      ),
-                      child: s.key == ts.seed.key
-                          ? Icon(
-                              Icons.check,
-                              size: 17,
-                              color:
-                                  ThemeData.estimateBrightnessForColor(
-                                        s.color,
-                                      ) ==
-                                      Brightness.dark
-                                  ? Colors.white
-                                  : Colors.black87,
-                            )
-                          : null,
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          const ThemeSwatches(size: 42, alignment: WrapAlignment.center),
         ],
       ),
     );
@@ -880,10 +846,17 @@ class _AccessCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
+    final float = context.skin.float;
+    // 浮卡样式:白卡描发丝边
     return Container(
       decoration: BoxDecoration(
+        color: float ? scheme.surfaceContainerLow : null,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(width: 1.5, color: scheme.outlineVariant),
+        border: switch (context.skin.edge) {
+          final edge? => Border.all(color: edge),
+          null when float => null,
+          null => Border.all(width: 1.5, color: scheme.outlineVariant),
+        },
       ),
       padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
       child: Column(
@@ -957,13 +930,13 @@ class _DoneStep extends StatelessWidget {
               width: 108,
               height: 108,
               decoration: BoxDecoration(
-                color: scheme.primaryContainer,
+                color: context.solidFill(scheme.primaryContainer),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.check_rounded,
                 size: 58,
-                color: scheme.onPrimaryContainer,
+                color: context.onSolidFill(scheme.onPrimaryContainer),
               ),
             ),
           ),

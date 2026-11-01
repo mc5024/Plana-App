@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../generate_state.dart';
 import '../models.dart';
@@ -630,9 +631,7 @@ class _SelectTile extends StatelessWidget {
       duration: Motion.fast,
       height: height,
       decoration: BoxDecoration(
-        color: selected
-            ? scheme.secondaryContainer
-            : scheme.surfaceContainerHigh,
+        color: selected ? context.selectedFill : scheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(11),
         border: Border.all(
           color: selected ? scheme.primary : Colors.transparent,
@@ -652,7 +651,7 @@ class _SelectTile extends StatelessWidget {
                 fontSize: 11.5,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                 color: selected
-                    ? scheme.onSecondaryContainer
+                    ? context.onSelectedFill
                     : scheme.onSurfaceVariant,
               ),
             ),
@@ -679,12 +678,12 @@ class _TextToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    final fg = selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
+    final fg = selected ? context.onSelectedFill : scheme.onSurfaceVariant;
     return AnimatedContainer(
       duration: Motion.fast,
       height: 28,
       decoration: BoxDecoration(
-        color: selected ? scheme.secondaryContainer : Colors.transparent,
+        color: selected ? context.selectedFill : Colors.transparent,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: selected ? scheme.primary : scheme.outlineVariant,

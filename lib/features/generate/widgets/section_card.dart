@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import 'common.dart';
 
@@ -57,7 +58,7 @@ class SectionCard extends StatelessWidget {
             // 各卡的动作按钮数量不一,没有按钮的卡收起来会明显
             // 比 LoRA / 重绘放大矮一截 —— 撑一格,所有卡收起时一样高。
             const SizedBox(height: 38),
-            Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+            SkinIcon(icon),
             const SizedBox(width: 9),
             Text(
               title,
@@ -94,22 +95,25 @@ class SectionCard extends StatelessWidget {
     if (idx != null) {
       header = ReorderableDelayedDragStartListener(index: idx, child: header);
     }
-    return Material(
-      color: scheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(16),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          header,
-          ExpandBody(
-            expanded: expanded && body != null,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-              child: body ?? const SizedBox(width: double.infinity),
+    return Lifted(
+      radius: BorderRadius.circular(16),
+      child: Material(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            header,
+            ExpandBody(
+              expanded: expanded && body != null,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                child: body ?? const SizedBox(width: double.infinity),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

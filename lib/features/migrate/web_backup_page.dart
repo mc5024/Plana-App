@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/util/file_read.dart';
 import '../generate/widgets/common.dart' show hintSnack;
@@ -123,7 +124,7 @@ class _WebBackupPageState extends ConsumerState<WebBackupPage> {
             ),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(48),
-            ),
+            ).merge(context.pageTonalStyle),
           ),
           if (_error case final String e) ...[
             const SizedBox(height: 14),
@@ -241,51 +242,56 @@ class _Card extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    return Material(
-      color: scheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(16),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 13, 16, 13),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: context.texts.bodyLarge!.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            if (subtitle case final String s) ...[
-              const SizedBox(height: 2),
+    return Lifted(
+      radius: BorderRadius.circular(16),
+      child: Material(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 13, 16, 13),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               Text(
-                s,
+                title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: context.texts.bodySmall!.copyWith(color: scheme.outline),
-              ),
-            ],
-            const SizedBox(height: 6),
-            for (final (k, v) in rows)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: Row(
-                  children: [
-                    Expanded(child: Text(k, style: context.texts.bodyMedium)),
-                    Text(
-                      v,
-                      style: mono(
-                        context,
-                        size: 12.5,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+                style: context.texts.bodyLarge!.copyWith(
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-          ],
+              if (subtitle case final String s) ...[
+                const SizedBox(height: 2),
+                Text(
+                  s,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.texts.bodySmall!.copyWith(
+                    color: scheme.outline,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 6),
+              for (final (k, v) in rows)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(k, style: context.texts.bodyMedium)),
+                      Text(
+                        v,
+                        style: mono(
+                          context,
+                          size: 12.5,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

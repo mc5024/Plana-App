@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/editor_theme.dart';
 import '../../../core/util/haptics.dart';
@@ -59,111 +60,121 @@ class EditorBottomBar extends ConsumerWidget {
     final notifier = ref.read(editorProvider.notifier);
     final favs = ref.watch(tagFavoritesProvider);
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 托盘:贴顶对齐 + 裁切,展开时从底栏后面升上来
-        ClipRect(
-          child: AnimatedAlign(
-            duration: Motion.fast,
-            curve: Motion.standard,
-            alignment: Alignment.topCenter,
-            heightFactor: trayOpen ? 1 : 0,
-            child: Material(
-              color: context.editorDock,
-              shape: Border(top: BorderSide(color: context.editorDockLine)),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                // 卡片高度同词条栏的关联标签;空着也占这一行,收第一枚时不跳
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: favs.isEmpty
-                      ? Center(
-                          child: Text(
-                            '暂无收藏',
-                            style: context.texts.labelMedium!.copyWith(
-                              color: scheme.outline,
+    // 浮卡样式:托盘和底栏同为卡片白,顶边描发丝边
+    return Docked(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 托盘:贴顶对齐 + 裁切,展开时从底栏后面升上来
+          ClipRect(
+            child: AnimatedAlign(
+              duration: Motion.fast,
+              curve: Motion.standard,
+              alignment: Alignment.topCenter,
+              heightFactor: trayOpen ? 1 : 0,
+              child: Material(
+                color: context.editorDock,
+                shape: Border(top: BorderSide(color: context.editorDockLine)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  // 卡片高度同词条栏的关联标签;空着也占这一行,收第一枚时不跳
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: favs.isEmpty
+                        ? Center(
+                            child: Text(
+                              '暂无收藏',
+                              style: context.texts.labelMedium!.copyWith(
+                                color: scheme.outline,
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            itemCount: favs.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(width: 8),
+                            itemBuilder: (context, i) => TagAddChip(
+                              tag: favs[i],
+                              onTap: () => onInsertFavorite(favs[i]),
+                              onLongPress: () =>
+                                  _removeFavorite(context, ref, favs[i]),
                             ),
                           ),
-                        )
-                      : ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          itemCount: favs.length,
-                          separatorBuilder: (_, _) => const SizedBox(width: 8),
-                          itemBuilder: (context, i) => TagAddChip(
-                            tag: favs[i],
-                            onTap: () => onInsertFavorite(favs[i]),
-                            onLongPress: () =>
-                                _removeFavorite(context, ref, favs[i]),
-                          ),
-                        ),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-        Material(
-          color: scheme.surface,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _PosNegToggle(
-                    positive: st.activePositive,
-                    onChanged: notifier.setActivePositive,
-                  ),
+          Material(
+            color: context.raisedFill(scheme.surface),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
                 ),
-                const SizedBox(width: 12),
-                _TrayButton(open: trayOpen, onTap: onToggleTray),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Material(
-                    color: scheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(_kBarH / 2),
-                    clipBehavior: Clip.antiAlias,
-                    child: SizedBox(
-                      height: _kBarH,
-                      child: Row(
-                        children: [
-                          // 文案/图标报的是**切过去**的那一头(和 web 那颗
-                          // Grid/AlignLeft 同款语义),所以不做选中高亮 ——
-                          // 高亮加文案会互相打架。
-                          Expanded(
-                            child: _GroupAction(
-                              icon: chipMode
-                                  ? Icons.notes_rounded
-                                  : Icons.grid_view_rounded,
-                              label: chipMode ? '文本' : '芯片',
-                              enabled: true,
-                              onTap: onToggleMode,
-                            ),
-                          ),
-                          SizedBox(
-                            width: 1,
-                            height: 16,
-                            child: ColoredBox(color: scheme.outlineVariant),
-                          ),
-                          Expanded(
-                            child: _GroupAction(
-                              icon: Icons.undo,
-                              label: '撤销',
-                              enabled: st.canUndo,
-                              onTap: notifier.undo,
-                            ),
-                          ),
-                        ],
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _PosNegToggle(
+                        positive: st.activePositive,
+                        onChanged: notifier.setActivePositive,
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    _TrayButton(open: trayOpen, onTap: onToggleTray),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Material(
+                        color: scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(_kBarH / 2),
+                        clipBehavior: Clip.antiAlias,
+                        child: SizedBox(
+                          height: _kBarH,
+                          child: Row(
+                            children: [
+                              // 文案/图标报的是**切过去**的那一头(和 web 那颗
+                              // Grid/AlignLeft 同款语义),所以不做选中高亮 ——
+                              // 高亮加文案会互相打架。
+                              Expanded(
+                                child: _GroupAction(
+                                  icon: chipMode
+                                      ? Icons.notes_rounded
+                                      : Icons.grid_view_rounded,
+                                  label: chipMode ? '文本' : '芯片',
+                                  enabled: true,
+                                  onTap: onToggleMode,
+                                ),
+                              ),
+                              SizedBox(
+                                width: 1,
+                                height: 16,
+                                child: ColoredBox(color: scheme.outlineVariant),
+                              ),
+                              Expanded(
+                                child: _GroupAction(
+                                  icon: Icons.undo,
+                                  label: '撤销',
+                                  enabled: st.canUndo,
+                                  onTap: notifier.undo,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -181,9 +192,7 @@ class _TrayButton extends StatelessWidget {
     return Tooltip(
       message: open ? '收起' : '展开',
       child: Material(
-        color: open
-            ? scheme.secondaryContainer
-            : scheme.surfaceContainerHighest,
+        color: open ? context.selectedFill : scheme.surfaceContainerHighest,
         shape: const CircleBorder(),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -197,7 +206,7 @@ class _TrayButton extends StatelessWidget {
               child: Icon(
                 Icons.add_rounded,
                 size: 22,
-                color: open ? scheme.onSecondaryContainer : scheme.onSurface,
+                color: open ? context.onSelectedFill : scheme.onSurface,
               ),
             ),
           ),

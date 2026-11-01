@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../generate/gen_jobs.dart' show GenJob;
 import '../../generate/widgets/common.dart' show StripeThumb;
@@ -508,100 +509,105 @@ class _FilmStripState extends State<FilmStrip>
     final scheme = context.scheme;
     final display = _display = _entries();
     final index = {for (var i = 0; i < display.length; i++) display[i].key: i};
-    return Material(
-      color: scheme.surface,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: SizedBox(
-          height: _thumbSlotH,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                // 每条宽度按公式给定(不靠量):进出后位置立刻是对的,
-                // 补回滚动位置的位移和 _reveal 算的落点才对得上实际布局
-                child: ListView.builder(
-                  controller: _sc,
-                  scrollDirection: Axis.horizontal,
-                  // 每条的宽里带着后面那道分隔,右边距相应减掉
-                  padding: const EdgeInsets.only(
-                    left: _stripPadH,
-                    right: _stripPadH - _thumbGap,
-                  ),
-                  itemCount: display.length,
-                  itemExtentBuilder: (i, _) =>
-                      i < display.length ? _extentOf(display[i]) : null,
-                  findChildIndexCallback: (key) =>
-                      index[(key as ValueKey<String>).value],
-                  itemBuilder: (context, i) {
-                    final e = display[i];
-                    final job = e.job;
-                    final result = e.result;
-                    final Widget thumb = job != null
-                        ? _GenThumb(
-                            job: job,
-                            active: !e.ghost && job.id == widget.selectedJobId,
-                            onTap: () => widget.onSelectJob?.call(job.id),
-                          )
-                        : _FilmThumb(
-                            result: result!,
-                            vacant: e.vacant,
-                            selected:
-                                !e.ghost &&
-                                result.id == widget.selectedId &&
-                                widget.selectedJobId == null,
-                            onTap: () => widget.onSelect(result.id),
-                            onDragStart: () => _showBands(result.id),
-                            onDragEnd: _hideBands,
-                          );
-                    // 进出时按比例裁宽、淡入淡出。结构不随状态变,影子与原条目
-                    // 同一个键,条目内部状态(选中环过渡、拖拽)不会被重建打断
-                    return ClipRect(
-                      key: ValueKey(e.key),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Opacity(
-                          opacity: _factor(e.key).clamp(0.0, 1.0),
-                          child: IgnorePointer(
-                            ignoring: e.ghost,
-                            child: Padding(
-                              padding: const EdgeInsets.only(right: _thumbGap),
-                              child: thumb,
+    return Docked(
+      child: Material(
+        color: context.raisedFill(scheme.surface),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: SizedBox(
+            height: _thumbSlotH,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  // 每条宽度按公式给定(不靠量):进出后位置立刻是对的,
+                  // 补回滚动位置的位移和 _reveal 算的落点才对得上实际布局
+                  child: ListView.builder(
+                    controller: _sc,
+                    scrollDirection: Axis.horizontal,
+                    // 每条的宽里带着后面那道分隔,右边距相应减掉
+                    padding: const EdgeInsets.only(
+                      left: _stripPadH,
+                      right: _stripPadH - _thumbGap,
+                    ),
+                    itemCount: display.length,
+                    itemExtentBuilder: (i, _) =>
+                        i < display.length ? _extentOf(display[i]) : null,
+                    findChildIndexCallback: (key) =>
+                        index[(key as ValueKey<String>).value],
+                    itemBuilder: (context, i) {
+                      final e = display[i];
+                      final job = e.job;
+                      final result = e.result;
+                      final Widget thumb = job != null
+                          ? _GenThumb(
+                              job: job,
+                              active:
+                                  !e.ghost && job.id == widget.selectedJobId,
+                              onTap: () => widget.onSelectJob?.call(job.id),
+                            )
+                          : _FilmThumb(
+                              result: result!,
+                              vacant: e.vacant,
+                              selected:
+                                  !e.ghost &&
+                                  result.id == widget.selectedId &&
+                                  widget.selectedJobId == null,
+                              onTap: () => widget.onSelect(result.id),
+                              onDragStart: () => _showBands(result.id),
+                              onDragEnd: _hideBands,
+                            );
+                      // 进出时按比例裁宽、淡入淡出。结构不随状态变,影子与原条目
+                      // 同一个键,条目内部状态(选中环过渡、拖拽)不会被重建打断
+                      return ClipRect(
+                        key: ValueKey(e.key),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Opacity(
+                            opacity: _factor(e.key).clamp(0.0, 1.0),
+                            child: IgnorePointer(
+                              ignoring: e.ghost,
+                              child: Padding(
+                                padding: const EdgeInsets.only(
+                                  right: _thumbGap,
+                                ),
+                                child: thumb,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
-              ),
-              // 悬浮「›」展开全部:压在缩略图之上,靠投影拉开层次
-              Positioned(
-                top: 0,
-                bottom: 0,
-                right: _moreRight,
-                child: Center(
-                  child: Material(
-                    color: scheme.surfaceContainerHighest,
-                    elevation: 4,
-                    shadowColor: Colors.black.withValues(alpha: .45),
-                    shape: const CircleBorder(),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      onTap: () => showGalleryGrid(context),
-                      child: SizedBox(
-                        width: _moreSize,
-                        height: _moreSize,
-                        child: Icon(
-                          Icons.chevron_right,
-                          size: 24,
-                          color: scheme.onSurfaceVariant,
+                // 悬浮「›」展开全部:压在缩略图之上,靠投影拉开层次
+                Positioned(
+                  top: 0,
+                  bottom: 0,
+                  right: _moreRight,
+                  child: Center(
+                    child: Material(
+                      color: context.raisedFill(scheme.surfaceContainerHighest),
+                      elevation: 4,
+                      shadowColor: Colors.black.withValues(alpha: .45),
+                      shape: const CircleBorder(),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () => showGalleryGrid(context),
+                        child: SizedBox(
+                          width: _moreSize,
+                          height: _moreSize,
+                          child: Icon(
+                            Icons.chevron_right,
+                            size: 24,
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1015,15 +1021,15 @@ class _DropBand extends StatelessWidget {
         builder: (context, cand, _) {
           final on = cand.isNotEmpty;
           final bg = !on
-              ? scheme.surfaceContainerHighest
+              ? context.raisedFill(scheme.surfaceContainerHighest)
               : destructive
               ? scheme.errorContainer
-              : scheme.primaryContainer;
+              : context.solidFill(scheme.primaryContainer);
           final fg = !on
               ? scheme.onSurfaceVariant
               : destructive
               ? scheme.onErrorContainer
-              : scheme.onPrimaryContainer;
+              : context.onSolidFill(scheme.onPrimaryContainer);
           final edge = !on
               ? Colors.transparent
               : destructive

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:plana_app/core/theme/app_theme.dart';
 import 'package:plana_app/core/theme/theme_settings.dart';
 
 void main() {
@@ -24,6 +25,67 @@ void main() {
   test('seed 找不到档位时回退默认档(不是列表第一个)', () {
     // 第一个是「金」,回退到那儿等于用户随便点一下就换了个不相干的色。
     expect(const ThemeSettings(seedKey: 'nope').seed.key, kDefaultSeedKey);
+  });
+
+  test('浮卡主题存取回环', () {
+    const s = ThemeSettings(seedKey: kFloatThemeKey);
+    expect(s.float, isTrue);
+    expect(ThemeSettings.fromJson(s.toJson()).seedKey, kFloatThemeKey);
+    expect(const ThemeSettings(seedKey: 'teal').float, isFalse);
+  });
+
+  test('浮卡各档存取回环;旧的 float 键读成蓝色', () {
+    for (final a in floatAccents) {
+      final s = ThemeSettings(seedKey: floatThemeKey(a));
+      expect(s.float, isTrue);
+      expect(s.floatAccent, a);
+      expect(ThemeSettings.fromJson(s.toJson()).floatAccent, a);
+    }
+    expect(ThemeSettings.fromJson({'seed': 'float'}).floatAccent, kFloatBlue);
+    expect(
+      ThemeSettings.fromJson({'seed': 'float:neon'}).seedKey,
+      kDefaultSeedKey,
+    );
+  });
+
+  test('浮卡各档主色按亮暗取', () {
+    for (final a in floatAccents) {
+      expect(AppTheme.float(Brightness.light, a).colorScheme.primary, a.light);
+      expect(AppTheme.float(Brightness.dark, a).colorScheme.primary, a.dark);
+      expect(
+        AppTheme.float(Brightness.dark, a).colorScheme.onPrimary,
+        a.onDark,
+      );
+    }
+  });
+
+  test('浮卡深色底:蓝色是原夜空,其余各带色调', () {
+    final night = AppTheme.float(Brightness.dark).colorScheme.surface;
+    expect(night, const Color(0xFF0B1220));
+    final others = {
+      for (final a in floatAccents)
+        if (a != kFloatBlue)
+          AppTheme.float(Brightness.dark, a).colorScheme.surface,
+    };
+    expect(others, hasLength(floatAccents.length - 1));
+    expect(others, isNot(contains(night)));
+  });
+
+  test('浮卡蓝色的第三色(点数胶囊的粉)与旧版浅蓝档一致', () {
+    for (final b in Brightness.values) {
+      final old = (b == Brightness.light ? AppTheme.light() : AppTheme.dark())
+          .colorScheme;
+      final now = AppTheme.float(b).colorScheme;
+      expect(now.tertiaryContainer, old.tertiaryContainer);
+      expect(now.onTertiaryContainer, old.onTertiaryContainer);
+      expect(now.tertiary, old.tertiary);
+    }
+  });
+
+  test('下架的种子档就近归档', () {
+    expect(ThemeSettings.fromJson({'seed': 'orange'}).seedKey, 'gold');
+    expect(ThemeSettings.fromJson({'seed': 'green'}).seedKey, 'teal');
+    expect(ThemeSettings.fromJson({'seed': 'indigo'}).seedKey, 'sky');
   });
 
   test('下架的档位(旧版深蓝)按脏数据回退', () {

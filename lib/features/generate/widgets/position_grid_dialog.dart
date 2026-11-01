@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/util/haptics.dart';
 import '../../gallery/gallery_state.dart';
@@ -389,8 +390,12 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
   ) {
     final scheme = context.scheme;
     final active = c.id == _selectedId;
+    final solid = active && context.skin.float;
+    final onActive = context.onSolidFill(scheme.onPrimaryContainer);
     return Material(
-      color: active ? scheme.primaryContainer : scheme.surfaceContainerHighest,
+      color: active
+          ? context.solidFill(scheme.primaryContainer)
+          : scheme.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(20),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -404,7 +409,9 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
                 width: 18,
                 height: 18,
                 decoration: BoxDecoration(
-                  color: active ? scheme.primary : scheme.outlineVariant,
+                  color: active
+                      ? (solid ? scheme.onPrimary : scheme.primary)
+                      : scheme.outlineVariant,
                   shape: BoxShape.circle,
                 ),
                 child: Center(
@@ -414,7 +421,7 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
                       color: active
-                          ? scheme.onPrimary
+                          ? (solid ? scheme.primary : scheme.onPrimary)
                           : scheme.onSurfaceVariant,
                     ),
                   ),
@@ -425,9 +432,7 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
                 c.name,
                 style: context.texts.labelMedium!.copyWith(
                   fontWeight: FontWeight.w600,
-                  color: active
-                      ? scheme.onPrimaryContainer
-                      : scheme.onSurfaceVariant,
+                  color: active ? onActive : scheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(width: 6),
@@ -437,11 +442,8 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
                 positionChipLabel(_draft[c.id], grid: !isV5),
                 style: context.texts.labelSmall!.copyWith(
                   fontFeatures: const [FontFeature.tabularFigures()],
-                  color:
-                      (active
-                              ? scheme.onPrimaryContainer
-                              : scheme.onSurfaceVariant)
-                          .withValues(alpha: .7),
+                  color: (active ? onActive : scheme.onSurfaceVariant)
+                      .withValues(alpha: .7),
                 ),
               ),
             ],

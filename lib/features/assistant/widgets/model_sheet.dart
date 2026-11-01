@@ -16,6 +16,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/ui/setting_row.dart';
 import '../../generate/widgets/common.dart' show dropFocusSoon;
@@ -135,18 +136,23 @@ class _ModelSheet extends ConsumerWidget {
     VoidCallback? onEdit,
   }) {
     final scheme = context.scheme;
-    final fg = selected || accent
+    final solid = selected && context.skin.float;
+    final fg = solid
+        ? scheme.onPrimary
+        : selected || accent
         ? scheme.primary
         : (dim ? scheme.outline : null);
     return ListTile(
       onTap: onTap,
       selected: selected,
-      selectedTileColor: scheme.primaryContainer.withValues(alpha: .35),
+      selectedTileColor: context.skin.float
+          ? scheme.primary
+          : scheme.primaryContainer.withValues(alpha: .35),
       contentPadding: const EdgeInsets.only(left: 20, right: 8),
       leading: Icon(
         selected ? Icons.check_circle : icon,
         size: 21,
-        color: selected ? scheme.primary : (dim ? scheme.outline : fg),
+        color: selected ? fg : (dim ? scheme.outline : fg),
       ),
       title: Row(
         children: [
@@ -168,13 +174,15 @@ class _ModelSheet extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: scheme.secondaryContainer,
+                color: solid
+                    ? scheme.onPrimary.withValues(alpha: .2)
+                    : scheme.secondaryContainer,
                 borderRadius: BorderRadius.circular(5),
               ),
               child: Text(
                 badge,
                 style: context.texts.labelSmall!.copyWith(
-                  color: scheme.onSecondaryContainer,
+                  color: solid ? scheme.onPrimary : scheme.onSecondaryContainer,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -188,7 +196,11 @@ class _ModelSheet extends ConsumerWidget {
               subtitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: context.texts.labelSmall!.copyWith(color: scheme.outline),
+              style: context.texts.labelSmall!.copyWith(
+                color: solid
+                    ? scheme.onPrimary.withValues(alpha: .8)
+                    : scheme.outline,
+              ),
             ),
       trailing: onEdit == null
           ? null
@@ -198,7 +210,7 @@ class _ModelSheet extends ConsumerWidget {
               icon: Icon(
                 Icons.edit_outlined,
                 size: 18,
-                color: scheme.onSurfaceVariant,
+                color: solid ? scheme.onPrimary : scheme.onSurfaceVariant,
               ),
               onPressed: onEdit,
             ),

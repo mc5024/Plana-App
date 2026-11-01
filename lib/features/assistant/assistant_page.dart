@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/store/app_stores.dart';
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/util/haptics.dart';
 import '../../core/util/image_pick.dart';
@@ -294,18 +295,21 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
             if (!s.canvas || canvasHasContent(ref.watch(generateProvider)))
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: Material(
-                  color: scheme.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(12),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: () => _send(preset: s.text, canvas: s.canvas),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 13,
+                child: Lifted(
+                  radius: BorderRadius.circular(12),
+                  child: Material(
+                    color: scheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(12),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => _send(preset: s.text, canvas: s.canvas),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 13,
+                        ),
+                        child: Text(s.text, style: context.texts.bodyMedium),
                       ),
-                      child: Text(s.text, style: context.texts.bodyMedium),
                     ),
                   ),
                 ),
@@ -624,7 +628,9 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
               avatar: Icon(
                 _withCanvas ? Icons.draw : Icons.draw_outlined,
                 size: 16,
+                color: context.chipIcon(_withCanvas),
               ),
+              deleteIconColor: context.chipIcon(_withCanvas),
               // 附上之后改叫「创作页」:带没带已经由填色和 ✕ 说清了,
               // 再留着动词反而像还没按。
               //
@@ -690,6 +696,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
         // 关着用 layers,别用 tune —— 顶栏「助手设置」已经是 tune 了
         on ? assistantModeIcon(shown, on: true) : Icons.layers_outlined,
         size: 16,
+        color: context.chipIcon(on),
       ),
       // 开着就只写模式名;关着写「模式」,「模式 无」读着别扭
       label: Text(on ? assistantModeLabel(shown) : '模式'),
@@ -731,15 +738,17 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
     final level =
         ref.watch(assistantSettingsProvider).value?.thinkLevel ??
         ThinkLevel.auto;
+    final on = level != ThinkLevel.auto;
     return FilterChip(
       // 「自动」不算开着:那一档压根不发字段
-      selected: level != ThinkLevel.auto,
+      selected: on,
       showCheckmark: false,
       visualDensity: VisualDensity.compact,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       avatar: Icon(
         level == ThinkLevel.off ? Icons.lightbulb_outline : Icons.lightbulb,
         size: 16,
+        color: context.chipIcon(on),
       ),
       label: Text('思考 ${thinkLevelLabel(level)}'),
       onSelected: (_) => showThinkSheet(context),
@@ -758,78 +767,88 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
         if (mounted && _withCanvas) setState(() => _withCanvas = false);
       });
     }
-    return Padding(
-      // 键盘避让交给 Scaffold(resizeToAvoidBottomInset 默认开):它已经把 body
-      // 的 viewInsets.bottom 抹成 0 了,这里再加一次等于抬两倍高。
-      padding: const EdgeInsets.fromLTRB(12, 9, 12, 11),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (_pending != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 53, bottom: 9),
-              child: _Thumb(
-                bytes: _pending!.bytes,
-                onRemove: () => setState(() => _pending = null),
-              ),
-            ),
-          _optionRow(hasCanvas),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+    // 浮卡样式:白色底部区,和底栏连成一块;输入框是凹槽灰
+    return Docked(
+      child: ColoredBox(
+        color: context.raisedFill(Colors.transparent),
+        child: Padding(
+          // 键盘避让交给 Scaffold(resizeToAvoidBottomInset 默认开):它已经把 body
+          // 的 viewInsets.bottom 抹成 0 了,这里再加一次等于抬两倍高。
+          padding: const EdgeInsets.fromLTRB(12, 9, 12, 11),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              IconButton(
-                tooltip: '带一张图',
-                onPressed: _pick,
-                icon: Icon(
-                  Icons.image_outlined,
-                  color: _pending != null ? scheme.primary : null,
-                ),
-              ),
-              const SizedBox(width: 1),
-              Expanded(
-                child: TextField(
-                  controller: _input,
-                  focusNode: _inputFocus,
-                  minLines: 1,
-                  maxLines: 5,
-                  textInputAction: TextInputAction.newline,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    hintText: '想画什么、想改哪里…',
-                    filled: true,
-                    fillColor: scheme.surfaceContainerLowest,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(22),
-                      borderSide: BorderSide.none,
-                    ),
+              if (_pending != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 53, bottom: 9),
+                  child: _Thumb(
+                    bytes: _pending!.bytes,
+                    onRemove: () => setState(() => _pending = null),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              // 跑着的时候:输入框空着是停止,写了东西是发送(排进队里)
-              SizedBox(
-                width: 44,
-                height: 44,
-                child: running && !hasDraft
-                    ? IconButton.filledTonal(
-                        tooltip: '停止',
-                        onPressed: ref.read(assistantProvider.notifier).stop,
-                        icon: const Icon(Icons.stop, size: 20),
-                      )
-                    : IconButton.filled(
-                        tooltip: '发送',
-                        onPressed: canSend ? () => _send() : null,
-                        icon: const Icon(Icons.arrow_upward, size: 20),
+              _optionRow(hasCanvas),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  IconButton(
+                    tooltip: '带一张图',
+                    onPressed: _pick,
+                    icon: Icon(
+                      Icons.image_outlined,
+                      color: _pending != null ? scheme.primary : null,
+                    ),
+                  ),
+                  const SizedBox(width: 1),
+                  Expanded(
+                    child: TextField(
+                      controller: _input,
+                      focusNode: _inputFocus,
+                      minLines: 1,
+                      maxLines: 5,
+                      textInputAction: TextInputAction.newline,
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: '想画什么、想改哪里…',
+                        filled: true,
+                        fillColor: context.skin.float
+                            ? scheme.surfaceContainerHigh
+                            : scheme.surfaceContainerLowest,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // 跑着的时候:输入框空着是停止,写了东西是发送(排进队里)
+                  SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: running && !hasDraft
+                        ? IconButton.filledTonal(
+                            tooltip: '停止',
+                            onPressed: ref
+                                .read(assistantProvider.notifier)
+                                .stop,
+                            icon: const Icon(Icons.stop, size: 20),
+                          )
+                        : IconButton.filled(
+                            tooltip: '发送',
+                            onPressed: canSend ? () => _send() : null,
+                            icon: const Icon(Icons.arrow_upward, size: 20),
+                          ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -857,7 +876,7 @@ class _ModelGate extends ConsumerWidget {
               width: 62,
               height: 62,
               decoration: BoxDecoration(
-                color: scheme.surfaceContainer,
+                color: context.raisedFill(scheme.surfaceContainer),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -941,7 +960,7 @@ class _Gate extends ConsumerWidget {
               width: 62,
               height: 62,
               decoration: BoxDecoration(
-                color: scheme.surfaceContainer,
+                color: context.raisedFill(scheme.surfaceContainer),
                 shape: BoxShape.circle,
               ),
               child: Icon(Icons.bolt_outlined, size: 26, color: scheme.outline),
@@ -1081,7 +1100,7 @@ class _MsgTile extends ConsumerWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: scheme.secondaryContainer,
+                color: context.selectedFill,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(16),
                   topRight: Radius.circular(16),
@@ -1092,7 +1111,7 @@ class _MsgTile extends ConsumerWidget {
               child: Text(
                 msg.text,
                 style: context.texts.bodyMedium!.copyWith(
-                  color: scheme.onSecondaryContainer,
+                  color: context.onSelectedFill,
                   fontSize: fontSize,
                   height: 1.5,
                 ),
@@ -1165,6 +1184,7 @@ class _MsgTile extends ConsumerWidget {
               decoration: BoxDecoration(
                 color: scheme.surfaceContainerLow,
                 borderRadius: _kAiBubbleRadius,
+                border: context.edgeBorder,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1493,6 +1513,7 @@ class _PendingBubbleState extends State<_PendingBubble> {
         decoration: BoxDecoration(
           color: scheme.surfaceContainerLow,
           borderRadius: _kAiBubbleRadius,
+          border: context.edgeBorder,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

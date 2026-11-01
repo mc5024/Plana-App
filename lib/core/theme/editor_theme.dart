@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_skin.dart';
+
 /// 编辑器专用「实体类型」强调色。
 /// 说明:正面=primary、负面=error 由 M3 语义角色天然给出;
 /// 但「角色 / OC / 作品 / 加权 / 降权」是种子色无法表达的类型语义,集中定义在此扩展里,
@@ -155,6 +157,7 @@ ThemeData editorTheme(BuildContext context) {
   final base = Theme.of(context);
   return base.copyWith(
     extensions: [
+      ...base.extensions.values,
       base.brightness == Brightness.dark
           ? EditorPalette.dark
           : EditorPalette.light,
@@ -174,8 +177,10 @@ extension EditorPaletteX on BuildContext {
   /// 不用 surfaceContainerLowest:本主题把它定在 tone 100,而 100 是整条色阶上
   /// 唯一 chroma 为 0 的一档 —— 纯白不跟种子走,换主题色时只有这块不变。
   /// 深色下 surfaceBright 是 tone 24,正好撞上 chip 底,仍用容器色。
+  /// 浮卡样式用卡片色。
   Color get editorDock {
     final t = Theme.of(this);
+    if (skin.float) return t.colorScheme.surfaceContainerLow;
     return t.brightness == Brightness.dark
         ? t.colorScheme.surfaceContainer
         : t.colorScheme.surfaceBright;

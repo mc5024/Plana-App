@@ -5,6 +5,7 @@ import 'package:gal/gal.dart';
 import '../../core/auth/bot_session_store.dart';
 import '../../core/net/backend_client.dart';
 import '../../core/net/remote_image.dart';
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../generate/widgets/common.dart' show hintSnack;
 import 'stats_providers.dart';
@@ -187,6 +188,7 @@ class _WalletPageState extends ConsumerState<WalletPage> {
                 decoration: BoxDecoration(
                   color: scheme.surfaceContainerLow,
                   borderRadius: BorderRadius.circular(16),
+                  border: context.edgeBorder,
                 ),
                 sliver: SliverPadding(
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
@@ -541,11 +543,7 @@ class _CategoryRow extends StatelessWidget {
               child: Text(
                 '$pct%',
                 textAlign: TextAlign.right,
-                style: mono(
-                  context,
-                  size: 11,
-                  color: scheme.onSurfaceVariant,
-                ),
+                style: mono(context, size: 11, color: scheme.onSurfaceVariant),
               ),
             ),
           ],
@@ -586,7 +584,7 @@ class _KindSeg extends StatelessWidget {
     Widget seg(String k, String label) {
       final on = kind == k;
       return Material(
-        color: on ? scheme.secondaryContainer : Colors.transparent,
+        color: on ? context.selectedFill : Colors.transparent,
         child: InkWell(
           onTap: () => onChanged(k),
           child: Padding(
@@ -594,9 +592,7 @@ class _KindSeg extends StatelessWidget {
             child: Text(
               label,
               style: context.texts.labelSmall!.copyWith(
-                color: on
-                    ? scheme.onSecondaryContainer
-                    : scheme.onSurfaceVariant,
+                color: on ? context.onSelectedFill : scheme.onSurfaceVariant,
               ),
             ),
           ),

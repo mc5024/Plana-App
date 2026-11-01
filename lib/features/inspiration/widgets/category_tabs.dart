@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 
 /// 灵感页顶栏的分类页签:一条连续的横滚标签,选中项放大加深、下面一道与字同宽的主色线。
@@ -18,6 +19,7 @@ class CategoryTabs extends StatefulWidget {
     this.onManage,
     this.leftPad = 14,
     this.capsule = false,
+    this.capsuleColor,
     this.rightPad = 4,
   });
 
@@ -34,6 +36,9 @@ class CategoryTabs extends StatefulWidget {
 
   /// 整条(含行末的类别管理)包进一颗浅底胶囊。
   final bool capsule;
+
+  /// 胶囊底色;默认按压在页面上取色。
+  final Color? capsuleColor;
 
   /// 胶囊右边离外面的距离(后面还跟着按钮时留一点缝,贴边时与左边对称)。
   final double rightPad;
@@ -192,7 +197,7 @@ class _CategoryTabsState extends State<CategoryTabs> {
                       child: Container(
                         width: _pillWidthAt(pos),
                         decoration: BoxDecoration(
-                          color: scheme.surface,
+                          color: context.segThumb,
                           borderRadius: BorderRadius.circular(17),
                           boxShadow: [
                             BoxShadow(
@@ -254,7 +259,10 @@ class _CategoryTabsState extends State<CategoryTabs> {
         padding: EdgeInsets.fromLTRB(widget.leftPad, 4, widget.rightPad, 4),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(20),
-          child: ColoredBox(color: scheme.surfaceContainerHigh, child: row),
+          child: ColoredBox(
+            color: widget.capsuleColor ?? context.pageControlFill,
+            child: row,
+          ),
         ),
       ),
     );
@@ -284,7 +292,9 @@ class _CategoryTabsState extends State<CategoryTabs> {
                 fontWeight: FontWeight.w700,
                 color: Color.lerp(
                   scheme.onSurfaceVariant,
-                  widget.capsule ? scheme.primary : scheme.onSurface,
+                  widget.capsule
+                      ? context.segLabel(scheme.primary)
+                      : scheme.onSurface,
                   t,
                 ),
               ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../generate/generate_state.dart';
 import '../generate/models.dart';
@@ -202,81 +203,86 @@ class LoraStackCard extends StatelessWidget {
       color: scheme.onSurfaceVariant,
     );
     final missing = stack.loras.where(_gone).length;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 9, 6, 10),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .35)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              _StackThumbs(
-                urls: [for (final e in stack.loras.take(3)) e.previewUrl],
-                ring: scheme.surfaceContainerLow,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      stack.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.texts.bodyMedium!.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(text: '${stack.loras.length} 个 LoRA'),
-                          if (missing > 0)
-                            TextSpan(
-                              text: ' · $missing 个已不在库里',
-                              style: TextStyle(color: scheme.error),
-                            ),
-                        ],
-                      ),
-                      style: label,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 6),
-              FilledButton.tonal(
-                onPressed: onApply,
-                style: FilledButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                ),
-                child: const Text('应用'),
-              ),
-              IconButton(
-                tooltip: '删除',
-                visualDensity: VisualDensity.compact,
-                icon: Icon(Icons.delete_outline, color: scheme.error),
-                onPressed: onDelete,
-              ),
-            ],
+    return Lifted(
+      radius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 9, 6, 10),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: .35),
           ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: Wrap(
-              spacing: 5,
-              runSpacing: 5,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
               children: [
-                for (final e in stack.loras) _EntryChip(e, gone: _gone(e)),
+                _StackThumbs(
+                  urls: [for (final e in stack.loras.take(3)) e.previewUrl],
+                  ring: scheme.surfaceContainerLow,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        stack.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.texts.bodyMedium!.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(text: '${stack.loras.length} 个 LoRA'),
+                            if (missing > 0)
+                              TextSpan(
+                                text: ' · $missing 个已不在库里',
+                                style: TextStyle(color: scheme.error),
+                              ),
+                          ],
+                        ),
+                        style: label,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                FilledButton.tonal(
+                  onPressed: onApply,
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                  ),
+                  child: const Text('应用'),
+                ),
+                IconButton(
+                  tooltip: '删除',
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.delete_outline, color: scheme.error),
+                  onPressed: onDelete,
+                ),
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Wrap(
+                spacing: 5,
+                runSpacing: 5,
+                children: [
+                  for (final e in stack.loras) _EntryChip(e, gone: _gone(e)),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

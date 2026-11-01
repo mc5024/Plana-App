@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/util/nai_tokenizer.dart';
 import '../../editor/editor_models.dart'
@@ -105,177 +106,180 @@ class _PromptCardState extends ConsumerState<PromptCard> {
     // 窄屏只收紧公共圆形按钮尺寸,与角色卡头同一口径。
     final actionSize = MediaQuery.sizeOf(context).width < 350 ? 32.0 : 36.0;
 
-    return Material(
-      color: scheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(16),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(selecting ? 9 : 15, 8, 13, 4),
-            child: selecting
-                ? _selectHeader(context, sections, state.prompt, actionSize)
-                : Row(
-                    children: [
-                      Icon(
-                        Icons.subject,
-                        size: 20,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 9),
-                      Text(
-                        '提示词',
-                        style: context.texts.bodyLarge!.copyWith(
-                          fontWeight: FontWeight.w600,
+    return Lifted(
+      radius: BorderRadius.circular(16),
+      child: Material(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(selecting ? 9 : 15, 8, 13, 4),
+              child: selecting
+                  ? _selectHeader(context, sections, state.prompt, actionSize)
+                  : Row(
+                      children: [
+                        const SkinIcon(Icons.subject),
+                        const SizedBox(width: 9),
+                        Text(
+                          '提示词',
+                          style: context.texts.bodyLarge!.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 9),
-                      Text(
-                        '$promptTokens',
-                        style: mono(context, size: 12, weight: FontWeight.w700)
-                            .copyWith(
-                              color: over ? scheme.error : scheme.onSurface,
-                            ),
-                      ),
-                      // 占满剩余宽度把按钮推到右边;四颗按钮都在时窄屏可能挤,
-                      // 上限先省略,按钮不缩
-                      Expanded(
-                        child: Text(
-                          ' / $limit',
-                          maxLines: 1,
-                          softWrap: false,
-                          overflow: TextOverflow.fade,
-                          style: mono(
-                            context,
-                            size: 12,
-                            weight: FontWeight.w500,
-                          ).copyWith(color: scheme.outline),
+                        const SizedBox(width: 9),
+                        Text(
+                          '$promptTokens',
+                          style:
+                              mono(
+                                context,
+                                size: 12,
+                                weight: FontWeight.w700,
+                              ).copyWith(
+                                color: over ? scheme.error : scheme.onSurface,
+                              ),
                         ),
-                      ),
-                      if (state.prompt.trim().isNotEmpty ||
-                          sections.isNotEmpty) ...[
+                        // 占满剩余宽度把按钮推到右边;四颗按钮都在时窄屏可能挤,
+                        // 上限先省略,按钮不缩
+                        Expanded(
+                          child: Text(
+                            ' / $limit',
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.fade,
+                            style: mono(
+                              context,
+                              size: 12,
+                              weight: FontWeight.w500,
+                            ).copyWith(color: scheme.outline),
+                          ),
+                        ),
+                        if (state.prompt.trim().isNotEmpty ||
+                            sections.isNotEmpty) ...[
+                          RoundIconBtn(
+                            Icons.delete_sweep_outlined,
+                            size: actionSize,
+                            tooltip: sections.isEmpty ? '清空正向提示词' : '清空提示词和分区',
+                            color: scheme.onSurfaceVariant,
+                            onTap: () => _clearPositive(context, ref),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        // 与角色卡头「角色库」同一枚图标
                         RoundIconBtn(
-                          Icons.delete_sweep_outlined,
+                          Icons.grid_view,
                           size: actionSize,
-                          tooltip: sections.isEmpty ? '清空正向提示词' : '清空提示词和分区',
+                          tooltip: '灵感库',
                           color: scheme.onSurfaceVariant,
-                          onTap: () => _clearPositive(context, ref),
+                          onTap: () => _importFromLibrary(context, ref),
                         ),
                         const SizedBox(width: 6),
+                        RoundIconBtn(
+                          Icons.add,
+                          size: actionSize,
+                          tooltip: '添加分区',
+                          onTap: notifier.addSection,
+                        ),
                       ],
-                      // 与角色卡头「角色库」同一枚图标
-                      RoundIconBtn(
-                        Icons.grid_view,
-                        size: actionSize,
-                        tooltip: '灵感库',
-                        color: scheme.onSurfaceVariant,
-                        onTap: () => _importFromLibrary(context, ref),
-                      ),
-                      const SizedBox(width: 6),
-                      RoundIconBtn(
-                        Icons.add,
-                        size: actionSize,
-                        tooltip: '添加分区',
-                        onTap: notifier.addSection,
-                      ),
-                    ],
+                    ),
+            ),
+            // token 用量进度条
+            Padding(
+              padding: const EdgeInsets.fromLTRB(15, 0, 15, 2),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: ratio, end: ratio),
+                  duration: Motion.medium,
+                  builder: (_, v, _) => LinearProgressIndicator(
+                    value: v,
+                    minHeight: 3,
+                    backgroundColor: scheme.surfaceContainerHighest,
+                    color: barColor,
                   ),
-          ),
-          // token 用量进度条
-          Padding(
-            padding: const EdgeInsets.fromLTRB(15, 0, 15, 2),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(2),
-              child: TweenAnimationBuilder<double>(
-                tween: Tween(begin: ratio, end: ratio),
-                duration: Motion.medium,
-                builder: (_, v, _) => LinearProgressIndicator(
-                  value: v,
-                  minHeight: 3,
-                  backgroundColor: scheme.surfaceContainerHighest,
-                  color: barColor,
                 ),
               ),
             ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 段落预览 / 分区行切换与增删分区时,高度平滑过渡
-              AnimatedSize(
-                duration: Motion.medium,
-                curve: Motion.emphasized,
-                alignment: Alignment.topCenter,
-                child: sections.isEmpty
-                    // 正面:段落预览
-                    ? InkWell(
-                        onTap: () => _openEditor(context, positive: true),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(15, 12, 15, 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 段落预览 / 分区行切换与增删分区时,高度平滑过渡
+                AnimatedSize(
+                  duration: Motion.medium,
+                  curve: Motion.emphasized,
+                  alignment: Alignment.topCenter,
+                  child: sections.isEmpty
+                      // 正面:段落预览
+                      ? InkWell(
+                          onTap: () => _openEditor(context, positive: true),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(15, 12, 15, 10),
+                            child: Text(
+                              state.prompt.isEmpty
+                                  ? '点击编辑正面提示词…'
+                                  : state.prompt,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: context.texts.bodyLarge!.copyWith(
+                                height: 1.5,
+                                color: state.prompt.isEmpty
+                                    ? scheme.outline
+                                    : scheme.onSurface,
+                              ),
+                            ),
+                          ),
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: _SectionRows(
+                            selecting: selecting,
+                            picked: _picked,
+                            onToggle: _togglePick,
+                            onHold: _enterSelect,
+                          ),
+                        ),
+                ),
+                // 负面:块标 + 单行(+N)+ 独立计数
+                InkWell(
+                  onTap: () => _openEditor(context, positive: false),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(15, 6, 15, 12),
+                    child: Row(
+                      children: [
+                        Icon(Icons.block, size: 17, color: scheme.error),
+                        const SizedBox(width: 8),
+                        Expanded(
                           child: Text(
-                            state.prompt.isEmpty
-                                ? '点击编辑正面提示词…'
-                                : state.prompt,
-                            maxLines: 2,
+                            switch (negativePreview(state.negativePrompt)) {
+                              '' => '点击编辑负面提示词…',
+                              final s => s,
+                            },
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: context.texts.bodyLarge!.copyWith(
-                              height: 1.5,
-                              color: state.prompt.isEmpty
-                                  ? scheme.outline
-                                  : scheme.onSurface,
+                            style: context.texts.bodyMedium!.copyWith(
+                              color: scheme.error,
                             ),
                           ),
                         ),
-                      )
-                    : Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: _SectionRows(
-                          selecting: selecting,
-                          picked: _picked,
-                          onToggle: _togglePick,
-                          onHold: _enterSelect,
+                        const SizedBox(width: 8),
+                        Text(
+                          '$negTokens',
+                          style: mono(
+                            context,
+                            size: 13,
+                            weight: FontWeight.w500,
+                          ).copyWith(color: scheme.outline),
                         ),
-                      ),
-              ),
-              // 负面:块标 + 单行(+N)+ 独立计数
-              InkWell(
-                onTap: () => _openEditor(context, positive: false),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(15, 6, 15, 12),
-                  child: Row(
-                    children: [
-                      Icon(Icons.block, size: 17, color: scheme.error),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          switch (negativePreview(state.negativePrompt)) {
-                            '' => '点击编辑负面提示词…',
-                            final s => s,
-                          },
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: context.texts.bodyMedium!.copyWith(
-                            color: scheme.error,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '$negTokens',
-                        style: mono(
-                          context,
-                          size: 13,
-                          weight: FontWeight.w500,
-                        ).copyWith(color: scheme.outline),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -877,7 +881,9 @@ class _NameChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = context.scheme;
     return Material(
-      color: enabled ? scheme.primaryContainer : Colors.transparent,
+      color: enabled
+          ? context.solidFill(scheme.primaryContainer)
+          : Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(6),
         side: enabled
@@ -897,7 +903,9 @@ class _NameChip extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: context.texts.labelMedium!.copyWith(
                 fontWeight: FontWeight.w600,
-                color: enabled ? scheme.onPrimaryContainer : scheme.outline,
+                color: enabled
+                    ? context.onSolidFill(scheme.onPrimaryContainer)
+                    : scheme.outline,
               ),
             ),
           ),

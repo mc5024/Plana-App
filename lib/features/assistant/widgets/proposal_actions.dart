@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/net/anlas_provider.dart';
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../generate/cost.dart';
 import '../../generate/vibe_encoder.dart';
@@ -97,6 +98,7 @@ class ProposalActions extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = context.scheme;
+    final float = context.skin.float;
     final height = dense ? 36.0 : 40.0;
     final undoStyle = TextButton.styleFrom(
       minimumSize: Size(0, height),
@@ -119,6 +121,12 @@ class ProposalActions extends ConsumerWidget {
               style: FilledButton.styleFrom(
                 minimumSize: Size(0, height),
                 padding: EdgeInsets.symmetric(horizontal: dense ? 12 : 14),
+                backgroundColor: float ? scheme.surfaceContainerLow : null,
+                foregroundColor: float ? scheme.onSurface : null,
+                side: switch (context.skin.edge) {
+                  final edge? when float => BorderSide(color: edge),
+                  _ => null,
+                },
               ),
             ),
             const SizedBox(width: 8),

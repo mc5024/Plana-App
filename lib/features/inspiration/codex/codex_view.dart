@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/store/ui_prefs.dart';
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/ui/fast_scroll_handle.dart';
 import '../../../core/ui/pinch_columns.dart';
@@ -251,7 +252,6 @@ class _CodexViewState extends ConsumerState<CodexView>
   }
 
   Widget _searchRow() {
-    final scheme = context.scheme;
     // 选法典单独一行当标题,搜索框占满整行
     return Padding(
       padding: const EdgeInsets.fromLTRB(_edge, 4, _edge, 0),
@@ -275,7 +275,7 @@ class _CodexViewState extends ConsumerState<CodexView>
                   minHeight: 40,
                 ),
                 filled: true,
-                fillColor: scheme.surfaceContainerHigh,
+                fillColor: context.pageControlFill,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -326,7 +326,7 @@ class _CodexViewState extends ConsumerState<CodexView>
     final scheme = context.scheme;
     final n = ref.watch(codexFavKeysProvider).length;
     return Material(
-      color: scheme.surfaceContainerHigh,
+      color: context.pageControlFill,
       borderRadius: BorderRadius.circular(20),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -370,7 +370,7 @@ class _CodexViewState extends ConsumerState<CodexView>
     final on = _catPath.isNotEmpty;
     final label = on ? _catPath.last : '全部分类';
     return Material(
-      color: on ? scheme.primary : scheme.surfaceContainerHigh,
+      color: on ? scheme.primary : context.pageControlFill,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
@@ -451,7 +451,7 @@ class _CodexViewState extends ConsumerState<CodexView>
   ) {
     final scheme = context.scheme;
     return Material(
-      color: scheme.surfaceContainerHigh,
+      color: context.pageControlFill,
       borderRadius: BorderRadius.circular(20),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -557,7 +557,11 @@ class _CodexViewState extends ConsumerState<CodexView>
             ),
           ),
           const SizedBox(height: 10),
-          FilledButton.tonal(onPressed: onRetry, child: const Text('重试')),
+          FilledButton.tonal(
+            onPressed: onRetry,
+            style: context.pageTonalStyle,
+            child: const Text('重试'),
+          ),
         ],
       ),
     );

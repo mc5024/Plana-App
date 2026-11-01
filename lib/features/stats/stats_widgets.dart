@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/net/backend_client.dart';
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import 'stats_providers.dart';
 
@@ -14,13 +15,16 @@ class StatsCard extends StatelessWidget {
   final EdgeInsetsGeometry? padding;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: padding ?? const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: context.scheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(16),
+  Widget build(BuildContext context) => Lifted(
+    radius: BorderRadius.circular(16),
+    child: Container(
+      padding: padding ?? const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: child,
     ),
-    child: child,
   );
 }
 
@@ -40,9 +44,7 @@ class RangeChips extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(right: 6),
             child: Material(
-              color: e.key == range
-                  ? scheme.secondaryContainer
-                  : Colors.transparent,
+              color: e.key == range ? context.selectedFill : Colors.transparent,
               shape: StadiumBorder(
                 side: e.key == range
                     ? BorderSide.none
@@ -60,7 +62,7 @@ class RangeChips extends StatelessWidget {
                     e.value,
                     style: context.texts.labelMedium!.copyWith(
                       color: e.key == range
-                          ? scheme.onSecondaryContainer
+                          ? context.onSelectedFill
                           : scheme.onSurfaceVariant,
                     ),
                   ),

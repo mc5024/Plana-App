@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../../core/auth/bot_session_store.dart';
 import '../../core/auth/nai_credential_login.dart';
@@ -9,6 +10,7 @@ import '../../core/auth/token_store.dart';
 import '../../core/net/backend_config.dart';
 import '../../core/store/app_stores.dart';
 import '../../core/store/prefs_store.dart';
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_settings.dart';
 import '../assistant/assistant_page.dart';
@@ -234,53 +236,117 @@ class _AppShellState extends ConsumerState<AppShell> {
           children: _pages,
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: tabs.indexOf(index).clamp(0, tabs.length - 1),
-        // 重绘编辑中也允许点按切页(图库页 keep-alive,回来面板还在);
-        // 仅横滑仍锁(防抢涂抹手势)。
-        onDestinationSelected: (i) {
-          final tab = tabs[i];
-          ref.read(shellIndexProvider.notifier).select(tab);
-          if (tab == kTabCreate) _onEnterCreate();
-        },
-        destinations: [
-          NavigationDestination(
-            // 用户在 AI 页点过「导入」、但还没切过来看时点亮。
-            // 独立 tab 没有「改动就在眼皮底下」的同屏感,这颗点是全部的补偿 ——
-            // 它只负责说「那边有东西变了」,改了什么去看提示词卡。
-            icon: Badge(
-              isLabelVisible: ref.watch(
-                assistantProvider.select((s) => s.changedUnseen),
+      bottomNavigationBar: _NavDock(
+        // 创作页的吸底栏、图库的胶片条、AI 页的输入区自带顶边,和底栏连成一块
+        plain:
+            index == kTabCreate ||
+            index == kTabGallery ||
+            index == kTabAssistant,
+        child: NavigationBar(
+          selectedIndex: tabs.indexOf(index).clamp(0, tabs.length - 1),
+          // 重绘编辑中也允许点按切页(图库页 keep-alive,回来面板还在);
+          // 仅横滑仍锁(防抢涂抹手势)。
+          onDestinationSelected: (i) {
+            final tab = tabs[i];
+            ref.read(shellIndexProvider.notifier).select(tab);
+            if (tab == kTabCreate) _onEnterCreate();
+          },
+          destinations: [
+            NavigationDestination(
+              // 用户在 AI 页点过「导入」、但还没切过来看时点亮。
+              // 独立 tab 没有「改动就在眼皮底下」的同屏感,这颗点是全部的补偿 ——
+              // 它只负责说「那边有东西变了」,改了什么去看提示词卡。
+              icon: Badge(
+                isLabelVisible: ref.watch(
+                  assistantProvider.select((s) => s.changedUnseen),
+                ),
+                smallSize: 8,
+                child: const _NavIcon(
+                  Icons.draw_outlined,
+                  Symbols.draw_rounded,
+                ),
               ),
-              smallSize: 8,
-              child: const Icon(Icons.draw_outlined),
+              selectedIcon: const _NavIcon(
+                Icons.draw,
+                Symbols.draw_rounded,
+                selected: true,
+              ),
+              label: '创作',
             ),
-            selectedIcon: const Icon(Icons.draw),
-            label: '创作',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.photo_library_outlined),
-            selectedIcon: Icon(Icons.photo_library),
-            label: '图库',
-          ),
-          if (showAi)
             const NavigationDestination(
-              icon: Icon(Icons.auto_awesome_outlined),
-              selectedIcon: Icon(Icons.auto_awesome),
-              label: 'AI',
+              icon: _NavIcon(
+                Icons.photo_library_outlined,
+                Symbols.photo_library_rounded,
+              ),
+              selectedIcon: _NavIcon(
+                Icons.photo_library,
+                Symbols.photo_library_rounded,
+                selected: true,
+              ),
+              label: '图库',
             ),
-          const NavigationDestination(
-            icon: Icon(Icons.lightbulb_outline),
-            selectedIcon: Icon(Icons.lightbulb),
-            label: '灵感',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: '我的',
-          ),
-        ],
+            if (showAi)
+              const NavigationDestination(
+                icon: _NavIcon(
+                  Icons.auto_awesome_outlined,
+                  Symbols.auto_awesome_rounded,
+                ),
+                selectedIcon: _NavIcon(
+                  Icons.auto_awesome,
+                  Symbols.auto_awesome_rounded,
+                  selected: true,
+                ),
+                label: 'AI',
+              ),
+            const NavigationDestination(
+              icon: _NavIcon(
+                Icons.lightbulb_outline,
+                Symbols.lightbulb_rounded,
+              ),
+              selectedIcon: _NavIcon(
+                Icons.lightbulb,
+                Symbols.lightbulb_rounded,
+                selected: true,
+              ),
+              label: '灵感',
+            ),
+            const NavigationDestination(
+              icon: _NavIcon(Icons.person_outline, Symbols.person_rounded),
+              selectedIcon: _NavIcon(
+                Icons.person,
+                Symbols.person_rounded,
+                selected: true,
+              ),
+              label: '我的',
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+/// 底栏图标。浮卡样式用 Material Symbols 圆角图标:未选中描线、选中填充。
+class _NavIcon extends StatelessWidget {
+  const _NavIcon(this.standard, this.symbol, {this.selected = false});
+
+  final IconData standard;
+  final IconData symbol;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) => context.skin.float
+      ? Icon(symbol, fill: selected ? 1 : 0, weight: 500)
+      : Icon(standard);
+}
+
+/// 浮卡样式下底栏顶边的细边;其余主题原样返回。
+class _NavDock extends StatelessWidget {
+  const _NavDock({required this.plain, required this.child});
+
+  final bool plain;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => plain ? child : Docked(child: child);
 }

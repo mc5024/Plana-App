@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 
 /// 「我的 / 公共库」分段:滑动指示器 + 渐变标签(随 [controller] 的动画走),
@@ -22,12 +23,11 @@ class ScopeSegTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = context.scheme;
     return SizedBox(
       height: compact ? 40 : 42,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: scheme.surfaceContainerHigh,
+          color: context.pageControlFill,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Stack(
@@ -51,7 +51,7 @@ class ScopeSegTabs extends StatelessWidget {
                             width: segW - 6,
                             child: DecoratedBox(
                               decoration: BoxDecoration(
-                                color: scheme.surface,
+                                color: context.segThumb,
                                 borderRadius: BorderRadius.circular(9),
                                 boxShadow: [
                                   BoxShadow(
@@ -120,7 +120,11 @@ class ScopeSegTabs extends StatelessWidget {
   ) {
     final scheme = context.scheme;
     final sel = i == 0 ? 1 - t : t;
-    final color = Color.lerp(scheme.onSurfaceVariant, scheme.primary, sel);
+    final color = Color.lerp(
+      scheme.onSurfaceVariant,
+      context.segLabel(scheme.primary),
+      sel,
+    );
     return Expanded(
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,

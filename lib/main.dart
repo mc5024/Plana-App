@@ -71,8 +71,14 @@ class PlanaApp extends ConsumerWidget {
     return MaterialApp(
       title: kAppName,
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(ts.seed.color),
-      darkTheme: AppTheme.dark(ts.seed.color),
+      theme: switch (ts.floatAccent) {
+        final a? => AppTheme.float(Brightness.light, a),
+        null => AppTheme.light(ts.seed.color),
+      },
+      darkTheme: switch (ts.floatAccent) {
+        final a? => AppTheme.float(Brightness.dark, a),
+        null => AppTheme.dark(ts.seed.color),
+      },
       themeMode: ts.mode,
       navigatorObservers: [_inputFocusGuard],
       // 三键导航机上整个应用让出系统导航栏,见 [NavBarGuard]

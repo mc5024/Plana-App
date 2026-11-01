@@ -5,6 +5,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../generate/widgets/common.dart' show confirmDialog, dropFocusSoon;
 import '../assistant_models.dart';
@@ -130,7 +131,9 @@ class _Row extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.only(bottom: 9),
         child: Material(
-          color: scheme.surfaceContainerLow,
+          color: context.skin.float
+              ? scheme.surfaceContainerHigh
+              : scheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(14),
           clipBehavior: Clip.antiAlias,
           child: InkWell(

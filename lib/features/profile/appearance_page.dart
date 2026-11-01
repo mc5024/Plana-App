@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_settings.dart';
+import '../../core/ui/theme_swatches.dart';
 import '../../core/util/harmony_compat.dart';
 import 'widgets/settings_ui.dart';
 
@@ -47,24 +48,9 @@ class AppearancePage extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           const SettingsLabel('主题色'),
-          SettingsCard(
+          const SettingsCard(
             children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    for (final s in themeSeeds)
-                      _Swatch(
-                        seed: s,
-                        selected: s.key == ts.seed.key,
-                        onTap: () =>
-                            notifier.patch((x) => x.copyWith(seedKey: s.key)),
-                      ),
-                  ],
-                ),
-              ),
+              Padding(padding: EdgeInsets.all(16), child: ThemeSwatches()),
             ],
           ),
           const SizedBox(height: 16),
@@ -202,56 +188,6 @@ class _SwitchRow extends StatelessWidget {
             const SizedBox(width: 8),
             Switch(value: value, onChanged: onChanged),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Swatch extends StatelessWidget {
-  const _Swatch({
-    required this.seed,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final ThemeSeed seed;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = context.scheme;
-    final onColor =
-        ThemeData.estimateBrightnessForColor(seed.color) == Brightness.dark
-        ? Colors.white
-        : Colors.black87;
-    return Tooltip(
-      message: seed.label,
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: AnimatedContainer(
-          duration: Motion.fast,
-          width: 44,
-          height: 44,
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              width: 2,
-              color: selected ? scheme.onSurface : Colors.transparent,
-            ),
-          ),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: seed.color,
-              shape: BoxShape.circle,
-            ),
-            child: selected
-                ? Icon(Icons.check, size: 18, color: onColor)
-                : null,
-          ),
         ),
       ),
     );

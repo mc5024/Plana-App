@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
 
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/ui/param_help.dart';
 import '../../generate/generate_state.dart';
@@ -52,9 +53,13 @@ class GalleryImageLayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
+    // 浮卡样式跟页面底色
+    final bg = context.skin.float
+        ? scheme.surface
+        : scheme.surfaceContainerHigh;
     if (bytes != null) {
       return ColoredBox(
-        color: scheme.surfaceContainerHigh,
+        color: bg,
         child: Center(
           child: Image.memory(
             bytes!,
@@ -67,7 +72,7 @@ class GalleryImageLayer extends StatelessWidget {
     // 空画框按目标宽高比撑到最大,落点与出图后 BoxFit.contain 的位置一致 ——
     // 图一到就在原地替换,不会跳位。尺寸未知(width/height 为 0)时只留底色。
     return ColoredBox(
-      color: scheme.surfaceContainerHigh,
+      color: bg,
       child: (width > 0 && height > 0)
           ? Padding(
               padding: const EdgeInsets.all(28),
@@ -788,26 +793,29 @@ class _RailHandle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    return Material(
-      color: _glass(scheme),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: _glassEdge(scheme),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: SizedBox(
-          width: 48,
-          height: 28,
-          child: AnimatedRotation(
-            duration: Motion.medium,
-            curve: Motion.standard,
-            turns: collapsed ? 0 : .5,
-            child: Icon(
-              Icons.keyboard_arrow_up_rounded,
-              size: 22,
-              color: scheme.onSurface,
+    return Lifted(
+      radius: BorderRadius.circular(14),
+      child: Material(
+        color: _glass(context),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: _glassEdge(context),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 48,
+            height: 28,
+            child: AnimatedRotation(
+              duration: Motion.medium,
+              curve: Motion.standard,
+              turns: collapsed ? 0 : .5,
+              child: Icon(
+                Icons.keyboard_arrow_up_rounded,
+                size: 22,
+                color: scheme.onSurface,
+              ),
             ),
           ),
         ),
@@ -817,9 +825,17 @@ class _RailHandle extends StatelessWidget {
 }
 
 /// 画布上浮层控件共用的半透明底与细描边(操作轨、收起把手、「保存到」胶囊)。
-Color _glass(ColorScheme scheme) => scheme.surface.withValues(alpha: .84);
-BorderSide _glassEdge(ColorScheme scheme) =>
-    BorderSide(color: scheme.outlineVariant.withValues(alpha: .5));
+/// 浮卡样式改成实底白、不画描边,阴影由 [Lifted] 给。
+Color _glass(BuildContext context) => context.skin.float
+    ? context.scheme.surfaceContainerLow
+    : context.scheme.surface.withValues(alpha: .84);
+BorderSide _glassEdge(BuildContext context) => context.skin.float
+    ? BorderSide.none
+    : BorderSide(color: context.scheme.outlineVariant.withValues(alpha: .5));
+
+/// 次要圆钮在浮卡样式下描发丝边;主按钮自带投影。
+Widget _lift(bool primary, Widget child) =>
+    primary ? child : Lifted(child: child);
 
 class _RailButton extends StatelessWidget {
   const _RailButton({
@@ -846,30 +862,33 @@ class _RailButton extends StatelessWidget {
     final double d = primary ? 58 : 48;
     // 次要按钮与左下「保存到」胶囊同一种半透明底 + 细描边,压在图上不显得
     // 一坨灰;不给阴影 —— 半透明底会把底下的阴影透出来,发脏。主按钮照旧实心。
-    final Color circleColor = primary ? scheme.primary : _glass(scheme);
+    final Color circleColor = primary ? scheme.primary : _glass(context);
     final Color iconColor = primary ? scheme.onPrimary : scheme.onSurface;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Material(
-          color: circleColor,
-          shape: primary
-              ? const CircleBorder()
-              : CircleBorder(side: _glassEdge(scheme)),
-          elevation: primary ? 3 : 0,
-          shadowColor: scheme.shadow,
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            onLongPress: onLongPress,
-            // 按住类动作走 highlight 回调:onTapDown/Up 收不到「手指划走」,
-            // 划出去之后图就一直糊在那儿了。
-            onHighlightChanged: onHold,
-            child: SizedBox(
-              width: d,
-              height: d,
-              child: Icon(icon, size: primary ? 27 : 22, color: iconColor),
+        _lift(
+          primary,
+          Material(
+            color: circleColor,
+            shape: primary
+                ? const CircleBorder()
+                : CircleBorder(side: _glassEdge(context)),
+            elevation: primary ? 3 : 0,
+            shadowColor: scheme.shadow,
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              onLongPress: onLongPress,
+              // 按住类动作走 highlight 回调:onTapDown/Up 收不到「手指划走」,
+              // 划出去之后图就一直糊在那儿了。
+              onHighlightChanged: onHold,
+              child: SizedBox(
+                width: d,
+                height: d,
+                child: Icon(icon, size: primary ? 27 : 22, color: iconColor),
+              ),
             ),
           ),
         ),
@@ -877,7 +896,7 @@ class _RailButton extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
           decoration: BoxDecoration(
-            color: _glass(scheme),
+            color: _glass(context),
             borderRadius: BorderRadius.circular(6),
           ),
           child: Text(
@@ -903,44 +922,47 @@ class _SaveAlbumChip extends ConsumerWidget {
     final scheme = context.scheme;
     final target = ref.watch(gallerySaveTargetProvider).albumId;
     final name = ref.watch(albumsProvider).name(target);
-    return Material(
-      color: _glass(scheme),
-      shape: StadiumBorder(side: _glassEdge(scheme)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => showGallerySaveAlbumPicker(context),
-        // 13 号粗体、17 的图标:压在图上看得清,又不抢右侧操作轨。
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(11, 7, 7, 7),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.photo_album_outlined,
-                size: 17,
-                color: scheme.onSurface,
-              ),
-              const SizedBox(width: 6),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 160),
-                child: Text(
-                  '保存到 $name',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.texts.labelLarge?.copyWith(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: scheme.onSurface,
+    return Lifted(
+      radius: BorderRadius.circular(20),
+      child: Material(
+        color: _glass(context),
+        shape: StadiumBorder(side: _glassEdge(context)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => showGallerySaveAlbumPicker(context),
+          // 13 号粗体、17 的图标:压在图上看得清,又不抢右侧操作轨。
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(11, 7, 7, 7),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.photo_album_outlined,
+                  size: 17,
+                  color: scheme.onSurface,
+                ),
+                const SizedBox(width: 6),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 160),
+                  child: Text(
+                    '保存到 $name',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.texts.labelLarge?.copyWith(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurface,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 2),
-              Icon(
-                Icons.keyboard_arrow_down,
-                size: 17,
-                color: scheme.onSurface,
-              ),
-            ],
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.keyboard_arrow_down,
+                  size: 17,
+                  color: scheme.onSurface,
+                ),
+              ],
+            ),
           ),
         ),
       ),

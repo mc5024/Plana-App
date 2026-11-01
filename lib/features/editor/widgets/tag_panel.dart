@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/editor_theme.dart';
 import '../../generate/widgets/common.dart' show hintSnack;
@@ -988,12 +989,12 @@ Widget _action(
   final fg = !enabled
       ? scheme.outlineVariant
       : selected
-      ? scheme.onSecondaryContainer
+      ? context.onSelectedFill
       : danger
       ? scheme.error
       : scheme.onSurface;
   final bg = selected
-      ? scheme.secondaryContainer
+      ? context.selectedFill
       : danger
       ? scheme.error.withValues(alpha: .10)
       : scheme.surfaceContainerHigh;

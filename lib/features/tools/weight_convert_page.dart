@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/editor_theme.dart';
 import '../../core/util/prompt_convert.dart';
@@ -139,20 +140,27 @@ class _WeightConvertViewState extends ConsumerState<WeightConvertView> {
               const SizedBox(height: 12),
               Expanded(
                 flex: 3,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: scheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: SingleChildScrollView(
-                    child: SelectableText.rich(
-                      TextSpan(
-                        style: mono(context, size: 13, weight: FontWeight.w400),
-                        children: _dir == _Dir.sd2nai
-                            ? _naiSpans(context, _output!)
-                            : _sdSpans(context, _output!),
+                child: Lifted(
+                  radius: BorderRadius.circular(14),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: SingleChildScrollView(
+                      child: SelectableText.rich(
+                        TextSpan(
+                          style: mono(
+                            context,
+                            size: 13,
+                            weight: FontWeight.w400,
+                          ),
+                          children: _dir == _Dir.sd2nai
+                              ? _naiSpans(context, _output!)
+                              : _sdSpans(context, _output!),
+                        ),
                       ),
                     ),
                   ),
@@ -164,6 +172,7 @@ class _WeightConvertViewState extends ConsumerState<WeightConvertView> {
                   if (_dir == _Dir.sd2nai)
                     FilledButton.tonalIcon(
                       onPressed: _import,
+                      style: context.pageTonalStyle,
                       icon: const Icon(Icons.download, size: 18),
                       label: const Text('导入提示词'),
                     ),

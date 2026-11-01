@@ -10,6 +10,7 @@ import '../../core/auth/bot_session_store.dart';
 import '../../core/net/backend_client.dart';
 import '../../core/net/remote_image.dart';
 import '../../core/store/ui_prefs.dart';
+import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/util/nai_tokenizer.dart';
 import '../../core/util/image_pick.dart';
@@ -899,6 +900,7 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
     final isArtist = widget.cat == TagCategory.artist;
     return Scaffold(
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             _header(scheme),
@@ -980,13 +982,13 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: scheme.primaryContainer,
+                color: context.solidFill(scheme.primaryContainer),
                 borderRadius: BorderRadius.circular(9),
               ),
               child: Text(
                 '已发布',
                 style: context.texts.labelSmall!.copyWith(
-                  color: scheme.onPrimaryContainer,
+                  color: context.onSolidFill(scheme.onPrimaryContainer),
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -1020,7 +1022,7 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
         border: Border.all(
           color: errored
               ? scheme.error.withValues(alpha: .55)
-              : Colors.transparent,
+              : context.skin.edge ?? Colors.transparent,
         ),
       ),
       child: child,
@@ -1845,11 +1847,16 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
         ),
       ];
     }
-    return Material(
-      color: scheme.surfaceContainer,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-        child: Row(children: children),
+    return Docked(
+      child: Material(
+        color: context.raisedFill(scheme.surfaceContainer),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+            child: Row(children: children),
+          ),
+        ),
       ),
     );
   }

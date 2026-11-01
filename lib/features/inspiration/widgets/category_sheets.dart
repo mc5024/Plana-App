@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../generate/widgets/common.dart' show confirmDialog, hintSnack;
 import '../tag_library.dart';
@@ -370,13 +371,13 @@ class _EditSheetState extends ConsumerState<_EditSheet> {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: scheme.primaryContainer,
+                      color: context.solidFill(scheme.primaryContainer),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
                       kTagCategoryIcons[_icon],
                       size: 24,
-                      color: scheme.onPrimaryContainer,
+                      color: context.onSolidFill(scheme.onPrimaryContainer),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -495,9 +496,13 @@ class _EditSheetState extends ConsumerState<_EditSheet> {
   /// 预览图形状:一块按比例画的小框 + 名字;无图画一道横线。
   Widget _layoutCell(ColorScheme scheme, TagCardLayout l) {
     final sel = l == _layout;
-    final fg = sel ? scheme.primary : scheme.onSurfaceVariant;
+    final fg = sel
+        ? context.onSolidFill(scheme.primary)
+        : scheme.onSurfaceVariant;
     return Material(
-      color: sel ? scheme.primaryContainer : scheme.surfaceContainerHigh,
+      color: sel
+          ? context.solidFill(scheme.primaryContainer)
+          : scheme.surfaceContainerHigh,
       borderRadius: BorderRadius.circular(12),
       clipBehavior: Clip.antiAlias,
       child: InkWell(

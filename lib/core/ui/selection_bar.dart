@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_skin.dart';
 import '../theme/app_theme.dart';
 import 'expand_body.dart';
 
@@ -116,7 +117,12 @@ class SelectionBar extends StatelessWidget {
     if (safeArea) content = SafeArea(top: false, child: content);
     return ExpandBody(
       expanded: visible,
-      child: Material(color: scheme.surfaceContainer, child: content),
+      child: Docked(
+        child: Material(
+          color: context.raisedFill(scheme.surfaceContainer),
+          child: content,
+        ),
+      ),
     );
   }
 }
