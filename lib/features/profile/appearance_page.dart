@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_settings.dart';
 import '../../core/ui/theme_swatches.dart';
+import '../../core/util/haptics.dart';
 import '../../core/util/harmony_compat.dart';
+import '../../l10n/l10n.dart';
 import 'widgets/settings_ui.dart';
 
 class AppearancePage extends ConsumerWidget {
@@ -21,6 +23,17 @@ class AppearancePage extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
         children: [
+          SettingsLabel(context.l10n.language),
+          SettingsCard(
+            children: [
+              _LanguageRow(
+                value: ts.language,
+                onChanged: (v) =>
+                    notifier.patch((x) => x.copyWith(language: v)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
           const SettingsLabel('深浅模式'),
           SettingsCard(
             children: [
@@ -129,6 +142,54 @@ class AppearancePage extends ConsumerWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// 界面语言下拉。语言名各用本语言写,切错了也认得回来。
+class _LanguageRow extends StatelessWidget {
+  const _LanguageRow({required this.value, required this.onChanged});
+
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    final options = {
+      '': context.l10n.followSystem,
+      'zh': '中文',
+      'en': 'English',
+      'ja': '日本語',
+    };
+    return PopupMenuButton<String>(
+      tooltip: context.l10n.uiLanguage,
+      position: PopupMenuPosition.under,
+      onSelected: (v) {
+        if (v == value) return;
+        Haptics.selection();
+        onChanged(v);
+      },
+      itemBuilder: (_) => [
+        for (final e in options.entries)
+          PopupMenuItem(
+            value: e.key,
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(e.value),
+              trailing: e.key == value
+                  ? Icon(Icons.check, size: 18, color: scheme.primary)
+                  : null,
+            ),
+          ),
+      ],
+      child: SettingsRow(
+        icon: Icons.translate,
+        title: context.l10n.uiLanguage,
+        value: options[value],
+        dropdown: true,
       ),
     );
   }

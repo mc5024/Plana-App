@@ -40,6 +40,7 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  intl: any
 
   flutter_riverpod: ^3.3.2
   animations: ^2.2.0
@@ -109,6 +110,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # 界面文案翻译:lib/l10n/*.arb → app_localizations*.dart(flutter gen-l10n)
+  generate: true
 
   # 超分模型**不在这里** —— 它们首次使用时从 Upscayl 官方仓下载
   # (见 lib/features/gallery/upscale_model_store.dart)。内置会让 APK

@@ -28,6 +28,7 @@ import 'advanced_sheet.dart';
 import 'common.dart' show hintSnack;
 import 'loop_sheet.dart';
 import 'resolution_sheet.dart';
+import '../../../l10n/l10n.dart';
 
 /// 吸底栏上方那一处浮动控件,现在是**谁开着**。
 ///
@@ -165,7 +166,7 @@ class _BottomActionBarState extends ConsumerState<BottomActionBar> {
                     : MainAxisAlignment.start,
                 children: [
                   _ReadoutChip(
-                    caption: '尺寸',
+                    caption: context.l10n.size,
                     value: '${p.width}×${p.height}',
                     onTap: () => showResolutionSheet(context),
                   ),
@@ -177,7 +178,7 @@ class _BottomActionBarState extends ConsumerState<BottomActionBar> {
                   if (batchable) const _BatchChip() else const Spacer(),
                   _ReadoutChip(
                     icon: Icons.tune,
-                    value: '高级',
+                    value: context.l10n.advanced,
                     valueMuted: true,
                     onTap: () => showAdvancedSheet(context),
                   ),
@@ -188,7 +189,7 @@ class _BottomActionBarState extends ConsumerState<BottomActionBar> {
                 children: [
                   // 导入图片:选相册图 → 解析元数据/用作参考的全屏导入面板
                   Tooltip(
-                    message: '导入图片',
+                    message: context.l10n.importImage,
                     child: AnimatedContainer(
                       duration: Motion.fast,
                       width: 52,
@@ -368,7 +369,7 @@ class _GenerateButton extends StatelessWidget {
                     const SizedBox(width: 8),
                     Flexible(
                       child: Text(
-                        '生成',
+                        context.l10n.generate,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: context.texts.titleMedium!.copyWith(
@@ -614,7 +615,7 @@ class _StepsChip extends ConsumerWidget {
     final pill = ref.watch(floatingPillProvider);
     final open = pill.isOpen(FloatingPill.steps);
     return _ReadoutChip(
-      caption: '步数',
+      caption: context.l10n.steps,
       value: '${(open ? pill.draft?.round() : null) ?? committed}',
       valueMuted: locked,
       active: open,
@@ -651,7 +652,7 @@ class _BatchChip extends ConsumerWidget {
     // 选 4 出 1 张且没有任何提示,那种不一致最难查。
     final locked = p.effectiveBatch != p.batchCount;
     return _ReadoutChip(
-      caption: '张数',
+      caption: context.l10n.imageCount,
       value: '${p.effectiveBatch}',
       // 锁着时把读数压灰(和「高级」那颗同一种「这不是可调的数」的说法),
       // 不加锁形图标:那会让这一格忽宽忽窄,整行跟着抖。为什么是 1,点一下才说。
@@ -768,7 +769,7 @@ class _BatchPickerPill extends ConsumerWidget {
     final scheme = context.scheme;
     final cur = ref.watch(sentParamsProvider).batchCount.clamp(1, kBatchMax);
     return _PillShell(
-      label: '张数',
+      label: context.l10n.imageCount,
       child: Padding(
         padding: const EdgeInsets.only(left: 12),
         child: Container(
@@ -878,7 +879,7 @@ class _StepsSliderPill extends ConsumerWidget {
     // NAI 离 28 不到一格就吸到 28
     double snap(double v) => nai && (v - 28).abs() < 1 ? 28 : v.roundToDouble();
     return _PillShell(
-      label: '步数',
+      label: context.l10n.steps,
       child: Row(
         children: [
           Expanded(
@@ -920,7 +921,7 @@ class _StepsSliderPill extends ConsumerWidget {
               final p = ref.read(generateProvider).params;
               final v = await showParamInput(
                 context,
-                title: '步数 Steps',
+                title: context.l10n.paramSteps,
                 value: steps.toDouble(),
                 min: min.toDouble(),
                 max: max.toDouble(),

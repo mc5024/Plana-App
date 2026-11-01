@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import 'prompt_presets.dart';
 import 'widgets/common.dart';
 import '../../core/util/haptics.dart';
+import '../../l10n/l10n.dart';
 
 /// 提示词预设管理页:激活切换 + 自定义增删改 + 长按拖动排序;默认预设只读可查看。
 /// 入口:高级设置「管理预设」/ 我的页卡片。
@@ -178,7 +179,7 @@ class _PresetTile extends StatelessWidget {
                         children: [
                           Flexible(
                             child: Text(
-                              preset.name,
+                              presetDisplayName(context.l10n, preset),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: context.texts.bodyMedium!.copyWith(

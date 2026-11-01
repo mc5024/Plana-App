@@ -14,6 +14,7 @@ import '../generate_state.dart';
 import '../models.dart';
 import 'common.dart';
 import 'section_card.dart';
+import '../../../l10n/l10n.dart';
 
 /// 后台 isolate 算图片内容哈希(sha256 hex)。
 String _sha256Hex(Uint8List bytes) => sha256.convert(bytes).toString();
@@ -110,7 +111,7 @@ class _CharRefCardState extends ConsumerState<CharRefCard> {
 
     return SectionCard(
       icon: Icons.face_retouching_natural,
-      title: '角色参考',
+      title: context.l10n.preciseReference,
       reorderIndex: widget.reorderIndex,
       badge: refs.isEmpty ? null : CountBadge('${refs.length}'),
       actions: [
@@ -218,7 +219,7 @@ class _CharRefDetail extends ConsumerWidget {
         const SizedBox(height: 14),
         // 保持最低 0(非负,不采用 web 的 −10..+1);step 0.01。
         LiveParamSlider(
-          label: 'Strength 参考强度',
+          label: context.l10n.referenceStrength,
           help: Help.charRefStrength,
           value: item.strength,
           divisions: 100,
@@ -226,7 +227,7 @@ class _CharRefDetail extends ConsumerWidget {
         ),
         const SizedBox(height: 6),
         LiveParamSlider(
-          label: 'Fidelity 保真度',
+          label: context.l10n.fidelity,
           help: Help.fidelity,
           value: item.infoExtracted,
           divisions: 100,
@@ -261,7 +262,11 @@ class _ModeToggle extends StatelessWidget {
               Icon(Icons.cached, size: 15, color: scheme.primary),
               const SizedBox(width: 5),
               Text(
-                mode.label,
+                switch (mode) {
+                  CharRefMode.character => context.l10n.refCharacter,
+                  CharRefMode.style => context.l10n.refStyle,
+                  CharRefMode.both => context.l10n.refCharacterStyle,
+                },
                 style: context.texts.bodyMedium!.copyWith(
                   color: scheme.primary,
                   fontWeight: FontWeight.w600,

@@ -1,21 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../../../core/theme/app_skin.dart';
 import '../gallery_date_filter.dart';
 import 'gallery_range_picker.dart';
-
-Widget _calendarLocale(BuildContext context, Widget? child) =>
-    Localizations.override(
-      context: context,
-      locale: const Locale('zh', 'CN'),
-      delegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      child: child,
-    );
 
 Future<GalleryDateFilter?> showGalleryDateFilter(
   BuildContext context,
@@ -41,7 +28,6 @@ Future<GalleryDateFilter?> showGalleryDateFilter(
   if (kind == GalleryDateKind.day) {
     final day = await showDatePicker(
       context: context,
-      builder: _calendarLocale,
       firstDate: first,
       lastDate: last,
       initialDate: initial,
@@ -61,17 +47,14 @@ Future<GalleryDateFilter?> showGalleryDateFilter(
   final end = current.end;
   final range = await showDialog<DateTimeRange>(
     context: context,
-    builder: (context) => _calendarLocale(
-      context,
-      GalleryRangePicker(
-        firstDate: first,
-        lastDate: last,
-        initialRange: DateTimeRange(
-          start: initial,
-          end: end != null && !end.isBefore(initial) && !end.isAfter(last)
-              ? end
-              : initial,
-        ),
+    builder: (context) => GalleryRangePicker(
+      firstDate: first,
+      lastDate: last,
+      initialRange: DateTimeRange(
+        start: initial,
+        end: end != null && !end.isBefore(initial) && !end.isAfter(last)
+            ? end
+            : initial,
       ),
     ),
   );

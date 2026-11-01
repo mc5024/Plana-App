@@ -122,4 +122,15 @@ void main() {
       expect(ThemeSettings.fromJson(s.toJson()).systemPicker, v);
     }
   });
+
+  test('界面语言:默认跟随系统,认得的三种能回环,其余按跟随系统', () {
+    expect(const ThemeSettings().locale, isNull);
+    expect(ThemeSettings.fromJson({'mode': 'dark'}).language, '');
+    expect(ThemeSettings.fromJson({'language': 'ko'}).language, '');
+    expect(ThemeSettings.fromJson({'language': 1}).language, '');
+    for (final v in ['zh', 'en', 'ja']) {
+      final s = ThemeSettings(language: v);
+      expect(ThemeSettings.fromJson(s.toJson()).locale, Locale(v));
+    }
+  });
 }

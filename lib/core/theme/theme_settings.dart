@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../l10n/l10n.dart';
 import '../store/app_stores.dart';
 import '../store/prefs_store.dart';
 import 'app_theme.dart';
@@ -69,6 +70,7 @@ class ThemeSettings {
     this.showAssistant = true,
     this.compactCharCards = false,
     this.systemPicker,
+    this.language = '',
   });
 
   final ThemeMode mode;
@@ -91,6 +93,11 @@ class ThemeSettings {
   /// 默认(见 `image_pick.dart` 的 `_inAppGallery`)。仅 Android 生效。
   final bool? systemPicker;
 
+  /// 界面语言:`zh` / `en` / `ja`;空串 = 跟随系统。
+  final String language;
+
+  Locale? get locale => language.isEmpty ? null : Locale(language);
+
   ThemeSeed get seed => themeSeeds.firstWhere(
     (s) => s.key == seedKey,
     orElse: () => themeSeeds.firstWhere((s) => s.key == kDefaultSeedKey),
@@ -109,6 +116,7 @@ class ThemeSettings {
     bool? showAssistant,
     bool? compactCharCards,
     bool? systemPicker,
+    String? language,
   }) => ThemeSettings(
     mode: mode ?? this.mode,
     seedKey: seedKey ?? this.seedKey,
@@ -116,6 +124,7 @@ class ThemeSettings {
     showAssistant: showAssistant ?? this.showAssistant,
     compactCharCards: compactCharCards ?? this.compactCharCards,
     systemPicker: systemPicker ?? this.systemPicker,
+    language: language ?? this.language,
   );
 
   /// 脏数据(旧版本/早先那档深蓝等)回退默认。
@@ -129,6 +138,11 @@ class ThemeSettings {
       final bool v => v,
       _ => null,
     },
+    language: switch (j['language']) {
+      final String v when kSupportedLocales.any((l) => l.languageCode == v) =>
+        v,
+      _ => '',
+    },
   );
 
   Map<String, dynamic> toJson() => {
@@ -138,6 +152,7 @@ class ThemeSettings {
     'showAssistant': showAssistant,
     'compactCharCards': compactCharCards,
     'systemPicker': ?systemPicker,
+    if (language.isNotEmpty) 'language': language,
   };
 
   @override
@@ -148,7 +163,8 @@ class ThemeSettings {
       other.haptics == haptics &&
       other.showAssistant == showAssistant &&
       other.compactCharCards == compactCharCards &&
-      other.systemPicker == systemPicker;
+      other.systemPicker == systemPicker &&
+      other.language == language;
 
   @override
   int get hashCode => Object.hash(
@@ -158,6 +174,7 @@ class ThemeSettings {
     showAssistant,
     compactCharCards,
     systemPicker,
+    language,
   );
 }
 

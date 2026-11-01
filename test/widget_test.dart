@@ -29,20 +29,27 @@ class _NoAnlas extends AnlasNotifier {
   Future<NaiSubscription?> build() async => null;
 }
 
+/// 按系统语言 [locale] 起整个 app,停在创作页。
+Future<void> _pumpApp(WidgetTester tester, Locale locale) async {
+  tester.platformDispatcher.localesTestValue = [locale];
+  addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        appStoresProvider.overrideWithValue(AppStores.ephemeral()),
+        authModeProvider.overrideWith(_TokenMode.new),
+        genSettingsProvider.overrideWith(_PrimedSettings.new),
+        anlasProvider.overrideWith(_NoAnlas.new),
+      ],
+      child: const PlanaApp(),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('创作页冒烟:核心区块可见', (WidgetTester tester) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          appStoresProvider.overrideWithValue(AppStores.ephemeral()),
-          authModeProvider.overrideWith(_TokenMode.new),
-          genSettingsProvider.overrideWith(_PrimedSettings.new),
-          anlasProvider.overrideWith(_NoAnlas.new),
-        ],
-        child: const PlanaApp(),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await _pumpApp(tester, const Locale('zh'));
 
     expect(find.text('提示词'), findsOneWidget);
     expect(find.text('角色'), findsOneWidget);
@@ -50,6 +57,16 @@ void main() {
     expect(find.text('创作'), findsOneWidget);
 
     // 放行工作台持久化的 800ms 防抖 Timer,避免拆树时报 pending timer
+    await tester.pump(const Duration(milliseconds: 900));
+  });
+
+  testWidgets('系统语言为英文时创作页用官网译名', (WidgetTester tester) async {
+    await _pumpApp(tester, const Locale('en', 'US'));
+
+    expect(find.text('Prompt'), findsOneWidget);
+    expect(find.text('Characters'), findsOneWidget);
+    expect(find.text('Generate'), findsWidgets);
+
     await tester.pump(const Duration(milliseconds: 900));
   });
 

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../l10n/l10n.dart';
 import 'auto_text.dart' show userTextMarker;
 import 'models.dart' show isNai5Model, GenerateState;
 import 'generate_state.dart';
@@ -149,6 +150,18 @@ const kDefaultPromptPresets = <PromptPreset>[
     isDefault: true,
   ),
 ];
+
+/// 显示名:内置档按界面语言,自定义档原样。
+String presetDisplayName(AppLocalizations l, PromptPreset p) {
+  if (!p.isDefault) return p.name;
+  return switch (p.id) {
+    'heavy' => l.presetHeavy,
+    'light' || 'v5-light' => l.presetLight,
+    'v5-standard' => l.presetStandard,
+    'none' => l.presetNone,
+    _ => p.name,
+  };
+}
 
 /// 预设库:内置档 + 自定义档,按用户排的顺序。用哪一档不在这里 —— 每张画布
 /// 各存一份(见 [GenerateState.promptPresetId])。

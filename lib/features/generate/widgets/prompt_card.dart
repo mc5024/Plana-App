@@ -22,6 +22,7 @@ import '../prompt_sections.dart';
 import '../style_recipes.dart';
 import 'common.dart';
 import 'section_save.dart';
+import '../../../l10n/l10n.dart';
 
 /// 提示词卡:头部 token 进度条 + 正文 + 负面单行(带 +N 溢出与独立计数)。
 /// 常驻展开。卡头按钮与角色卡同序:清空正向(可撤销)/ 灵感库 / 添加分区。
@@ -124,7 +125,7 @@ class _PromptCardState extends ConsumerState<PromptCard> {
                         const SkinIcon(Icons.subject),
                         const SizedBox(width: 9),
                         Text(
-                          '提示词',
+                          context.l10n.prompt,
                           style: context.texts.bodyLarge!.copyWith(
                             fontWeight: FontWeight.w600,
                           ),

@@ -66,6 +66,7 @@ class SettingsRow extends StatelessWidget {
     this.value,
     this.valueColor,
     this.onTap,
+    this.dropdown = false,
   });
 
   final IconData icon;
@@ -73,6 +74,9 @@ class SettingsRow extends StatelessWidget {
   final String? value;
   final Color? valueColor;
   final VoidCallback? onTap;
+
+  /// 外面包着下拉菜单:箭头换成朝下,点击交给菜单。
+  final bool dropdown;
 
   @override
   Widget build(BuildContext context) {
@@ -103,9 +107,13 @@ class SettingsRow extends StatelessWidget {
                 ),
               ),
             ),
-            if (onTap != null) ...[
+            if (onTap != null || dropdown) ...[
               const SizedBox(width: 4),
-              Icon(Icons.chevron_right, size: 18, color: scheme.outline),
+              Icon(
+                dropdown ? Icons.expand_more : Icons.chevron_right,
+                size: 18,
+                color: scheme.outline,
+              ),
             ],
           ],
         ),

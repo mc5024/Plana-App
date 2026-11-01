@@ -17,6 +17,7 @@ import 'features/profile/account_page.dart';
 import 'features/shell/app_shell.dart';
 import 'core/util/haptics.dart';
 import 'features/editor/data/local_tag_db.dart';
+import 'l10n/l10n.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -80,6 +81,9 @@ class PlanaApp extends ConsumerWidget {
         null => AppTheme.dark(ts.seed.color),
       },
       themeMode: ts.mode,
+      locale: ts.locale,
+      supportedLocales: kSupportedLocales,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
       navigatorObservers: [_inputFocusGuard],
       // 三键导航机上整个应用让出系统导航栏,见 [NavBarGuard]
       builder: (context, child) => NavBarGuard(child: child!),

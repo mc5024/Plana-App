@@ -17,6 +17,7 @@ import 'common.dart';
 import 'position_grid_dialog.dart';
 import 'prompt_card.dart' show negativePreview;
 import 'section_card.dart';
+import '../../../l10n/l10n.dart';
 
 /// 角色面板:沿用创作页的容器与公共按钮,预览比例与灵感角色库一致。
 /// 点头像换角色、点名称改名;删除直接放在卡上,长按整卡仍可排序。
@@ -42,7 +43,7 @@ class CharacterCard extends ConsumerWidget {
 
     return SectionCard(
       icon: Icons.group_outlined,
-      title: '角色',
+      title: context.l10n.characters,
       reorderIndex: reorderIndex,
       badge: CountBadge('$active / $cap', error: active > cap),
       actions: [
@@ -65,7 +66,7 @@ class CharacterCard extends ConsumerWidget {
         RoundIconBtn(
           Icons.add,
           size: actionSize,
-          tooltip: '添加角色',
+          tooltip: context.l10n.addCharacter,
           color: canAdd ? null : scheme.outline,
           onTap: canAdd ? notifier.addCharacter : null,
         ),
@@ -507,7 +508,9 @@ class _CharacterTile extends ConsumerWidget {
                               const SizedBox(width: 4),
                               Expanded(
                                 child: Text(
-                                  autoPos ? '自动定位' : positionLabel,
+                                  autoPos
+                                      ? context.l10n.aiChoicePosition
+                                      : positionLabel,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: context.texts.bodySmall!.copyWith(
@@ -567,7 +570,7 @@ class _PositionChip extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
           child: Text(
-            auto ? '自动' : label,
+            auto ? context.l10n.aiChoice : label,
             maxLines: 1,
             style: context.texts.labelMedium!.copyWith(
               fontWeight: FontWeight.w600,

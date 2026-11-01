@@ -192,14 +192,13 @@ class VibeItem {
       );
 }
 
-/// 角色参考迁移模式。label 显示用;api 直接进载荷 base_caption(对齐 web)。
+/// 角色参考迁移模式。api 直接进载荷 base_caption(对齐 web)。
 enum CharRefMode {
-  character('角色', 'character'),
-  style('风格', 'style'),
-  both('角色&风格', 'character&style');
+  character('character'),
+  style('style'),
+  both('character&style');
 
-  const CharRefMode(this.label, this.api);
-  final String label;
+  const CharRefMode(this.api);
   final String api;
 }
 

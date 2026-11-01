@@ -16,6 +16,7 @@ import '../generate_state.dart';
 import '../models.dart';
 import 'common.dart';
 import 'section_card.dart';
+import '../../../l10n/l10n.dart';
 
 /// 顶层函数:在后台 isolate 算图片内容哈希(sha256 hex),避免大图卡主线程。
 String _sha256Hex(Uint8List bytes) => sha256.convert(bytes).toString();
@@ -170,7 +171,7 @@ class _VibeCardState extends ConsumerState<VibeCard> {
 
     return SectionCard(
       icon: Icons.palette_outlined,
-      title: 'Vibe Transfer',
+      title: context.l10n.vibeTransfer,
       reorderIndex: widget.reorderIndex,
       badge: vibes.isEmpty ? null : CountBadge('${vibes.length}'),
       actions: [
@@ -227,7 +228,7 @@ class _VibeCardState extends ConsumerState<VibeCard> {
               children: [
                 Expanded(
                   child: HelpLabel(
-                    text: '均衡强度',
+                    text: context.l10n.normalizeStrength,
                     help: Help.normalizeVibe,
                     style: context.texts.bodySmall!.copyWith(
                       color: scheme.onSurface,
@@ -286,7 +287,7 @@ class _VibeDetail extends ConsumerWidget {
         ),
         const SizedBox(height: 14),
         LiveParamSlider(
-          label: 'Strength 参考强度',
+          label: context.l10n.referenceStrength,
           help: Help.vibeStrength,
           value: vibe.strength,
           divisions: 100, // step 0.01(对齐 web)
@@ -309,7 +310,7 @@ class _VibeDetail extends ConsumerWidget {
           )
         else
           LiveParamSlider(
-            label: 'Info Extracted 信息提取',
+            label: context.l10n.infoExtracted,
             help: Help.infoExtracted,
             value: vibe.infoExtracted,
             divisions: 100,

@@ -17,6 +17,7 @@ import 'canvas_picker.dart';
 import 'common.dart' show hintSnack;
 import 'rental_panel.dart';
 import 'top_bar_status.dart' show topBarTextWidth;
+import '../../../l10n/l10n.dart';
 
 /// 单行顶栏：画布、模型和资源均裸显示。
 class GenerateTopBar extends ConsumerWidget {
@@ -240,7 +241,7 @@ class _ModelSheetState extends State<_ModelSheet>
               child: Row(
                 children: [
                   Text(
-                    '模型',
+                    context.l10n.model,
                     style: context.texts.titleMedium!.copyWith(
                       fontWeight: FontWeight.w700,
                     ),

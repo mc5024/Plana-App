@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:material_color_utilities/material_color_utilities.dart'
     show Hct, SchemeTonalSpot;
@@ -303,6 +304,12 @@ abstract final class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
+      // 中日文也用西文那套字形几何(默认会换成 ideographic 基线),换语言不动版式
+      typography: Typography.material2021(
+        platform: defaultTargetPlatform,
+        colorScheme: scheme,
+        dense: Typography.englishLike2021,
+      ),
       scaffoldBackgroundColor: scheme.surface,
       splashFactory: InkSparkle.splashFactory,
       visualDensity: VisualDensity.standard,
