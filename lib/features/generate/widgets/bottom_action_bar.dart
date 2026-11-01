@@ -14,10 +14,12 @@ import '../loop_controller.dart';
 import '../models.dart'
     show
         GenParams,
+        GenProvider,
         isNai5MediumModel,
         kBatchMax,
         kNai5MediumSteps,
         modelName,
+        providerOfModel,
         stepsRangeOf;
 import '../nai_request.dart' show effectiveInpaintStrength;
 import '../vibe_encoder.dart';
@@ -868,6 +870,13 @@ class _StepsSliderPill extends ConsumerWidget {
         (ref.watch(floatingPillProvider.select((x) => x.draft))?.round() ??
                 committed)
             .clamp(min, max);
+    final nai = ref.watch(
+      generateProvider.select(
+        (s) => providerOfModel(s.params.model) == GenProvider.nai,
+      ),
+    );
+    // NAI 离 28 不到一格就吸到 28
+    double snap(double v) => nai && (v - 28).abs() < 1 ? 28 : v.roundToDouble();
     return _PillShell(
       label: '步数',
       child: Row(
@@ -883,15 +892,17 @@ class _StepsSliderPill extends ConsumerWidget {
                   max: max.toDouble(),
                   // 不传 divisions:离散 Slider 会用 75ms 曲线把滑块吸到刻度,
                   // 拖起来黏手。步长(整数)就地取整。
-                  onChanged: (v) => ref
-                      .read(floatingPillProvider.notifier)
-                      .drag(v.roundToDouble()),
+                  onChanged: (v) {
+                    final next = snap(v);
+                    if (nai && next == 28 && steps != 28) Haptics.selection();
+                    ref.read(floatingPillProvider.notifier).drag(next);
+                  },
                   // 松手才写回全局:先提交再清草稿,同一帧生效,不会闪回旧值
                   onChangeEnd: (v) {
                     final p = ref.read(generateProvider).params;
                     ref
                         .read(generateProvider.notifier)
-                        .applyParams(p.withActiveSteps(v.round()));
+                        .applyParams(p.withActiveSteps(snap(v).round()));
                     ref.read(floatingPillProvider.notifier).endDrag();
                   },
                 ),

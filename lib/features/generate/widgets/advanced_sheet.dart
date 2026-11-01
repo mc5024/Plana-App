@@ -313,13 +313,20 @@ class _AdvancedSheetState extends ConsumerState<_AdvancedSheet> {
                     min: 1,
                     max: 50,
                     divisions: 49,
+                    snapTo: 28,
                     valueText: '${draft.naiSteps}',
                     trailing: AnimatedOpacity(
                       duration: Motion.fast,
                       opacity: draft.naiSteps <= 28 ? 1 : 0,
                       child: const CountBadge('≤28 免费'),
                     ),
-                    onChanged: (v) => _set(draft.copyWith(steps: v.round())),
+                    onChanged: (v) {
+                      final steps = v.round();
+                      if (steps == 28 && draft.naiSteps != 28) {
+                        Haptics.selection();
+                      }
+                      _set(draft.copyWith(steps: steps));
+                    },
                   ),
                 ),
                 const SizedBox(height: 8),

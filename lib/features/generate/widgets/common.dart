@@ -136,6 +136,7 @@ class ParamSlider extends StatelessWidget {
     this.trailing,
     this.dense = false,
     this.help,
+    this.snapTo,
   });
 
   final String label;
@@ -159,8 +160,18 @@ class ParamSlider extends StatelessWidget {
   /// 给上则参数说明:标签变成可点的「标签 + 问号」。
   final ParamHelp? help;
 
-  double _snap(double v) =>
-      quantizeToDivisions(v, min: min, max: max, divisions: divisions);
+  /// 拖动吸附点:离它不到一格就落在它上面。
+  final double? snapTo;
+
+  double _snap(double v) {
+    final s = snapTo;
+    if (s != null &&
+        divisions != null &&
+        (v - s).abs() < (max - min) / divisions!) {
+      return s;
+    }
+    return quantizeToDivisions(v, min: min, max: max, divisions: divisions);
+  }
 
   /// 读数框弹出手输。拖动是 onChanged 一路走到 onChangeEnd,手输也照这条路
   /// 发一遍(两个回调都发):LiveParamSlider 那种「拖动本地、松手提交」的
