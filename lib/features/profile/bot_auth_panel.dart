@@ -11,13 +11,13 @@ import '../../core/theme/app_theme.dart';
 import '../generate/widgets/common.dart' show hintSnack;
 import '../../core/util/haptics.dart';
 
-/// Bot 绑定码授权面板(无 Scaffold,可内嵌):
+/// Bot 绑定码授权面板(内嵌在「账号与接入」的 Bot 卡里):
 /// 取 6 位码 → 用户在 QQ 发给 Bot → 本面板轮询 → 存会话并置接入方式。
 class BotAuthPanel extends ConsumerStatefulWidget {
-  const BotAuthPanel({super.key, this.onAuthorized});
+  const BotAuthPanel({super.key, required this.idleBuilder});
 
-  /// 授权成功后的收尾(授权页用来 pop)。
-  final VoidCallback? onAuthorized;
+  /// 未取码时显示的内容:`start` 发起取码(取码中为 null),`loading` 取码中。
+  final Widget Function(VoidCallback? start, bool loading) idleBuilder;
 
   @override
   ConsumerState<BotAuthPanel> createState() => _BotAuthPanelState();
@@ -63,7 +63,7 @@ class _BotAuthPanelState extends ConsumerState<BotAuthPanel> {
       setState(() => _secondsLeft = (_secondsLeft - 1).clamp(0, 999));
       if (_secondsLeft <= 0) {
         t.cancel();
-        setState(() => _code = null); // 过期 → 回到「获取授权码」
+        setState(() => _code = null); // 过期 → 回到未取码状态
         return;
       }
       if (_tick % 3 == 0) await _poll(); // 每 3 秒轮询一次
@@ -110,61 +110,28 @@ class _BotAuthPanelState extends ConsumerState<BotAuthPanel> {
     setState(() => _code = null);
     Haptics.medium();
     hintSnack(context, 'Bot 授权成功', icon: Icons.verified_outlined);
-    widget.onAuthorized?.call();
   }
 
   String _fmt(int s) => '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
-    final scheme = context.scheme;
-    final hasCode = _code != null;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (!hasCode)
-          FilledButton(
-            onPressed: _loading ? null : _getCode,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(46),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(23),
-              ),
-            ),
-            child: _loading
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: scheme.onPrimary,
-                    ),
-                  )
-                : const Text(
-                    '获取授权码',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-          )
-        else
-          _CodePanel(
-            code: _code!,
-            secondsLeftText: _fmt(_secondsLeft),
-            onCopy: () {
-              // 复制完整指令(含 web授权 前缀),粘贴到 QQ 直接发送即可
-              Clipboard.setData(ClipboardData(text: 'web授权${_code!}'));
-              hintSnack(
-                context,
-                '已复制,粘贴发给 Bot',
-                icon: Icons.check_circle_outline,
-              );
-            },
-            onCancel: () {
-              _timer?.cancel();
-              setState(() => _code = null);
-            },
-          ),
-      ],
+    final code = _code;
+    if (code == null) {
+      return widget.idleBuilder(_loading ? null : _getCode, _loading);
+    }
+    return _CodePanel(
+      code: code,
+      secondsLeftText: _fmt(_secondsLeft),
+      onCopy: () {
+        // 复制完整指令(含 web授权 前缀),粘贴到 QQ 直接发送即可
+        Clipboard.setData(ClipboardData(text: 'web授权$code'));
+        hintSnack(context, '已复制,粘贴发给 Bot', icon: Icons.check_circle_outline);
+      },
+      onCancel: () {
+        _timer?.cancel();
+        setState(() => _code = null);
+      },
     );
   }
 }

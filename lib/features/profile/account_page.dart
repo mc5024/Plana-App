@@ -11,8 +11,8 @@ import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../generate/widgets/common.dart'
     show confirmDialog, hintSnack, sharedAxisRoute;
-import '../onboarding/bot_auth_page.dart';
 import '../stats/stats_providers.dart' show fmtInt;
+import 'bot_auth_panel.dart';
 import 'token_manage_page.dart';
 import '../../core/util/haptics.dart';
 
@@ -36,11 +36,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   Future<void> _selectMode(AuthMode m) async {
     if (m == ref.read(authModeProvider).value) return;
     await ref.read(authModeProvider.notifier).set(m);
-    // 不再自动跳授权页:Bot 卡常驻在下方,选了没配也会在卡内直接标红提示。
   }
-
-  void _openBotAuth() =>
-      Navigator.of(context).push(sharedAxisRoute(const BotAuthPage()));
 
   Future<void> _revokeBot() async {
     final ok = await confirmDialog(
@@ -89,11 +85,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
             onChanged: (v) => ref.read(naiProxyProvider.notifier).set(v),
           ),
           const SizedBox(height: 12),
-          _BotCard(
-            session: session,
-            onAuthorize: _openBotAuth,
-            onRevoke: _revokeBot,
-          ),
+          _BotCard(session: session, onRevoke: _revokeBot),
         ],
       ),
     );
@@ -567,17 +559,18 @@ class _RouteCard extends StatelessWidget {
   }
 }
 
-/// Bot 授权状态卡:显示会话归属/有效期,提供 重新授权 / 解除授权。
+/// Bot 授权卡:显示会话归属/有效期;卡内直接取码授权([BotAuthPanel]),
+/// 已授权时提供 重新授权 / 解除授权。
 class _BotCard extends StatelessWidget {
-  const _BotCard({
-    required this.session,
-    required this.onAuthorize,
-    required this.onRevoke,
-  });
+  const _BotCard({required this.session, required this.onRevoke});
 
   final BotSession? session;
-  final VoidCallback onAuthorize;
   final VoidCallback onRevoke;
+
+  static const _spinner = SizedBox.square(
+    dimension: 18,
+    child: CircularProgressIndicator(strokeWidth: 2),
+  );
 
   static String _fmtExpiry(int? ms) {
     if (ms == null) return '—';
@@ -625,37 +618,49 @@ class _BotCard extends StatelessWidget {
                 const SizedBox(height: 8),
                 _row(context, '有效期至', _fmtExpiry(s.expiresAtMs)),
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: onAuthorize,
-                      icon: const Icon(Icons.refresh, size: 18),
-                      label: const Text('重新授权'),
-                    ),
-                    const Spacer(),
-                    TextButton.icon(
-                      onPressed: onRevoke,
-                      icon: Icon(Icons.link_off, size: 18, color: scheme.error),
-                      label: Text(
-                        '解除授权',
-                        style: TextStyle(color: scheme.error),
-                      ),
-                    ),
-                  ],
-                ),
-              ] else ...[
-                FilledButton.icon(
-                  onPressed: onAuthorize,
-                  icon: const Icon(Icons.smart_toy_outlined, size: 18),
-                  label: const Text('去授权'),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(46),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(23),
-                    ),
-                  ),
-                ),
               ],
+              // 固定在末位并带 key:授权成功切到已授权布局时,面板状态不丢
+              BotAuthPanel(
+                key: const ValueKey('bot-auth'),
+                idleBuilder: (start, loading) => authorized
+                    ? Row(
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: start,
+                            icon: loading
+                                ? _spinner
+                                : const Icon(Icons.refresh, size: 18),
+                            label: const Text('重新授权'),
+                          ),
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: onRevoke,
+                            icon: Icon(
+                              Icons.link_off,
+                              size: 18,
+                              color: scheme.error,
+                            ),
+                            label: Text(
+                              '解除授权',
+                              style: TextStyle(color: scheme.error),
+                            ),
+                          ),
+                        ],
+                      )
+                    : FilledButton.icon(
+                        onPressed: start,
+                        icon: loading
+                            ? _spinner
+                            : const Icon(Icons.smart_toy_outlined, size: 18),
+                        label: const Text('获取授权码'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(46),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(23),
+                          ),
+                        ),
+                      ),
+              ),
             ],
           ),
         ),
