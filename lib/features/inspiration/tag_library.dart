@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../migrate/web_backup.dart' show decodeDataUrl;
 import 'tag_models.dart';
 
 /// 页签顺序 / 隐藏里法典的键(其余是各分类的 webId)。
@@ -608,6 +609,7 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
 
   /// 恢复:按 id 合并(同 id 覆盖、新 id 追加,本地独有保留)。自定义类别的
   /// 定义同 id 以云端为准、本地独有的保留;页签排列用云端的。
+  /// 预览见 [_restorePreviews]。
   /// 返回每类的 (新增, 覆盖) 明细,供结果文案与日志使用。
   Future<Map<TagCategory, ({int added, int updated})>> mergeBackup(
     Map<String, dynamic> categories, {
@@ -615,6 +617,7 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
   }) async {
     final byId = {for (final e in _s.entries) e.id: e};
     final localIds = {...byId.keys};
+    final replaced = <String>[];
     final stat = <TagCategory, ({int added, int updated})>{};
     for (final en in _flat(categories, custom).entries) {
       final cat = tagCategoryByWebId(en.key);
@@ -625,7 +628,11 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
         final e = decodeBackupEntry(cat, item);
         if (e == null) continue;
         localIds.contains(e.id) ? updated++ : added++;
-        byId[e.id] = e;
+        final old = byId[e.id];
+        if (old != null) replaced.addAll(old.previews);
+        byId[e.id] = e.copyWith(
+          previews: await _restorePreviews(item, e.id, old),
+        );
       }
       if (added + updated > 0) {
         stat[cat] = (added: added, updated: updated);
@@ -647,6 +654,47 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
       );
     }
     await _set(next);
+    _gcPreviewFiles(
+      replaced,
+      keep: [for (final e in next.entries) ...e.previews],
+    );
     return stat;
+  }
+
+  /// 备份条目的预览 → 本机可用的列表。base64 预览落成本机文件;一张都没带
+  /// 而本地同条目有本机预览时,保留本机预览(按本地顺序),并入备份里新增的
+  /// http 预览、去掉备份里已没有的。
+  static Future<List<String>> _restorePreviews(
+    Map<String, dynamic> item,
+    String id,
+    TagEntry? local,
+  ) async {
+    final out = <String>[];
+    final seen = <String>{};
+    var embedded = false;
+    for (final p in [
+      item['preview'],
+      if (item['previews'] case final List l) ...l,
+    ]) {
+      if (p is! String || p.isEmpty || !seen.add(p)) continue;
+      if (!p.startsWith('data:')) {
+        out.add(p);
+        continue;
+      }
+      final bytes = decodeDataUrl(p);
+      if (bytes == null) continue;
+      try {
+        out.add(await savePreviewBytes(id, out.length, bytes));
+        embedded = true;
+      } catch (_) {}
+    }
+    if (embedded || local == null) return out;
+    if (local.previews.every((p) => p.startsWith('http'))) return out;
+    return [
+      for (final p in local.previews)
+        if (!p.startsWith('http') || out.contains(p)) p,
+      for (final p in out)
+        if (!local.previews.contains(p)) p,
+    ];
   }
 }
