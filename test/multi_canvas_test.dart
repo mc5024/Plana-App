@@ -1563,7 +1563,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('画布'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('每张画布各自记录'), findsOneWidget);
+    expect(find.textContaining('各存一套提示词和出图参数'), findsOneWidget);
     expect(find.textContaining('所有画布共用'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 1));

@@ -203,7 +203,7 @@ class _Img2ImgCardState extends ConsumerState<Img2ImgCard> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                const InfoNote('底图按当前分辨率裁剪填充;强度越低越接近原图。点缩略图可涂遮罩改成重绘。'),
+                const InfoNote('底图按当前分辨率裁剪填充。点缩略图可涂遮罩改成重绘。'),
               ],
             ),
     );

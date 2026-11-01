@@ -63,10 +63,10 @@ String naiBaseHost(String base) =>
 /// 第三方接口的请求格式,添加时选。
 enum NaiApiFormat {
   /// NovelAI 官方格式:`/ai/generate-image(-stream)`。
-  nai('NovelAI 格式', '兼容 NovelAI 接口的中转站或自建反代 · /ai/generate-image'),
+  nai('NovelAI 格式', 'NovelAI 接口格式：/ai/generate-image'),
 
   /// OpenAI 兼容:`/v1/chat/completions`,见 `nai_chat_compat.dart`。
-  openai('OpenAI 格式', 'OpenAI 兼容的中转站 · /v1/chat/completions');
+  openai('OpenAI 格式', 'OpenAI 接口格式：/v1/chat/completions');
 
   const NaiApiFormat(this.label, this.hint);
 
