@@ -11,6 +11,7 @@ import '../../core/live_progress/live_progress.dart';
 import '../../core/net/nai_client.dart';
 import '../../core/net/nai_endpoint.dart';
 import '../../core/net/nai_proxy.dart';
+import '../../core/store/app_stores.dart';
 import '../../core/store/gen_settings.dart';
 import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
@@ -18,6 +19,7 @@ import '../../core/theme/theme_settings.dart';
 import '../../core/ui/theme_swatches.dart';
 import '../profile/widgets/credential_login_sheet.dart';
 import '../profile/widgets/token_status.dart';
+import '../shell/float_theme_intro.dart';
 import '../../core/util/haptics.dart';
 
 /// 首启欢迎流程:欢迎 → 外观 → 接入 → 通知 → 完成,共 5 页。
@@ -51,6 +53,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
   void initState() {
     super.initState();
     _pager.addListener(_onScroll);
+    markFloatThemeIntroSeen(ref.read(prefsStoreProvider));
   }
 
   void _onScroll() {

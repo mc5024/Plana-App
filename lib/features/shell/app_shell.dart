@@ -27,6 +27,7 @@ import '../inpaint/inpaint_overlay.dart' show inpaintSessionProvider;
 import '../profile/profile_page.dart';
 import '../update/update_service.dart';
 import '../update/update_sheet.dart' show showUpdateSheet;
+import 'float_theme_intro.dart';
 import 'shell_state.dart';
 
 /// 全局骨架:5 tab 底部导航(AI 那格可藏)+ PageView 切页。
@@ -56,7 +57,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     ProfilePage(),
   ];
 
-  Timer? _updateTimer;
+  Timer? _promptTimer;
 
   @override
   void initState() {
@@ -68,21 +69,24 @@ class _AppShellState extends ConsumerState<AppShell> {
     ref.read(backendBaseProvider);
     // 账号密码登录的 JWT 临期静默换新(非该来源的令牌自动跳过)。
     ref.read(naiTokenAutoRefreshProvider);
-    _scheduleAutoCheck();
+    _schedulePrompts();
   }
 
-  /// 冷启动静默查一次更新(24h 节流)。
+  /// 冷启动的两个弹窗:浮卡介绍(只弹一次)、静默查更新(24h 节流),
+  /// 前一个关掉再弹下一个。
   ///
-  /// 延后 3 秒:启动那几帧要留给首页和鉴权预热,更新弹层不是急事。计时器**必须
+  /// 延后 3 秒:启动那几帧要留给首页和鉴权预热,弹窗不是急事。计时器**必须
   /// 存下来并在 dispose 取消** —— 裸 `Future.delayed` 在页面提前销毁后照样会醒,
   /// 属于真实泄漏(widget 冒烟测试会直接报 pending timer)。
-  void _scheduleAutoCheck() {
+  void _schedulePrompts() {
     final prefs = ref.read(prefsStoreProvider);
-    if (!shouldAutoCheck(prefs)) return;
-    _updateTimer = Timer(
-      const Duration(seconds: 3),
-      () => _autoCheckUpdate(prefs),
-    );
+    final intro = needsFloatThemeIntro(prefs);
+    final check = shouldAutoCheck(prefs);
+    if (!intro && !check) return;
+    _promptTimer = Timer(const Duration(seconds: 3), () async {
+      if (intro && mounted) await showFloatThemeIntro(context, ref);
+      if (check) await _autoCheckUpdate(prefs);
+    });
   }
 
   /// **只在真有新版时弹**,查不到/网络不通一律无声吞掉 —— 用户没主动要求检查,
@@ -106,7 +110,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   void dispose() {
-    _updateTimer?.cancel();
+    _promptTimer?.cancel();
     _pc.dispose();
     super.dispose();
   }

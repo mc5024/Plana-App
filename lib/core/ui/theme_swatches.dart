@@ -35,20 +35,11 @@ class ThemeSwatches extends ConsumerWidget {
       children: [
         row([
           for (final a in floatAccents)
-            _Swatch(
+            ThemeSwatch(
               label: '浮卡 ${a.label}',
               size: size,
               selected: current == floatThemeKey(a),
-              // 斜分两半:深色 / 浅色两套主色
-              fill: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  stops: const [.5, .5],
-                  colors: [a.dark, a.light],
-                ),
-              ),
+              fill: floatSwatchFill(a),
               checkColor: Colors.white,
               onTap: () => pick(floatThemeKey(a)),
             ),
@@ -56,7 +47,7 @@ class ThemeSwatches extends ConsumerWidget {
         const SizedBox(height: 14),
         row([
           for (final s in themeSeeds)
-            _Swatch(
+            ThemeSwatch(
               label: s.label,
               size: size,
               selected: current == s.key,
@@ -74,8 +65,20 @@ class ThemeSwatches extends ConsumerWidget {
   }
 }
 
-class _Swatch extends StatelessWidget {
-  const _Swatch({
+/// 浮卡档位的色块:斜分两半,深色 / 浅色两套主色。
+BoxDecoration floatSwatchFill(FloatAccent a) => BoxDecoration(
+  shape: BoxShape.circle,
+  gradient: LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    stops: const [.5, .5],
+    colors: [a.dark, a.light],
+  ),
+);
+
+class ThemeSwatch extends StatelessWidget {
+  const ThemeSwatch({
+    super.key,
     required this.label,
     required this.size,
     required this.selected,
