@@ -11,6 +11,8 @@
 [![Android](https://img.shields.io/badge/Android-7.0%2B-3ddc84?logo=android&logoColor=white)](#building)
 [![Flutter](https://img.shields.io/badge/built%20with-Flutter-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 
+[![Download latest APK](https://img.shields.io/github/v/release/mc5024/Plana-App?label=Download%20APK&style=for-the-badge&logo=android&logoColor=white&color=3ddc84)](https://github.com/mc5024/Plana-App/releases/latest)
+
 [简体中文](README.md) · **English**
 
 </div>
