@@ -9,6 +9,7 @@ import 'core/store/app_stores.dart';
 import 'core/store/gen_settings.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_settings.dart';
+import 'core/ui/ime_shift_select.dart';
 import 'core/ui/input_focus_guard.dart';
 import 'core/ui/nav_bar_guard.dart';
 import 'features/generate/widgets/common.dart';
@@ -86,7 +87,8 @@ class PlanaApp extends ConsumerWidget {
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       navigatorObservers: [_inputFocusGuard],
       // 三键导航机上整个应用让出系统导航栏,见 [NavBarGuard]
-      builder: (context, child) => NavBarGuard(child: child!),
+      builder: (context, child) =>
+          ImeShiftSelect(child: NavBarGuard(child: child!)),
       home: const _AuthGate(),
     );
   }

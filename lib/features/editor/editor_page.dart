@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/store/app_stores.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/editor_theme.dart';
+import '../../core/ui/ime_shift_select.dart';
 import '../generate/generate_state.dart';
 import '../generate/models.dart' show PromptSection;
 import '../generate/widgets/common.dart' show hintSnack;
@@ -444,11 +445,12 @@ class _EditorPageState extends ConsumerState<EditorPage>
   /// 双击/长按选词的 tag 捕获(web handleDoubleClick 同款):
   /// 从折叠光标一步变出的、落在单一词条内的子选区,扩成整枚词条
   /// (含权重语法,即 [segStart, segEnd))。已有选区上继续拖手柄
-  /// (prev 已展开)不干预,用户仍可自由精调。
+  /// (prev 已展开)不干预,用户仍可自由精调;Shift + 方向键逐字扩选也不干预。
   bool _captureTagSelection(TextSelection prev) {
     final sel = _controller.selection;
     if (!sel.isValid || sel.isCollapsed) return false;
     if (prev.isValid && !prev.isCollapsed) return false;
+    if (ImeShiftSelect.extending) return false;
     final text = _controller.text;
     final toks = parseToks(text);
     final i = tokIndexAt(text, sel.start, toks);
