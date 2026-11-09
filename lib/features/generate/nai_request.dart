@@ -126,9 +126,42 @@ const kLegacyAutoCenters = <Map<String, double>>[
 /// 角色建出来就带坐标(见 GenerateNotifier._spawnPos),所以正常不会走到兜底;
 /// 真解不出来时回落正中 —— 官方 25 格占满时也是这么兜的。
 /// 「不指定站位」现在由全局 `use_coords=false` 表达,不再靠每个角色的空值。
-Map<String, double> _center(String? pos) {
-  final c = resolveCharacterCenter(pos);
-  return c != null ? {'x': c.x, 'y': c.y} : {'x': 0.5, 'y': 0.5};
+///
+/// 局部重绘([crop] 非空)时换算到发送框里,见 [centerInSendBox]。
+Map<String, double> _center(
+  String? pos, {
+  InpaintPaste? crop,
+  int sendW = 0,
+  int sendH = 0,
+}) {
+  final c = centerInSendBox(
+    resolveCharacterCenter(pos) ?? (x: 0.5, y: 0.5),
+    crop,
+    sendW: sendW,
+    sendH: sendH,
+  );
+  return {'x': c.x, 'y': c.y};
+}
+
+/// 局部重绘只发裁切那块:整图坐标的角色中心换算到发送框里,框外的夹到框边(同官方)。
+/// [crop] 为空(整图 / 扩图)或缺原图尺寸时原样返回。
+({double x, double y}) centerInSendBox(
+  ({double x, double y}) c,
+  InpaintPaste? crop, {
+  required int sendW,
+  required int sendH,
+}) {
+  if (crop == null ||
+      crop.outW <= 0 ||
+      crop.outH <= 0 ||
+      sendW <= 0 ||
+      sendH <= 0) {
+    return c;
+  }
+  return (
+    x: ((c.x * crop.outW - crop.sendX) / sendW).clamp(0.0, 1.0),
+    y: ((c.y * crop.outH - crop.sendY) / sendH).clamp(0.0, 1.0),
+  );
 }
 
 /// 由创作页状态构造 NAI `/ai/generate-image-stream` 请求体(镜像 web `services/novelai.ts`)。
@@ -180,11 +213,19 @@ Map<String, double> _center(String? pos) {
   // 官方的 use_coords 是位置区块上的 AI's Choice / Custom 全局二选一,**默认
   // false**。早先这里恒发 `chars.isNotEmpty`,那是我们自己的模型,不是官方行为。
   final useCoords = s.params.useCoords;
-  final centers = [for (final c in chars) _center(c.position)];
+  final centers = [
+    for (final c in chars)
+      _center(
+        c.position,
+        crop: inpaint?.paste,
+        sendW: p.width,
+        sendH: p.height,
+      ),
+  ];
   // 只有 V5 吃自由坐标(官方能力位 freeformCharacterPosition);其余模型官方在
   // 发送前把坐标吸附到 5×5 格心,存着的值不动。char_captions 发吸附后的,
-  // characterPrompts 仍发原始坐标 —— 那是给导入回放用的,不该被这次请求对模型
-  // 的迁就改掉(同官方)。
+  // characterPrompts 仍发吸附前的坐标 —— 那是给导入回放用的,不该被这次请求对模型
+  // 的迁就改掉(同官方;局部重绘时两边都是换算进发送框后的)。
   final sentCenters = sendModel.startsWith('nai-diffusion-5')
       ? centers
       : centers.map((c) {
