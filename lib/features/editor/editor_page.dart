@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderProxyBox;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -101,6 +103,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   bool _loading = false; // 补全查询进行中(显示加载态)
   bool _translating = false; // 「翻译为英文」LLM 在途(补全条切「翻译中」态)
   bool _sheetOpen = false; // 形态 B(分类竖向列表)弹层是否打开
+  double _sheetH = 0; // 形态 B 弹层高度(正文底边让到它上沿,关着为 0)
   Tok? _panelTok; // 光标所在词条(显示词条栏)
   bool _cursorDragging = false; // 正在拖水滴手柄挪光标(吸底面板暂时收起)
   (int, int)? _multiRange; // 划词多选覆盖的词条区间 [first, last](批量面板)
@@ -677,23 +680,30 @@ class _EditorPageState extends ConsumerState<EditorPage>
       barrierColor: Colors.black.withValues(alpha: .18),
       builder: (ctx) => Theme(
         data: editorTheme(ctx),
-        child: CompletionPanel(
-          result: _result,
-          maxHeight: size.height * 0.5,
-          onPick: (s) {
-            Navigator.of(ctx).pop();
-            _pick(s);
+        child: _ReportHeight(
+          onHeight: (h) {
+            if (mounted && _sheetOpen) setState(() => _sheetH = h);
           },
-          onInsert: _chipMode
-              ? (s) =>
-                    _appendTag(_insertTextOf(s, plainSlot: true), quiet: true)
-              : _insertAppend,
-          onCollapse: () => Navigator.of(ctx).pop(),
+          child: CompletionPanel(
+            result: _result,
+            maxHeight: size.height * 0.5,
+            onPick: (s) {
+              Navigator.of(ctx).pop();
+              _pick(s);
+            },
+            onInsert: _chipMode
+                ? (s) =>
+                      _appendTag(_insertTextOf(s, plainSlot: true), quiet: true)
+                : _insertAppend,
+            onCollapse: () => Navigator.of(ctx).pop(),
+          ),
         ),
       ),
     );
     _sheetOpen = false;
-    if (mounted) (_chipMode ? _inputFocus : _focus).requestFocus(); // 关闭即回键盘
+    if (!mounted) return;
+    setState(() => _sheetH = 0);
+    (_chipMode ? _inputFocus : _focus).requestFocus(); // 关闭即回键盘
   }
 
   /// 编辑器设置弹层:开关即时生效(经 build 的 ref.listen 反映到当前会话)。
@@ -1573,6 +1583,91 @@ class _EditorPageState extends ConsumerState<EditorPage>
     final dock = _dock();
     final weightDock = dock is TagPanel || dock is BatchPanel;
 
+    // 两种正文形态。切正/负时编辑区随方向轻滑 + 淡入
+    // (单实例,不复制 TextField——controller/focus 不能同时挂两棵树)
+    final content = NotificationListener<ScrollNotification>(
+      onNotification: _onContentScroll,
+      child: settings.chipMode
+          ? ChipFlowView(
+              controller: _controller,
+              foldBodies: foldBodies,
+              selection: _chipSel,
+              onSelectionChanged: _setChipSel,
+              onLongPressChip: _chipLongPress,
+              onMove: _moveUnits,
+              input: _input,
+              inputFocus: _inputFocus,
+              onInputChanged: _onInputChanged,
+              onInputSubmitted: (_) => _commitInput(),
+              placing: _chipPlacing,
+              translating: _transSvc.isPending,
+              showTrans: settings.showTranslation,
+              fontSize: settings.chipFontSize,
+            )
+          : ClipRect(
+              child: SlideTransition(
+                position: _tabSlide,
+                child: FadeTransition(
+                  opacity: _tabAnim.drive(Tween(begin: .25, end: 1.0)),
+                  child: AnnotatedField(
+                    controller: _controller,
+                    focusNode: _focus,
+                    scrollController: _scroll,
+                    showTrans: settings.showTranslation,
+                    showWeightWash: settings.showWeightWash,
+                    fontSize: settings.fontSize,
+                    onCursorDrag: _setCursorDragging,
+                    onFoldTap: _unfoldByName,
+                    hint: '点击输入标签,可输入中文自动触发翻译与联想',
+                  ),
+                ),
+              ),
+            ),
+    );
+
+    // 滚动收起:贴顶对齐 + 裁切,往下沉进底栏后面。补全条不收。
+    final dockSlot = ClipRect(
+      child: AnimatedAlign(
+        duration: Motion.fast,
+        curve: Motion.standard,
+        alignment: Alignment.topCenter,
+        heightFactor: _chromeHidden && _query.isEmpty ? 0 : 1,
+        // 拖光标期间只是**淡出**,位置照占:见 [_setCursorDragging]。
+        child: AnimatedOpacity(
+          duration: Motion.quick,
+          curve: Motion.standard,
+          opacity: _cursorDragging ? 0 : 1,
+          child: IgnorePointer(
+            ignoring: _cursorDragging,
+            child:
+                // dock 入场:淡入 + 轻微上滑(高度瞬时占位,不撑盒子,避免橡皮筋)
+                // 离场(关面板/收补全)比入场快:走了就别在路上磨蹭。
+                AnimatedSwitcher(
+                  duration: Motion.fast,
+                  reverseDuration: Motion.quick,
+                  switchInCurve: Motion.emphasized,
+                  switchOutCurve: Motion.standard,
+                  layoutBuilder: (current, previous) => Stack(
+                    alignment: Alignment.bottomCenter,
+                    children: [...previous, ?current],
+                  ),
+                  transitionBuilder: (child, anim) => FadeTransition(
+                    opacity: anim,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 0.06),
+                        end: Offset.zero,
+                      ).animate(anim),
+                      child: child,
+                    ),
+                  ),
+                  child: dock,
+                ),
+          ),
+        ),
+      ),
+    );
+
     return Theme(
       data: editorTheme(context),
       child: Builder(
@@ -1596,6 +1691,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
             }
           },
           child: Scaffold(
+            // 键盘避让由 [_BodyLayout] 自己做:要和补全展开层一起取高者
+            resizeToAvoidBottomInset: false,
             // 底边安全区由底栏自己垫,底栏的底色才能铺到屏幕底
             body: SafeArea(
               bottom: false,
@@ -1626,100 +1723,37 @@ class _EditorPageState extends ConsumerState<EditorPage>
                     ),
                   ),
                   Expanded(
-                    // 两种正文形态。切正/负时编辑区随方向轻滑 + 淡入
-                    // (单实例,不复制 TextField——controller/focus 不能
-                    // 同时挂两棵树)
-                    child: NotificationListener<ScrollNotification>(
-                      onNotification: _onContentScroll,
-                      child: settings.chipMode
-                          ? ChipFlowView(
-                              controller: _controller,
-                              foldBodies: foldBodies,
-                              selection: _chipSel,
-                              onSelectionChanged: _setChipSel,
-                              onLongPressChip: _chipLongPress,
-                              onMove: _moveUnits,
-                              input: _input,
-                              inputFocus: _inputFocus,
-                              onInputChanged: _onInputChanged,
-                              onInputSubmitted: (_) => _commitInput(),
-                              placing: _chipPlacing,
-                              translating: _transSvc.isPending,
-                              showTrans: settings.showTranslation,
-                              fontSize: settings.chipFontSize,
-                            )
-                          : ClipRect(
-                              child: SlideTransition(
-                                position: _tabSlide,
-                                child: FadeTransition(
-                                  opacity: _tabAnim.drive(
-                                    Tween(begin: .25, end: 1.0),
-                                  ),
-                                  child: AnnotatedField(
-                                    controller: _controller,
-                                    focusNode: _focus,
-                                    scrollController: _scroll,
-                                    showTrans: settings.showTranslation,
-                                    showWeightWash: settings.showWeightWash,
-                                    fontSize: settings.fontSize,
-                                    onCursorDrag: _setCursorDragging,
-                                    onFoldTap: _unfoldByName,
-                                    hint: '点击输入标签,可输入中文自动触发翻译与联想',
-                                  ),
-                                ),
-                              ),
-                            ),
-                    ),
-                  ),
-                  // 滚动收起:贴顶对齐 + 裁切,往下沉进底栏后面。补全条不收。
-                  ClipRect(
-                    child: AnimatedAlign(
+                    // 键盘、补全展开层从底下顶上来时怎么让位,见 [_BodyLayout]
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(end: _sheetH),
                       duration: Motion.fast,
                       curve: Motion.standard,
-                      alignment: Alignment.topCenter,
-                      heightFactor: _chromeHidden && _query.isEmpty ? 0 : 1,
-                      // 拖光标期间只是**淡出**,位置照占:见 [_setCursorDragging]。
-                      child: AnimatedOpacity(
-                        duration: Motion.quick,
-                        curve: Motion.standard,
-                        opacity: _cursorDragging ? 0 : 1,
-                        child: IgnorePointer(
-                          ignoring: _cursorDragging,
-                          child:
-                              // dock 入场:淡入 + 轻微上滑(高度瞬时占位,不撑盒子,避免橡皮筋)
-                              // 离场(关面板/收补全)比入场快:走了就别在路上磨蹭。
-                              AnimatedSwitcher(
-                                duration: Motion.fast,
-                                reverseDuration: Motion.quick,
-                                switchInCurve: Motion.emphasized,
-                                switchOutCurve: Motion.standard,
-                                layoutBuilder: (current, previous) => Stack(
-                                  alignment: Alignment.bottomCenter,
-                                  children: [...previous, ?current],
-                                ),
-                                transitionBuilder: (child, anim) =>
-                                    FadeTransition(
-                                      opacity: anim,
-                                      child: SlideTransition(
-                                        position: Tween<Offset>(
-                                          begin: const Offset(0, 0.06),
-                                          end: Offset.zero,
-                                        ).animate(anim),
-                                        child: child,
-                                      ),
-                                    ),
-                                child: dock,
-                              ),
+                      builder: (context, sheet, _) => CustomMultiChildLayout(
+                        delegate: _BodyLayout(
+                          keyboard: MediaQuery.viewInsetsOf(context).bottom,
+                          sheet: sheet,
                         ),
+                        children: [
+                          LayoutId(id: _BodySlot.content, child: content),
+                          LayoutId(
+                            id: _BodySlot.bottom,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                dockSlot,
+                                EditorBottomBar(
+                                  onToggleMode: _toggleChipMode,
+                                  chipMode: settings.chipMode,
+                                  trayOpen: _trayOpen,
+                                  onToggleTray: _toggleTray,
+                                  onInsertFavorite: _insertFavorite,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  EditorBottomBar(
-                    onToggleMode: _toggleChipMode,
-                    chipMode: settings.chipMode,
-                    trayOpen: _trayOpen,
-                    onToggleTray: _toggleTray,
-                    onInsertFavorite: _insertFavorite,
                   ),
                 ],
               ),
@@ -1906,5 +1940,75 @@ class _EditorPageState extends ConsumerState<EditorPage>
       );
     }
     return const SizedBox.shrink(key: ValueKey('dock-empty'));
+  }
+}
+
+enum _BodySlot { content, bottom }
+
+/// 正文 + 吸底那摞(dock、底栏)。
+///
+/// 键盘:整摞抬到键盘上沿,正文让出键盘 + 整摞。补全展开层是浮层,吸底那摞
+/// 本来就压在它后面,不跟着抬;只有正文底边要让到它上沿。两者取高者 ——
+/// 正文视口变矮时光标那行由 [KeepInViewTracker] 拉回视野。
+class _BodyLayout extends MultiChildLayoutDelegate {
+  _BodyLayout({required this.keyboard, required this.sheet});
+
+  final double keyboard;
+  final double sheet;
+
+  @override
+  void performLayout(Size size) {
+    final w = size.width;
+    final bottom = layoutChild(
+      _BodySlot.bottom,
+      BoxConstraints(minWidth: w, maxWidth: w, maxHeight: size.height),
+    ).height;
+    final floor = math.max(keyboard + bottom, sheet);
+    layoutChild(
+      _BodySlot.content,
+      BoxConstraints.tightFor(
+        width: w,
+        height: math.max(0.0, size.height - floor),
+      ),
+    );
+    positionChild(_BodySlot.content, Offset.zero);
+    positionChild(_BodySlot.bottom, Offset(0, size.height - keyboard - bottom));
+  }
+
+  @override
+  bool shouldRelayout(_BodyLayout old) =>
+      old.keyboard != keyboard || old.sheet != sheet;
+}
+
+/// 量出子树高度报给页面。布局期不能 setState,挪到帧后。
+class _ReportHeight extends SingleChildRenderObjectWidget {
+  const _ReportHeight({required this.onHeight, super.child});
+
+  final ValueChanged<double> onHeight;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderReportHeight(onHeight);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderReportHeight renderObject,
+  ) => renderObject.onHeight = onHeight;
+}
+
+class _RenderReportHeight extends RenderProxyBox {
+  _RenderReportHeight(this.onHeight);
+
+  ValueChanged<double> onHeight;
+  double? _last;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    final h = size.height;
+    if (h == _last) return;
+    _last = h;
+    WidgetsBinding.instance.addPostFrameCallback((_) => onHeight(h));
   }
 }

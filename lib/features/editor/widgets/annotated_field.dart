@@ -123,7 +123,7 @@ class _AnnotatedFieldState extends State<AnnotatedField> {
     );
   }
 
-  /// 权重面板弹出把视口压矮时,光标那一行别被盖住。见 [KeepInViewTracker]。
+  /// 权重面板 / 补全展开层把视口压矮时,光标那一行别被盖住。见 [KeepInViewTracker]。
   final _keep = KeepInViewTracker();
   TextSelection? _lastSel;
 

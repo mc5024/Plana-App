@@ -215,19 +215,27 @@ class _ChipFlowViewState extends State<ChipFlowView>
 
   Set<int> get _sel => widget.selection;
 
-  /// 权重面板弹出把视口压矮时,刚点的那颗别被盖住。见 [KeepInViewTracker]。
+  /// 权重面板 / 补全展开层把视口压矮时,刚点的那颗(或正在打字的输入框)
+  /// 别被盖住。见 [KeepInViewTracker]。
   final _keep = KeepInViewTracker();
-  int? _focusChip;
+  int? _focusChip; // null = 尾部输入框
+  final _inputKey = GlobalKey();
 
-  void _focusOn(int i) {
+  void _focusOn(int? i) {
     _focusChip = i;
     _keep.arm();
   }
 
-  void _revealFocusChip() {
+  void _revealFocus() {
     final i = _focusChip;
-    if (i == null || !_sel.contains(i) || i >= _chipKeys.length) return;
-    final b = _chipKeys[i].currentContext?.findRenderObject() as RenderBox?;
+    final GlobalKey key;
+    if (i == null) {
+      key = _inputKey;
+    } else {
+      if (!_sel.contains(i) || i >= _chipKeys.length) return;
+      key = _chipKeys[i];
+    }
+    final b = key.currentContext?.findRenderObject() as RenderBox?;
     if (b == null || !b.attached || !b.hasSize) return;
     b.showOnScreen(
       rect: const EdgeInsets.all(12).inflateRect(Offset.zero & b.size),
@@ -416,7 +424,7 @@ class _ChipFlowViewState extends State<ChipFlowView>
           onTap: _tapBlank,
           child: NotificationListener<Notification>(
             onNotification: (n) {
-              if (_keep.update(n)) _revealFocusChip();
+              if (_keep.update(n)) _revealFocus();
               return false;
             },
             child: SingleChildScrollView(
@@ -482,6 +490,7 @@ class _ChipFlowViewState extends State<ChipFlowView>
     const pad = EdgeInsets.symmetric(vertical: 7);
     final hintStyle = TextStyle(fontSize: fs, color: scheme.outline);
     return SizedBox(
+      key: _inputKey,
       width: empty ? double.infinity : _kInputWidth,
       child: Stack(
         children: [
@@ -505,7 +514,10 @@ class _ChipFlowViewState extends State<ChipFlowView>
           TextField(
             controller: widget.input,
             focusNode: widget.inputFocus,
-            onChanged: widget.onInputChanged,
+            onChanged: (v) {
+              _focusOn(null);
+              widget.onInputChanged(v);
+            },
             onSubmitted: (v) {
               widget.onInputSubmitted(chipInputBody(v));
               widget.inputFocus.requestFocus(); // 落一枚接着打下一枚
