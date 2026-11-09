@@ -670,6 +670,89 @@ class WalletLedger {
   }
 }
 
+/// 一把 API 密钥(`/api/user/api-keys`)。用户在自己的 NovelAI 客户端里把地址换成
+/// [ApiKeyList.baseUrl]、令牌换成这把密钥,就能拿 Bot 账户出图,费用从钱包扣。
+/// 列表里只有前缀:完整密钥只在新建那一刻回一次([CreatedApiKey])。
+class ApiKeyInfo {
+  const ApiKeyInfo({
+    required this.id,
+    this.name = '',
+    this.prefix = '',
+    this.createdAt = '',
+    this.lastUsedAt,
+  });
+
+  final int id;
+  final String name;
+
+  /// `pk-` 加 8 位,认得出是哪一把就够了。
+  final String prefix;
+
+  /// 北京时间 naive ISO(`2026-11-02T19:04:11`)。
+  final String createdAt;
+
+  /// 最后用过的时间;没用过为 null。服务端每把最多 5 分钟落一次库。
+  final String? lastUsedAt;
+
+  /// `YYYY-MM-DD HH:mm`。服务端给的就是北京时间,按位切出来原样显示。
+  static String shortTime(String ts) =>
+      ts.length >= 16 ? ts.substring(0, 16).replaceFirst('T', ' ') : ts;
+
+  factory ApiKeyInfo.fromJson(Map<String, dynamic> j) {
+    final last = j['last_used_at']?.toString() ?? '';
+    return ApiKeyInfo(
+      id: (j['id'] as num?)?.toInt() ?? 0,
+      name: j['name']?.toString() ?? '',
+      prefix: j['prefix']?.toString() ?? '',
+      createdAt: j['created_at']?.toString() ?? '',
+      lastUsedAt: last.isEmpty ? null : last,
+    );
+  }
+}
+
+/// 我的 API 密钥(`GET /api/user/api-keys`):没撤销的,新的在前。
+class ApiKeyList {
+  const ApiKeyList({this.keys = const [], this.max = 3, this.baseUrl = ''});
+
+  final List<ApiKeyInfo> keys;
+
+  /// 每人最多几把。
+  final int max;
+
+  /// 客户端里要填的 API 地址(`https://nai.sora214.top`)。
+  final String baseUrl;
+
+  bool get full => keys.length >= max;
+
+  factory ApiKeyList.fromJson(Map<String, dynamic> j) => ApiKeyList(
+    keys: [
+      for (final e in (j['keys'] as List?) ?? const [])
+        if (e is Map) ApiKeyInfo.fromJson(e.cast<String, dynamic>()),
+    ],
+    max: (j['max'] as num?)?.toInt() ?? 3,
+    baseUrl: j['base_url']?.toString() ?? '',
+  );
+}
+
+/// 新建的那一把:比列表项多一个完整密钥 [key],**只回这一次**。
+class CreatedApiKey {
+  const CreatedApiKey({
+    required this.info,
+    required this.key,
+    this.baseUrl = '',
+  });
+
+  final ApiKeyInfo info;
+  final String key;
+  final String baseUrl;
+
+  factory CreatedApiKey.fromJson(Map<String, dynamic> j) => CreatedApiKey(
+    info: ApiKeyInfo.fromJson(j),
+    key: j['key']?.toString() ?? '',
+    baseUrl: j['base_url']?.toString() ?? '',
+  );
+}
+
 /// 一笔点数消耗(`points_spent` 行)。[reason] 由服务端拼装,
 /// 形如 `web生图(生图832x1216_28步=20, 角色参考x1=5)`。
 class PointRecord {
@@ -2200,6 +2283,27 @@ class BackendClient {
     ];
     return WalletLedger.fromJson(
       await _getJson('/wallet/ledger?${q.join('&')}', sessionId),
+    );
+  }
+
+  // ── API 密钥(服务端 `backend/routes/api_keys.py`)──────────
+  // 会话照旧走 Authorization 头,只能管自己的。
+
+  Future<ApiKeyList> apiKeys(String sessionId) async =>
+      ApiKeyList.fromJson(await _getJson('/user/api-keys', sessionId));
+
+  /// 新建一把。[name] 可空,服务端截到 20 字;满 3 把回 400,detail 直出。
+  Future<CreatedApiKey> createApiKey(
+    String sessionId, {
+    String name = '',
+  }) async => CreatedApiKey.fromJson(
+    await _postJson('/user/api-keys', {'name': name}, sessionId),
+  );
+
+  /// 撤销一把,立即生效。已经撤销过 / 不是自己的回 404。
+  Future<void> revokeApiKey(String sessionId, int id) async {
+    await _handle(
+      () => http.delete(_u('/user/api-keys/$id'), headers: _headers(sessionId)),
     );
   }
 

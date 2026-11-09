@@ -12,6 +12,7 @@ import '../../core/theme/app_theme.dart';
 import '../generate/widgets/common.dart'
     show confirmDialog, hintSnack, sharedAxisRoute;
 import '../stats/stats_providers.dart' show fmtInt;
+import 'api_keys_page.dart';
 import 'bot_auth_panel.dart';
 import 'token_manage_page.dart';
 import '../../core/util/haptics.dart';
@@ -86,7 +87,52 @@ class _AccountPageState extends ConsumerState<AccountPage> {
           ),
           const SizedBox(height: 12),
           _BotCard(session: session, onRevoke: _revokeBot),
+          // 密钥挂在 Bot 账户上(费用走钱包),没授权就没有可管的
+          if (session != null) ...[
+            const SizedBox(height: 12),
+            _ApiKeysEntry(
+              onTap: () => Navigator.of(
+                context,
+              ).push(sharedAxisRoute(const ApiKeysPage())),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+/// API 密钥入口(Bot):用自己的 NovelAI 客户端拿 Bot 账户出图,管理在二级页。
+class _ApiKeysEntry extends StatelessWidget {
+  const _ApiKeysEntry({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    return Lifted(
+      radius: BorderRadius.circular(16),
+      child: Material(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          onTap: onTap,
+          contentPadding: const EdgeInsets.fromLTRB(16, 2, 12, 2),
+          leading: Icon(Icons.key_outlined, color: scheme.onSurfaceVariant),
+          title: Text(
+            'API 密钥',
+            style: context.texts.bodyMedium!.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          subtitle: Text(
+            '用自己的 NovelAI 客户端出图,费用从钱包扣',
+            style: context.texts.labelSmall!.copyWith(color: scheme.outline),
+          ),
+          trailing: Icon(Icons.chevron_right, color: scheme.outline),
+        ),
       ),
     );
   }
