@@ -123,6 +123,20 @@ class MaskGrid {
     return false;
   }
 
+  /// 有没有涂抹格落在 [r] 之外(格中心判定,同 [hasCellsIn])。
+  bool hasCellsOutside(IntRect r) {
+    for (var gy = 0; gy < gh; gy++) {
+      final cy = gy * 8 + 4;
+      final rowIn = cy >= r.y && cy < r.y + r.h;
+      for (var gx = 0; gx < gw; gx++) {
+        if (cells[gy * gw + gx] == 0) continue;
+        final cx = gx * 8 + 4;
+        if (!rowIn || cx < r.x || cx >= r.x + r.w) return true;
+      }
+    }
+    return false;
+  }
+
   /// 遮罩区域的**并集轮廓**(图像素坐标):只画邻格为空的那些边,
   /// 相邻两格之间的内部边跳过 —— 出来的是外轮廓,不是一片网格线。
   ///
@@ -265,6 +279,26 @@ IntRect alignSendRect(IntRect tight, int fullW, int fullH) {
   if (tr > x + w) x = math.min(fullW - w, tr - w);
   if (tb > y + h) y = math.min(fullH - h, tb - h);
   return (x: x, y: y, w: w, h: h);
+}
+
+/// 贴着遮罩的局部框:遮罩 + 留白,对齐原图 64 网格,单边封顶 [maxSide]。
+/// [keep] 是用户拉过的框,只扩不缩。无涂抹返回 null。
+///
+/// 涂抹铺满大半张图(或两处离得很远)时按整图算,再由封顶挑最该盖的一段 ——
+/// 这时框未必装得下全部涂抹,调用方用 [MaskGrid.hasCellsOutside] 判断。
+IntRect? cropForMask(MaskGrid g, int maxSide, {IntRect? keep}) {
+  final bounds = maskBounds(g);
+  if (bounds == null) return null;
+  final tight = tightCropRect(g) ?? (x: 0, y: 0, w: g.imgW, h: g.imgH);
+  var want = alignSendRect(tight, g.imgW, g.imgH);
+  if (keep != null) {
+    final x = math.min(keep.x, want.x);
+    final y = math.min(keep.y, want.y);
+    final r = math.max(keep.x + keep.w, want.x + want.w);
+    final b = math.max(keep.y + keep.h, want.y + want.h);
+    want = (x: x, y: y, w: r - x, h: b - y);
+  }
+  return capSendRect(want, maxSide, focus: bounds, keep: keep);
 }
 
 /// 把发送框收进 [maxSide]×[maxSide]([maxSide] 须是 64 的倍数)。

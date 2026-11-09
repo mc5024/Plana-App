@@ -293,8 +293,8 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
         _img = frame.image;
         _grid = MaskGrid(frame.image.width, frame.image.height);
       });
-      _restoreMask();
       _restoreMode(frame.image);
+      _restoreMask();
       unawaited(_ac.forward());
     } catch (_) {
       if (mounted) ref.read(inpaintSessionProvider.notifier).close();
@@ -305,13 +305,35 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
   ///
   /// 认人靠 [InpaintJob.sourceId]:不是同一张图就不恢复,免得把别人的遮罩套上来。
   /// 尺寸对不上(扩过图/裁过)时 [MaskGrid.decodeInto] 自己会拒,是第二道保险。
+  ///
+  /// 存的是局部重绘时,当时的发送框一起放回来,并当作用户拉过的框(只扩不缩)。
   void _restoreMask() {
     final grid = _grid;
+    final img = _img;
     final job = ref.read(generateProvider).inpaint;
     final data = job?.grid;
-    if (grid == null || data == null) return;
+    if (grid == null || img == null || data == null) return;
     if (job!.sourceId != widget.session.sourceId) return;
-    if (grid.decodeInto(data)) setState(() => _rev++);
+    if (!grid.decodeInto(data)) return;
+    IntRect? box;
+    final paste = job.paste;
+    if (_mode == _Mode.paint && paste != null) {
+      if (job.sendSize case (final w, final h)
+          when paste.sendX >= 0 &&
+              paste.sendY >= 0 &&
+              paste.sendX + w <= img.width &&
+              paste.sendY + h <= img.height) {
+        box = (x: paste.sendX, y: paste.sendY, w: w, h: h);
+      }
+    }
+    setState(() {
+      _rev++;
+      if (box != null) {
+        _cropMode = true;
+        _crop = box;
+        _cropResized = true;
+      }
+    });
   }
 
   @override
@@ -449,39 +471,39 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
   /// 开,还没画就先框住半张图挡视线,框的位置跟你要改的地方也毫无关系。
   /// 按遮罩算,位置天然是对的,也不会出现"第二笔画到框外被静默丢掉"。
   ///
-  /// 单边封顶 [_cropMaxSide]:遮罩比这还大时框只能盖住其中一段。
+  /// 单边封顶 [_cropMaxSide]:一个框装不下全部涂抹(两处离得远、或铺得太大)时,
+  /// 整图发得出去就关掉局部改发整图;发不出去就留着框,保存时拦下。
   void _autoCrop() {
     // 局部框是「发送范围」,只有涂抹模式有意义 —— 打码不发送,让它自动弹出来
     // 只会拿黄框和框外 40% 暗化盖住打码预览。
     if (_mode != _Mode.paint) return;
     final img = _img, grid = _grid;
     if (img == null || grid == null) return;
-    final tight = tightCropRect(grid);
-    if (tight == null) return; // 擦空了:框留在原处,别闪
-    if (!_cropMode) {
-      // 还没开:小图本来就不用开,手动关过的也不再替他打开
-      if (_cropOptOut || img.width * img.height <= kFreePixelThreshold) return;
-      _cropMode = true;
+    // 还没开:小图本来就不用开,手动关过的也不再替他打开
+    if (!_cropMode &&
+        (_cropOptOut || img.width * img.height <= kFreePixelThreshold)) {
+      return;
     }
-    var want = alignSendRect(tight, img.width, img.height);
+    // 拉过边的框归用户:只扩不缩 —— 尊重他要的留白,同时让涂到框外的
+    // 地方也进框(发送时按框裁遮罩,框外那部分等于没画)。
     final keep = _cropResized ? _crop : null;
-    if (keep != null) {
-      // 拉过边的框归用户:只扩不缩 —— 尊重他要的留白,同时让涂到框外的
-      // 地方也进框(发送时按框裁遮罩,框外那部分等于没画)。
-      final x = math.min(keep.x, want.x);
-      final y = math.min(keep.y, want.y);
-      final r = math.max(keep.x + keep.w, want.x + want.w);
-      final b = math.max(keep.y + keep.h, want.y + want.h);
-      want = (x: x, y: y, w: r - x, h: b - y);
+    final box = cropForMask(grid, _cropMaxSide, keep: keep);
+    if (box == null) return; // 擦空了:框留在原处,别闪
+    if (grid.hasCellsOutside(box) && _wholeSendable(img)) {
+      _cropMode = false;
+      _crop = null;
+      _cropResized = false;
+      return;
     }
-    // 超过上限时:先尽量多盖遮罩,再尽量留住他拉的框
-    _crop = capSendRect(
-      want,
-      _cropMaxSide,
-      focus: maskBounds(grid),
-      keep: keep,
-    );
+    _cropMode = true;
+    _crop = box;
   }
+
+  /// 整张图能不能直接发(像素不超上限且 64 对齐)。
+  bool _wholeSendable(ui.Image img) =>
+      img.width * img.height <= _maxSendPixels &&
+      img.width % 64 == 0 &&
+      img.height % 64 == 0;
 
   void _undoOnce() {
     if (_undo.isEmpty) return;
@@ -489,6 +511,7 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
     setState(() {
       _rev++;
       _maskTouched();
+      _autoCrop();
     });
   }
 
@@ -659,20 +682,13 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
       return;
     }
     final img = _img!;
-    final grid = _grid!;
-    final tight = tightCropRect(grid);
+    final box = cropForMask(_grid!, _cropMaxSide);
     setState(() {
       _cropOptOut = false;
       _cropResized = false;
       _cropMode = true;
       // 有涂抹按遮罩算框;还没涂就先给个居中框占位,落笔后自动跟上
-      _crop = tight != null
-          ? capSendRect(
-              alignSendRect(tight, img.width, img.height),
-              _cropMaxSide,
-              focus: maskBounds(grid),
-            )
-          : _defaultCrop(img.width, img.height);
+      _crop = box ?? _defaultCrop(img.width, img.height);
     });
   }
 
@@ -1214,6 +1230,11 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
     final send = _cropMode ? _crop : null;
     if (send != null && !grid.hasCellsIn(send)) {
       hintSnack(context, '黄框内没有涂抹区域', icon: Icons.crop);
+      return;
+    }
+    // 发送时按框裁遮罩,框外的涂抹会被丢掉
+    if (send != null && grid.hasCellsOutside(send)) {
+      hintSnack(context, '黄框外还有涂抹,拉大黄框或分两次重绘', icon: Icons.crop);
       return;
     }
     final sw = send?.w ?? img.width;
