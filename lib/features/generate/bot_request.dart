@@ -8,6 +8,7 @@ import 'nai_request.dart'
     show
         CharRefPayload,
         Img2ImgRef,
+        effectiveInpaintStrength,
         naiModelId,
         naiSamplerId,
         naiSupportsTransparency,
@@ -134,10 +135,13 @@ Map<String, dynamic> buildBotParams(
   // 与图生图互斥且优先(对齐后端 convert_web_params_to_stream 的处理顺序)。
   final inpaint = s.inpaint;
   if (inpaint != null) {
+    final strength = effectiveInpaintStrength(p.model, inpaint.strength);
     params['inpaint'] = {
       'imageBase64': base64Encode(inpaint.image),
       'maskBase64': base64Encode(inpaint.mask),
-      'strength': inpaint.strength,
+      'strength': strength,
+      // 同直连:按官方格式发重绘强度(inpaintImg2ImgStrength,不是 1 时带 img2img 块)
+      'img2imgStrength': strength,
       'noise': 0,
       // 同直连:服务端不叠原图,成图回来按羽化遮罩混回
       'addOriginalImage': false,

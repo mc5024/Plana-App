@@ -287,6 +287,29 @@ void main() {
       expect(p.containsKey('img2img'), isFalse);
     });
 
+    test('bot 线:强度另按官方格式发一份,不能调的型号发 1', () {
+      Map<String, dynamic> bot(String model, double strength) =>
+          buildBotParams(
+                _state(model).copyWith(
+                  inpaint: InpaintJob(
+                    image: bytes,
+                    mask: bytes,
+                    strength: strength,
+                  ),
+                ),
+                seed: 1,
+                presetId: 'none',
+              )['inpaint']
+              as Map<String, dynamic>;
+      final b = bot('NAI 4.5 Full', .5);
+      expect(b['strength'], .5);
+      expect(b['img2imgStrength'], .5);
+      expect(b['addOriginalImage'], isFalse);
+      final m = bot('NAI 5.0 Full Medium', .5);
+      expect(m['strength'], 1);
+      expect(m['img2imgStrength'], 1);
+    });
+
     test('V5 Full Medium 不能调:恒发 1', () {
       expect(inpaintStrengthSupported('NAI 5.0 Full Medium'), isFalse);
       final p = infill('NAI 5.0 Full Medium', .5);
