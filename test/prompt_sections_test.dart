@@ -455,16 +455,14 @@ void main() {
     });
   });
 
-  test('新画布沿用分区骨架、词清空;复制画布带上整组', () {
+  test('新画布不带分区;复制画布带上整组', () {
     gen.setPrompts(positive: '1girl');
     gen.addEntrySections([_a12]);
     final canvases = c.read(canvasWorkspaceProvider.notifier);
     canvases.create(duplicate: true);
     expect(st().sections.firstWhere((s) => s.artist).positive, isNotEmpty);
     canvases.create();
-    expect(_names(st().sections), ['主体', '画风']);
-    expect(st().sections.last.positive, isEmpty);
-    expect(st().sections.last.negative, isEmpty);
+    expect(st().sections, isEmpty);
     expect(st().prompt, isEmpty);
   });
 

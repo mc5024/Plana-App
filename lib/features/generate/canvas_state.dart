@@ -5,7 +5,6 @@ import '../editor/editor_state.dart';
 import 'canvas_models.dart';
 import 'generate_state.dart';
 import 'models.dart';
-import 'prompt_sections.dart';
 
 export 'canvas_models.dart';
 
@@ -131,7 +130,7 @@ class CanvasWorkspaceNotifier extends Notifier<CanvasWorkspace> {
   }
 
   /// 新建并切过去。空白画布只沿用当前的提示词预设、出图参数(含重绘放大)、
-  /// 分区骨架、Vibe 强度归一开关和风格参考强度;词、角色、参考图、LoRA、底图与
+  /// Vibe 强度归一开关和风格参考强度;词、分区、角色、参考图、LoRA、底图与
   /// 重绘都清空。
   /// 复制则带上整组。
   String create({bool duplicate = false}) {
@@ -142,7 +141,6 @@ class CanvasWorkspaceNotifier extends Notifier<CanvasWorkspace> {
         ? current
         : CanvasPrompts(
             promptPresetId: current.promptPresetId,
-            sections: sectionSkeleton(current.sections),
             sampling: current.sampling,
             normalizeVibe: current.normalizeVibe,
             kreaStyleRefWeight: current.kreaStyleRefWeight,

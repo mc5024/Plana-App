@@ -375,19 +375,6 @@ GenerateState? mergeSectionsIn(GenerateState s, Set<String> ids) {
   );
 }
 
-/// 新画布沿用的骨架:名字、顺序、开关留着,词清空。
-List<PromptSection> sectionSkeleton(List<PromptSection> list) => [
-  for (final s in list)
-    s.isMain
-        ? PromptSection.main(name: s.name)
-        : PromptSection(
-            id: s.id,
-            name: s.name,
-            enabled: s.enabled,
-            artist: s.artist,
-          ),
-];
-
 /// 新分区的默认名「分区 N」,N 取第一个没被占用的序号。
 String nextSectionName(List<PromptSection> list) {
   final used = {for (final s in list) s.name};
