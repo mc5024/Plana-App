@@ -429,13 +429,22 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
       n.hide();
       return;
     }
-    final from = result.inpaintFrom;
-    if (from == null) return;
-    final bytes = await ref.read(appStoresProvider).gallery.readImage(from);
+    final bytes = await _beforeBytes(ref);
     if (bytes == null || !context.mounted) return;
     // 先解码再上屏:直接 setState 的话第一帧还没解出来,画面会白闪一下。
     await precacheImage(MemoryImage(bytes), context);
     if (ref.read(_holdingProvider)) n.show(bytes);
+  }
+
+  /// 重绘前的样子:优先取参数快照里那份底图(局部是原图,扩图是白底垫大后的
+  /// 画布),和成图同尺寸、逐像素对位;快照里没有再退回源图。
+  Future<Uint8List?> _beforeBytes(WidgetRef ref) async {
+    final job = (await _inputOf(ref))?.inpaint;
+    final base = job?.paste?.original ?? job?.image;
+    if (base != null) return base;
+    final from = result.inpaintFrom;
+    if (from == null) return null;
+    return ref.read(appStoresProvider).gallery.readImage(from);
   }
 
   /// 字节:内存缓存优先,卸载/水合后按需读盘(读不到才是真无像素)。
