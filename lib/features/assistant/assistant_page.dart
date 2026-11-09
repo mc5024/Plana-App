@@ -122,7 +122,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
       _withCanvas = false; // 一次性:发完就回到关
     });
     // 排队时留着键盘,接着写下一句
-    if (!queued) FocusScope.of(context).unfocus();
+    if (!queued) _inputFocus.unfocus();
     _toBottom();
     await n.submit(text, image: img?.bytes, withCanvas: withCanvas);
     _toBottom();
