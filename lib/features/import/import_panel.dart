@@ -25,6 +25,8 @@ import '../generate/generate_state.dart';
 import '../generate/models.dart';
 import '../generate/nai_request.dart' show naiModelId;
 import '../generate/prompt_presets.dart';
+import '../generate/prompt_sections.dart' show joinSections;
+import '../generate/section_layout.dart';
 import '../generate/widgets/common.dart';
 import '../lora/lora_install_queue.dart';
 import '../shell/shell_state.dart';
@@ -137,7 +139,6 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
   ModelCategory? _target;
 
   // 提示词
-  bool _usePrompt = false;
   bool _useNegative = false;
 
   /// 把 a1111 权重语法转成 NAI 方言。只在「源是 a1111、目标是 NovelAI」时有意义。
@@ -159,6 +160,13 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
   /// 预设卡的详情(会被剥掉的那段文本 + 说明)默认收起 —— 那段文本重度档能有
   /// 二十来个词,常驻着会把下面的角色/Vibe/参数全顶出屏幕。点头部展开。
   bool _presetExpanded = false;
+
+  bool _promptAppend = false; // false=完全覆盖,true=新建分区
+
+  // 正向按分区逐行列出(图里存的分区拼出来对得上时;否则只有一行主体)
+  List<PromptSection>? _layout;
+  final Set<int> _secOff = {}; // 取消勾选的行
+  bool _secExpanded = true;
 
   // 角色
   final Set<int> _charChecked = {};
@@ -217,6 +225,8 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
       _meta = m;
       _loading = false;
       _target ??= categoryOfModel(ref.read(generateProvider).params.model);
+      // 反推页也用,没有元数据也要还原
+      _promptAppend = _prefs.promptAppend;
       if (m != null) _initSelections(m);
     });
     if (m != null && m.loras.isNotEmpty) unawaited(_resolveLoras(m));
@@ -413,7 +423,9 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
           ref.read(authModeProvider).value == AuthMode.bot);
 
   void _initSelections(ImageMetadata m) {
-    _usePrompt = m.prompt.isNotEmpty;
+    _layout = decodeSectionLayout(m.sectionLayout);
+    _secOff.clear();
+    _secExpanded = _prefs.sectionExpanded;
     _useNegative = m.negativePrompt.isNotEmpty;
     _convertPrompt = needsPromptConversion(m, _targetCategory);
     // NAI 图默认勾上:认出档位时不剥的话,当前档下次生成会把那段文本重复拼
@@ -779,8 +791,51 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     return issues.isEmpty ? null : issues.join('、');
   }
 
+  /// 正向要不要导:分区模式看勾了几格。
+  bool get _positiveOn => _posOn.isNotEmpty;
+
+  /// 正向那几行里勾着的(行序)。
+  List<int> get _posOn => [
+    for (var i = 0; i < _posRows.length; i++)
+      if (!_secOff.contains(i)) i,
+  ];
+
+  /// 正向那几行:图里存的分区(主体没词就不列),对不上 / 没存就一行主体放整串。
+  List<PromptSection> get _posRows {
+    final m = _meta;
+    if (m == null || m.prompt.isEmpty) return const [];
+    final rows = _secRows;
+    if (rows == null) {
+      return [
+        PromptSection(id: kMainSectionId, name: '主体', positive: m.prompt),
+      ];
+    }
+    return [
+      for (final r in rows)
+        if (!r.isMain || r.positive.trim().isNotEmpty) r,
+    ];
+  }
+
+  /// 即将导入的正 / 负向(剥过预设,同导入落地)。
+  ({String positive, String negative}) _importTexts(ImageMetadata m) {
+    final hit = _usePreset ? _presetMatch : null;
+    return (
+      positive: hit?.positive ?? _preparedPositive(m),
+      negative: hit?.negative ?? _prep(m.negativePrompt),
+    );
+  }
+
+  /// 图里存的分区,拼出来和要导入的正向对得上才用,否则按整串导入。
+  List<PromptSection>? get _secRows {
+    final rows = _layout, m = _meta;
+    if (rows == null || m == null || !_inNai || m.prompt.isEmpty) return null;
+    return sectionLayoutMatches(rows, _importTexts(m).positive, positive: true)
+        ? rows
+        : null;
+  }
+
   bool get _hasAnySelection {
-    if (_usePrompt || _useNegative) return true;
+    if (_positiveOn || _useNegative) return true;
     if (_charChecked.isNotEmpty) return true;
     if (_vibeChecked.isNotEmpty) return true;
     if (_settingsUnsupportedReason == null &&
@@ -814,10 +869,12 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
               loraImport: m.loras.isEmpty
                   ? _prefs.loraImport
                   : _loraChecked.isNotEmpty,
+              promptAppend: _promptAppend,
               charAppend: _charAppend,
               vibeAppend: _vibeAppend,
               loraAppend: _loraAppend,
               useSeed: _useSeed,
+              sectionExpanded: _secExpanded,
               charExpanded: _charExpanded,
               vibeExpanded: _vibeExpanded,
               settingsExpanded: _settingsExpanded,
@@ -836,7 +893,8 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
 
     // 提示词(替换)。见 _prep / _preparedPositive。
     String? pos, neg;
-    if (_usePrompt && m.prompt.isNotEmpty) pos = _preparedPositive(m);
+    final secRows = _secRows;
+    if (_positiveOn && m.prompt.isNotEmpty) pos = _preparedPositive(m);
     if (_useNegative && m.negativePrompt.isNotEmpty) {
       neg = _prep(m.negativePrompt);
     }
@@ -880,9 +938,30 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
       }
     }
 
-    // 整串替换:分区里同一侧的词一并清掉(这串本身就是一张图的全部)
-    if (pos != null || neg != null) {
-      notifier.replacePrompts(positive: pos, negative: neg);
+    // 图里存的分区:勾的几格照原样放回;负面也对得上时各格带着自己的负面
+    if (secRows != null && pos != null) {
+      final negOk =
+          neg != null && sectionLayoutMatches(secRows, neg, positive: false);
+      final rows = _posRows;
+      notifier.importSections(
+        [
+          for (final i in _posOn)
+            negOk ? rows[i] : rows[i].copyWith(negative: ''),
+        ],
+        mainNegative: !negOk
+            ? neg
+            : secRows.where((x) => x.isMain).firstOrNull?.negative ?? '',
+        append: _promptAppend,
+      );
+    }
+    // 完全覆盖:导了正向则分区整列清掉(这串本身就是一张图的全部);
+    // 新建分区:正负向成一格接在最后
+    else if (pos != null || neg != null) {
+      if (_promptAppend) {
+        notifier.addPromptSection(positive: pos ?? '', negative: neg ?? '');
+      } else {
+        notifier.replacePrompts(positive: pos, negative: neg);
+      }
     }
 
     // 角色(站位跟着角色勾选一起走,不单独设开关)
@@ -1121,13 +1200,27 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     });
   }
 
-  /// 导入反推结果:把标签串写为正向提示词(替换)。
+  /// 导入反推结果:标签串替换正向提示词,或新建一格分区。
   void _importReverse() {
     final tags = _reverseTags;
     if (tags == null || !_useReverse) return;
+    unawaited(
+      ref
+          .read(importPrefsProvider.notifier)
+          .save(_prefs.copyWith(promptAppend: _promptAppend)),
+    );
     final before = _before();
-    ref.read(generateProvider.notifier).replacePrompts(positive: tags);
-    _finish('已导入反推结果到正向提示词', Icons.download_done, before);
+    final notifier = ref.read(generateProvider.notifier);
+    if (_promptAppend) {
+      notifier.addPromptSection(positive: tags);
+    } else {
+      notifier.replacePrompts(positive: tags);
+    }
+    _finish(
+      _promptAppend ? '已导入反推结果到新分区' : '已导入反推结果到正向提示词',
+      Icons.download_done,
+      before,
+    );
   }
 
   @override
@@ -1185,10 +1278,19 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
           preview: tags,
           checked: _useReverse,
           onTap: () => setState(() => _useReverse = !_useReverse),
+          footer: _promptModeSeg(scheme),
         ),
       ],
     );
   }
+
+  /// 主提示词的导入方式,正负向共用一个(放在正向卡里,图里没正向时放负向卡)。
+  Widget _promptModeSeg(ColorScheme scheme) => _overrideSeg(
+    scheme,
+    _promptAppend,
+    (v) => setState(() => _promptAppend = v),
+    options: const ['完全覆盖', '新建分区'],
+  );
 
   // ---- 无元数据:顶部信息 + 提示,四个「用作」按钮居中(不再吊在底部留大空档) ----
   Widget _noMetaBody(ColorScheme scheme) {
@@ -1264,16 +1366,9 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
           ),
         ),
         const SizedBox(height: 11),
-        // 正向
+        // 正向:同角色区,图里存了分区就逐格列出,没有就一行主体
         if (m.prompt.isNotEmpty) ...[
-          _fixedRow(
-            scheme,
-            icon: Icons.notes,
-            title: context.l10n.positivePrompt,
-            preview: m.prompt,
-            checked: _usePrompt,
-            onTap: () => setState(() => _usePrompt = !_usePrompt),
-          ),
+          _sectionsSection(scheme, _posRows),
           const SizedBox(height: 9),
         ],
         // 负向
@@ -1286,6 +1381,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
             checked: _useNegative,
             onTap: () => setState(() => _useNegative = !_useNegative),
             danger: true,
+            footer: m.prompt.isEmpty ? _promptModeSeg(scheme) : null,
           ),
           const SizedBox(height: 9),
         ],
@@ -1440,7 +1536,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     // 预设是异步载入的:watch 一下,载入完成后这一行的识别结果要跟着刷新
     // (_presetMatch 自己只能 read —— 它同时被导入回调调用,那里 watch 非法)。
     ref.watch(promptPresetsProvider);
-    final needPrompt = !_usePrompt && !_useNegative;
+    final needPrompt = !_positiveOn && !_useNegative;
     final hit = needPrompt ? null : _presetMatch;
     final on = _usePreset && !needPrompt;
     final fg = needPrompt
@@ -1963,6 +2059,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     required bool checked,
     required VoidCallback onTap,
     bool danger = false,
+    Widget? footer,
   }) {
     final expanded = _expandedRows.contains(title);
     final textColor = danger ? scheme.error : scheme.onSurfaceVariant;
@@ -2050,6 +2147,11 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
               ),
             ),
           ),
+          if (footer != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+              child: footer,
+            ),
           // 全文:可选中,给"只想抄其中几个 tag"的场景。放在可点击行之外 ——
           // SelectableText 要吃住长按/拖拽手势,套进 InkWell 会跟点击打架。
           ExpandBody(
@@ -2066,6 +2168,62 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  // ---- 正向 section ----
+  Widget _sectionsSection(ColorScheme scheme, List<PromptSection> rows) {
+    final total = rows.length;
+    final on = _posOn.length;
+    final allOn = on == total;
+    return _section(
+      scheme,
+      icon: Icons.notes,
+      iconColor: scheme.primary,
+      title: context.l10n.positivePrompt,
+      count: '$on/$total',
+      allOn: allOn,
+      onToggleAll: () => setState(() {
+        if (allOn) {
+          _secOff.addAll([for (var i = 0; i < total; i++) i]);
+        } else {
+          _secOff.clear();
+        }
+      }),
+      expanded: _secExpanded,
+      onToggleExpand: () => setState(() => _secExpanded = !_secExpanded),
+      action: _copyButton(
+        scheme,
+        text: _secRows == null
+            ? rows.first.positive
+            : joinSections(
+                rows,
+                rows.where((r) => r.isMain).firstOrNull?.positive ?? '',
+                positive: true,
+              ),
+        what: '正向提示词',
+        size: 28,
+      ),
+      child: Column(
+        children: [
+          _promptModeSeg(scheme),
+          const SizedBox(height: 9),
+          for (var i = 0; i < total; i++) ...[
+            _itemRow(
+              scheme,
+              tag: rows[i].name,
+              tagColor: scheme.primary,
+              text: rows[i].positive,
+              copyWhat: '正向提示词',
+              checked: !_secOff.contains(i),
+              onTap: () => setState(() {
+                _secOff.contains(i) ? _secOff.remove(i) : _secOff.add(i);
+              }),
+            ),
+            if (i != total - 1) const SizedBox(height: 9),
+          ],
         ],
       ),
     );
@@ -2439,8 +2597,9 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
   Widget _overrideSeg(
     ColorScheme scheme,
     bool append,
-    ValueChanged<bool> onChanged,
-  ) {
+    ValueChanged<bool> onChanged, {
+    List<String> options = const ['完全覆盖', '额外添加'],
+  }) {
     return Row(
       children: [
         Text(
@@ -2449,7 +2608,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
         ),
         const Spacer(),
         _SlideSeg(
-          options: const ['完全覆盖', '额外添加'],
+          options: options,
           index: append ? 1 : 0,
           onChanged: (i) => onChanged(i == 1),
         ),
@@ -2469,6 +2628,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     required bool expanded,
     required VoidCallback onToggleExpand,
     required Widget child,
+    Widget? action,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -2499,6 +2659,15 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
                     style: mono(context, size: 12.5, color: iconColor),
                   ),
                   const Spacer(),
+                  if (action != null) ...[
+                    // 按钮比勾选框高,压在勾选框的高度里,头部不因它变高
+                    SizedBox(
+                      width: 28,
+                      height: 22,
+                      child: OverflowBox(maxHeight: 28, child: action),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   GestureDetector(
                     onTap: onToggleAll,
                     child: _checkBox(scheme, allOn),

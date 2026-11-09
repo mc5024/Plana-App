@@ -24,11 +24,13 @@ class ImportPrefs {
     this.charImport = true,
     this.vibeImport = true,
     this.loraImport = true,
+    this.promptAppend = false,
     this.charAppend = false,
     this.vibeAppend = false,
     this.loraAppend = false,
     this.useSeed = false,
     this.settings = const {},
+    this.sectionExpanded = true,
     this.charExpanded = true,
     this.vibeExpanded = true,
     this.settingsExpanded = true,
@@ -51,6 +53,9 @@ class ImportPrefs {
   final bool vibeImport;
   final bool loraImport;
 
+  /// 主提示词:false=完全覆盖,true=新建分区。
+  final bool promptAppend;
+
   /// 角色 / Vibe / LoRA:false=完全覆盖,true=额外添加。
   final bool charAppend;
   final bool vibeAppend;
@@ -64,6 +69,7 @@ class ImportPrefs {
   final Map<String, bool> settings;
 
   /// 四个可折叠区的展开态。
+  final bool sectionExpanded;
   final bool charExpanded;
   final bool vibeExpanded;
   final bool settingsExpanded;
@@ -75,11 +81,13 @@ class ImportPrefs {
     bool? charImport,
     bool? vibeImport,
     bool? loraImport,
+    bool? promptAppend,
     bool? charAppend,
     bool? vibeAppend,
     bool? loraAppend,
     bool? useSeed,
     Map<String, bool>? settings,
+    bool? sectionExpanded,
     bool? charExpanded,
     bool? vibeExpanded,
     bool? settingsExpanded,
@@ -90,11 +98,13 @@ class ImportPrefs {
     charImport: charImport ?? this.charImport,
     vibeImport: vibeImport ?? this.vibeImport,
     loraImport: loraImport ?? this.loraImport,
+    promptAppend: promptAppend ?? this.promptAppend,
     charAppend: charAppend ?? this.charAppend,
     vibeAppend: vibeAppend ?? this.vibeAppend,
     loraAppend: loraAppend ?? this.loraAppend,
     useSeed: useSeed ?? this.useSeed,
     settings: settings ?? this.settings,
+    sectionExpanded: sectionExpanded ?? this.sectionExpanded,
     charExpanded: charExpanded ?? this.charExpanded,
     vibeExpanded: vibeExpanded ?? this.vibeExpanded,
     settingsExpanded: settingsExpanded ?? this.settingsExpanded,
@@ -107,11 +117,13 @@ class ImportPrefs {
     'charImport': charImport,
     'vibeImport': vibeImport,
     'loraImport': loraImport,
+    'promptAppend': promptAppend,
     'charAppend': charAppend,
     'vibeAppend': vibeAppend,
     'loraAppend': loraAppend,
     'useSeed': useSeed,
     'settings': settings,
+    'sectionExpanded': sectionExpanded,
     'charExpanded': charExpanded,
     'vibeExpanded': vibeExpanded,
     'settingsExpanded': settingsExpanded,
@@ -128,6 +140,7 @@ class ImportPrefs {
       charImport: b('charImport', true),
       vibeImport: b('vibeImport', true),
       loraImport: b('loraImport', true),
+      promptAppend: b('promptAppend', false),
       charAppend: b('charAppend', false),
       vibeAppend: b('vibeAppend', false),
       loraAppend: b('loraAppend', false),
@@ -138,6 +151,7 @@ class ImportPrefs {
                 if (e.value is bool) '${e.key}': e.value as bool,
             }
           : const {},
+      sectionExpanded: b('sectionExpanded', true),
       charExpanded: b('charExpanded', true),
       vibeExpanded: b('vibeExpanded', true),
       settingsExpanded: b('settingsExpanded', true),

@@ -7,6 +7,7 @@ import '../../core/store/app_stores.dart';
 import '../../core/store/storage_settings.dart';
 import '../generate/models.dart' show GenerateState;
 import '../generate/generation_controller.dart' show genNoticeProvider;
+import '../generate/section_layout.dart' show withSectionLayout;
 import 'albums/album_models.dart';
 import 'albums/album_state.dart';
 import 'gallery_dates.dart';
@@ -202,7 +203,9 @@ class GalleryNotifier extends Notifier<GalleryState> {
       createdAt: DateTime.now().millisecondsSinceEpoch,
       batchIndex: batchIndex,
       inpaintFrom: inpaintFrom,
-      bytes: bytes,
+      bytes: input == null
+          ? bytes
+          : withSectionLayout(bytes, input.composedSections),
       input: snap,
     );
     // 检索索引同帧写入(input 在内存,零 IO)

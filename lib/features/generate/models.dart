@@ -1228,6 +1228,7 @@ class GenerateState {
     this.promptRaw = '',
     this.negativePromptRaw = '',
     this.sections = const [],
+    this.composedSections = const [],
     required this.characters,
     required this.vibes,
     required this.charRefs,
@@ -1273,6 +1274,10 @@ class GenerateState {
   /// 也能删(正向随之清空),这时列表里就没有它。
   /// 只活在创作页:生成快照里已拼进 [prompt](见 composeSections)。
   final List<PromptSection> sections;
+
+  /// 生成快照里拼进 [prompt] 的那几格(只留进了载荷的,主体的词也写在行里,
+  /// 见 composeSections)。不发给 NAI、不落盘,入库时写进 PNG(见 section_layout.dart)。
+  final List<PromptSection> composedSections;
 
   final List<CharacterPrompt> characters;
   final List<VibeItem> vibes;
@@ -1339,6 +1344,7 @@ class GenerateState {
     String? promptRaw,
     String? negativePromptRaw,
     List<PromptSection>? sections,
+    List<PromptSection>? composedSections,
     List<CharacterPrompt>? characters,
     List<VibeItem>? vibes,
     List<CharRefItem>? charRefs,
@@ -1359,6 +1365,7 @@ class GenerateState {
       promptRaw: promptRaw ?? this.promptRaw,
       negativePromptRaw: negativePromptRaw ?? this.negativePromptRaw,
       sections: sections ?? this.sections,
+      composedSections: composedSections ?? this.composedSections,
       characters: characters ?? this.characters,
       vibes: vibes ?? this.vibes,
       charRefs: charRefs ?? this.charRefs,

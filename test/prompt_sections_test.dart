@@ -239,12 +239,12 @@ void main() {
         stripHiddenModules(st(), const GenModuleSettings()).negativePrompt,
         'lowres, blurry',
       );
-      // 读图导入写进了正向:主体那一行补回最上面,也照样进载荷
-      gen.replacePrompts(positive: '2girls');
+      // 外头写进了正向:主体那一行补回最上面,也照样进载荷
+      gen.setPrompts(positive: '2girls');
       expect(_names(withMainRow(st().sections, st().prompt)), ['主体', '画风']);
       expect(
         stripHiddenModules(st(), const GenModuleSettings()).prompt,
-        '2girls',
+        '2girls, artist:wlop, artist:ask',
       );
       // 撤销删主体:放回原位
       final back = restoreSection(
@@ -288,20 +288,46 @@ void main() {
     expect(stripHiddenModules(st(), const GenModuleSettings()).prompt, '1girl');
   });
 
-  test('读图导入整串替换:分区同一侧的词清掉、骨架留着;清空连分区一起清掉', () {
+  test('读图导入整串替换:导了正向连分区一起清掉;只导负面格子留着;清空连分区一起清掉', () {
     gen.setPrompts(positive: '1girl', negative: 'lowres');
     gen.addEntrySections([_a12]);
-    gen.replacePrompts(positive: 'artist:wlop, 2girls');
+    gen.replacePrompts(negative: 'bad anatomy');
     final art = st().sections.firstWhere((s) => s.artist);
-    expect(art.positive, isEmpty);
-    expect(art.positiveRaw, isEmpty);
-    expect(art.negative, 'lowres, blurry'); // 只导了正向,负面不动
+    expect(art.positive, isNotEmpty);
+    expect(art.negative, isEmpty);
+    gen.replacePrompts(positive: 'artist:wlop, 2girls');
+    expect(st().sections, isEmpty);
     expect(st().prompt, 'artist:wlop, 2girls');
+    expect(st().negativePrompt, 'bad anatomy');
     gen.addEntrySections([_watercolor]);
     gen.clearPositive();
     expect(st().prompt, isEmpty);
     expect(st().sections, isEmpty); // 卡片回到没分区的样子
-    expect(st().negativePrompt, 'lowres'); // 主体的负面留着
+    expect(st().negativePrompt, 'bad anatomy'); // 主体的负面留着
+  });
+
+  test('读图导入新建分区:正负向成一格接在最后,原有的不动、已有的词不重复', () {
+    gen.setPrompts(positive: '1girl', negative: 'lowres');
+    gen.addEntrySections([_a12]);
+    gen.addPromptSection(
+      positive: 'artist:wlop, 2girls, smile',
+      negative: 'lowres, bad hands',
+    );
+    expect(_names(st().sections), ['主体', '画风', '分区 1']);
+    final added = st().sections.last;
+    expect(added.positive, '2girls, smile');
+    expect(added.negative, 'bad hands');
+    expect(st().prompt, '1girl');
+    expect(st().negativePrompt, 'lowres');
+    // 没分区时连主体一起建出来
+    gen.clearPositive();
+    gen.setPrompts(positive: '1girl');
+    gen.addPromptSection(positive: 'night');
+    expect(_names(st().sections), ['主体', '分区 1']);
+    expect(
+      stripHiddenModules(st(), const GenModuleSettings()).prompt,
+      '1girl, night',
+    );
   });
 
   test('编辑器开着分区只写这一格,主提示词不动', () {
