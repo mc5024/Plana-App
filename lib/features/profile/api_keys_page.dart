@@ -38,7 +38,7 @@ class _ApiKeysPageState extends ConsumerState<ApiKeysPage> {
 
   Future<String> _session() async {
     final s = await ref.read(botSessionProvider.future);
-    if (s == null) throw BackendException('还没授权 Bot');
+    if (s == null) throw BackendException('暂未开放');
     return s.sessionId;
   }
 

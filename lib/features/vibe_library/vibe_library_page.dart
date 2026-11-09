@@ -559,7 +559,7 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
     final session = await ref.read(botSessionProvider.future);
     if (!mounted) return;
     if (session == null) {
-      hintSnack(context, '发布到公共库需要 Bot 授权', icon: Icons.info_outline);
+      hintSnack(context, '暂未开放', icon: Icons.info_outline);
       return;
     }
     final res =
@@ -1310,19 +1310,13 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
     // 公共库是纯后端功能:只要授权过 Bot 就能用,不要求把生成也切到 Bot。
     final session = ref.watch(botSessionProvider).value;
     if (session == null) {
-      return _publicHint(
-        Icons.cloud_off,
-        '公共 Vibe 库需要 Bot 授权\n可在「我的」→「账号与接入」中授权',
-      );
+      return _publicHint(Icons.cloud_off, '公共 Vibe 库暂未开放');
     }
     final async = ref.watch(publicVibesProvider);
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => e is StateError
-          ? _publicHint(
-              Icons.cloud_off,
-              '公共 Vibe 库需要 Bot 授权\n可在「我的」页切换到 Bot 模式并授权',
-            )
+          ? _publicHint(Icons.cloud_off, '公共 Vibe 库暂未开放')
           : _publicHint(
               Icons.error_outline,
               '加载公共库失败',

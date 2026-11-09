@@ -1464,7 +1464,9 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
                     )
                   else
                     Text(
-                      '${categoryLabel(imageCat)} 需要 Bot 授权登录后可用,无法切换',
+                      ref.watch(botSessionProvider).value == null
+                          ? '${categoryLabel(imageCat)} 暂未开放'
+                          : '${categoryLabel(imageCat)} 仅 Bot 账户可用,无法切换',
                       style: context.texts.bodySmall!.copyWith(
                         fontSize: 11,
                         color: scheme.onSurfaceVariant,
@@ -3105,7 +3107,7 @@ class _ReverseDialogState extends ConsumerState<_ReverseDialog> {
     try {
       final session = await ref.read(botSessionProvider.future);
       if (session == null) {
-        throw Exception('AI 反推需 Bot 后端会话,请先在「我的」里登录 Bot');
+        throw Exception('暂未开放');
       }
       final b64 = base64Encode(widget.bytes);
       final r = await ref

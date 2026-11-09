@@ -103,7 +103,7 @@ class VibeEncoder {
     final String enc;
     if (_ref.read(authModeProvider).value == AuthMode.bot) {
       final session = await _ref.read(botSessionProvider.future);
-      if (session == null) throw StateError('Bot 未授权,无法编码');
+      if (session == null) throw StateError('暂未开放');
       enc = await _ref
           .read(backendClientProvider)
           .encodeVibe(

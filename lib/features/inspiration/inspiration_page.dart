@@ -1157,20 +1157,12 @@ class _CategoryPageState extends ConsumerState<_CategoryPage>
         (_) => _SkeletonGrid(aspect: _cardAspect, cols: gridColumns),
       ),
       error: (e, _) {
-        // 会话过期后端回 401/403,与无会话同样给「去授权」出口,
+        // 会话过期后端回 401/403,与无会话同样按暂未开放显示,
         // 别让人困在「重试永远失败」里。
         final needBot =
             (e is StateError && e.message == 'need-bot') ||
             (e is BackendException && (e.status == 401 || e.status == 403));
-        if (needBot) {
-          return _empty(
-            '公共库需要 Bot 授权',
-            action: (
-              '去授权',
-              () => ref.read(shellIndexProvider.notifier).select(kTabProfile),
-            ),
-          );
-        }
+        if (needBot) return _empty('公共库暂未开放');
         return _empty('公共库加载失败', action: ('重试', _reloadPublic));
       },
       data: (all) {

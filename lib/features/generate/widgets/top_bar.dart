@@ -343,8 +343,8 @@ class _ModelSheetState extends State<_ModelSheet>
 ///
 /// 下拉而不是点一下对切(与并排的 [RentalSourceChip]、统计页的数据源下拉同一
 /// 套):两个去处摊开摆着,不用先按一下才知道另一边是什么。没授权 Bot 时那行
-/// 压暗但照样点得动 —— 点它给的是「去哪授权」的指路,禁用了反倒只剩一条说不出
-/// 所以然的灰杠。而「选了 Bot 却没授权」那种坏状态,回 Token 这行永远亮着。
+/// 压暗但照样点得动 —— 点它提示暂未开放,禁用了反倒只剩一条说不出所以然的
+/// 灰杠。而「选了 Bot 却没授权」那种坏状态,回 Token 这行永远亮着。
 class _AuthModeChip extends ConsumerWidget {
   const _AuthModeChip();
 
@@ -390,11 +390,7 @@ class _AuthModeChip extends ConsumerWidget {
         onSelected: (v) {
           if (v == mode) return;
           if (v == AuthMode.bot && !canSwitch) {
-            hintSnack(
-              context,
-              '尚未授权 Bot,去「我的 → 账号与接入」授权后可切',
-              icon: Icons.smart_toy_outlined,
-            );
+            hintSnack(context, '暂未开放', icon: Icons.smart_toy_outlined);
             return;
           }
           Haptics.selection();

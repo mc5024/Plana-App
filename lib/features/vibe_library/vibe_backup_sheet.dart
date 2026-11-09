@@ -67,7 +67,7 @@ class _VibeBackupSheetState extends ConsumerState<_VibeBackupSheet> {
   Future<void> _run(String tag, Future<void> Function() op) async {
     if (_busy != null) return;
     if (ref.read(botSessionProvider).value == null) {
-      hintSnack(context, 'Vibe 云备份需要 Bot 授权', icon: Icons.cloud_off_outlined);
+      hintSnack(context, '暂未开放', icon: Icons.cloud_off_outlined);
       return;
     }
     setState(() {
@@ -247,7 +247,7 @@ class _VibeBackupSheetState extends ConsumerState<_VibeBackupSheet> {
               ),
               const SizedBox(height: 14),
               if (!authed)
-                _hint('需要 Bot 授权后才能使用云备份', Icons.cloud_off_outlined)
+                _hint('云备份暂未开放', Icons.cloud_off_outlined)
               else ...[
                 _statRow('本地', '${local.length} 个'),
                 const SizedBox(height: 6),

@@ -1231,7 +1231,7 @@ class _RentalFailed extends ConsumerWidget {
   }
 }
 
-/// 没有 Bot 会话:租卡整条路都走不通(端点全要 session),给条去授权的指路。
+/// 没有 Bot 会话:租卡整条路都走不通(端点全要 session),只说暂未开放。
 class _RentalNoAuth extends StatelessWidget {
   const _RentalNoAuth();
 
@@ -1244,7 +1244,7 @@ class _RentalNoAuth extends StatelessWidget {
         const SizedBox(width: 9),
         Expanded(
           child: Text(
-            '独享实例需要 Bot 授权,可在「我的」→「账号与接入」中授权。',
+            '独享实例暂未开放',
             style: context.texts.labelSmall!.copyWith(
               color: scheme.onSurfaceVariant,
             ),

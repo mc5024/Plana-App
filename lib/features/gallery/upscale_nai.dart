@@ -35,7 +35,7 @@ Future<({Uint8List png, int width, int height})> upscaleNai(
   Uint8List out;
   if (mode == AuthMode.bot) {
     final session = await ref.read(botSessionProvider.future);
-    if (session == null) throw Exception('未登录(bot 会话缺失)');
+    if (session == null) throw Exception('暂未开放');
     onStage?.call('提交后端…');
     final r = await ref
         .read(backendClientProvider)

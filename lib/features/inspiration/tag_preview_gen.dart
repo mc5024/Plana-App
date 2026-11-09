@@ -103,7 +103,7 @@ Future<Uint8List> generateTagPreview(
 
   if (ref.read(authModeProvider).value == AuthMode.bot) {
     final session = ref.read(botSessionProvider).value;
-    if (session == null) throw BackendException('需要 Bot 授权');
+    if (session == null) throw BackendException('暂未开放');
     final base = await ref.read(backendBaseProvider.future);
     if (base.isEmpty) throw BackendException('未配置后端地址');
     final client = ref.read(backendClientProvider);

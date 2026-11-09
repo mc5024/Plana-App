@@ -365,7 +365,7 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
     final sid = await _sid();
     if (!mounted) return;
     if (sid == null) {
-      hintSnack(context, '需要 Bot 授权登录');
+      hintSnack(context, '暂未开放');
       return;
     }
     setState(() => _uploadPct = 0);
@@ -491,7 +491,7 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
       final sid = await _sid();
       if (!mounted) return;
       if (sid == null) {
-        hintSnack(context, '需要 Bot 授权登录');
+        hintSnack(context, '暂未开放');
         return;
       }
       final r = await ref
@@ -618,7 +618,7 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
   /// 未授权(provider 抛 need-bot)给人话,其余原样透出。
   static String? _errText(Object? e) {
     if (e == null) return null;
-    if (e is StateError && e.message == 'need-bot') return '需要 Bot 授权登录';
+    if (e is StateError && e.message == 'need-bot') return '暂未开放';
     return '$e';
   }
 

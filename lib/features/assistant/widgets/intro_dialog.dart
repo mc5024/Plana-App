@@ -82,7 +82,7 @@ class _IntroDialogState extends ConsumerState<_IntroDialog> {
                 subtitle: Text(
                   libraryScopeAllowed(o, botAuthorized: authorized)
                       ? libraryScopeDesc(o)
-                      : '需要 Bot 授权',
+                      : '暂未开放',
                 ),
               ),
           ],

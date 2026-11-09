@@ -942,13 +942,13 @@ class _BetaBadge extends StatelessWidget {
 }
 
 /// 没有 Bot 授权、也没选自定义接口:这时发不出去。不放一个按下去就报错的空壳输入框,
-/// 给两条出路 —— 选一个自己的模型接口,或者去做 Bot 授权。
+/// 给条出路 —— 选一个自己的模型接口。
 /// tab 常驻(不按登录态藏),门槛写在页里 —— tab 时有时无更迷惑。
-class _Gate extends ConsumerWidget {
+class _Gate extends StatelessWidget {
   const _Gate({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final scheme = context.scheme;
     return Center(
       child: Padding(
@@ -974,7 +974,7 @@ class _Gate extends ConsumerWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              '没有 Bot 授权时,AI 助手只能用你自己的模型接口,\n资料只用本地库。',
+              '内置模型暂未开放,可以先用你自己的模型接口,\n资料只用本地库。',
               textAlign: TextAlign.center,
               style: context.texts.bodySmall!.copyWith(
                 color: scheme.onSurfaceVariant,
@@ -985,12 +985,6 @@ class _Gate extends ConsumerWidget {
             FilledButton(
               onPressed: () => showModelSheet(context),
               child: const Text('选择模型接口'),
-            ),
-            const SizedBox(height: 4),
-            TextButton(
-              onPressed: () =>
-                  ref.read(shellIndexProvider.notifier).select(kTabProfile),
-              child: const Text('去 Bot 授权'),
             ),
           ],
         ),

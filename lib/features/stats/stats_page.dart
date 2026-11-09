@@ -84,11 +84,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
           ];
 
           if (_bot && session == null) {
-            children.add(
-              const StatsCard(
-                child: Text('尚未 Bot 授权。在「我的 → 账号与接入」完成授权后,可查看用量统计与钱包。'),
-              ),
-            );
+            children.add(const StatsCard(child: Text('暂未开放')));
           } else {
             children.addAll(_dataSection(context));
           }

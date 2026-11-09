@@ -589,7 +589,7 @@ class AssistantNotifier extends Notifier<AssistantState> {
         await ref.read(agentModelsProvider.future);
       } catch (_) {}
       if (ref.read(assistantModelKeyProvider).isEmpty) {
-        _pushError('没有 Bot 授权时只能用免费模型或自定义接口,先在顶部选一个', AssistErrorKind.auth);
+        _pushError('内置模型暂未开放,先在顶部选一个自定义接口', AssistErrorKind.auth);
         return;
       }
     }

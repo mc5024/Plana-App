@@ -22,7 +22,7 @@ class VibeCloudSync {
   /// 未授权时抛错:整个流程必须中止,绝不能拿半截状态去动本地数据。
   String get _sessionId {
     final s = ref.read(botSessionProvider).value;
-    if (s == null) throw BackendException('需要 Bot 授权');
+    if (s == null) throw BackendException('暂未开放');
     return s.sessionId;
   }
 

@@ -534,7 +534,7 @@ class _BackupSheetState extends ConsumerState<_BackupSheet> {
     if (_busy != null) return;
     final session = ref.read(botSessionProvider).value;
     if (session == null) {
-      hintSnack(context, '数据备份需要 Bot 授权', icon: Icons.cloud_off_outlined);
+      hintSnack(context, '暂未开放', icon: Icons.cloud_off_outlined);
       return;
     }
     setState(() => _busy = tag);

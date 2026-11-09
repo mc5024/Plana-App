@@ -144,7 +144,7 @@ class _SettingsSheet extends ConsumerWidget {
                 libraryScopeAllowed(o, botAuthorized: authorized),
             optionNote: (o) => libraryScopeAllowed(o, botAuthorized: authorized)
                 ? libraryScopeDesc(o)
-                : '需要 Bot 授权',
+                : '暂未开放',
             onChanged: (v) => n.patch((o) => o.copyWith(libraryScope: v)),
           ),
           SettingRow(

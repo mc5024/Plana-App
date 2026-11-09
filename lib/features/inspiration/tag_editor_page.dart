@@ -360,7 +360,7 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
     if (_guardValidation()) return;
     final session = ref.read(botSessionProvider).value;
     if (session == null) {
-      hintSnack(context, '发布需要 Bot 授权', icon: Icons.cloud_off_outlined);
+      hintSnack(context, '暂未开放', icon: Icons.cloud_off_outlined);
       return;
     }
     if (!_slots.any((s) => s.filled)) {
@@ -419,7 +419,7 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
     if (_guardValidation()) return;
     final session = ref.read(botSessionProvider).value;
     if (session == null) {
-      hintSnack(context, '同步需要 Bot 授权', icon: Icons.cloud_off_outlined);
+      hintSnack(context, '暂未开放', icon: Icons.cloud_off_outlined);
       return;
     }
     await _run(() async {
@@ -490,7 +490,7 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
     if (!ok || !mounted) return;
     final session = ref.read(botSessionProvider).value;
     if (session == null) {
-      hintSnack(context, '需要 Bot 授权', icon: Icons.cloud_off_outlined);
+      hintSnack(context, '暂未开放', icon: Icons.cloud_off_outlined);
       return;
     }
     await _run(() async {
@@ -591,7 +591,7 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
     if (target == null || target.isEmpty || !mounted) return;
     final session = ref.read(botSessionProvider).value;
     if (session == null) {
-      hintSnack(context, '需要 Bot 授权', icon: Icons.cloud_off_outlined);
+      hintSnack(context, '暂未开放', icon: Icons.cloud_off_outlined);
       return;
     }
     await _run(() async {
@@ -629,7 +629,7 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
     await _run(() async {
       if (isCreated) {
         final session = ref.read(botSessionProvider).value;
-        if (session == null) throw BackendException('需要 Bot 授权');
+        if (session == null) throw BackendException('暂未开放');
         final client = ref.read(backendClientProvider);
         if (widget.cat == TagCategory.character) {
           await client.deletePublicOc(session.sessionId, edit.publicId!);

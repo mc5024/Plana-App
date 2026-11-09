@@ -33,9 +33,7 @@ class _PlatformPageState extends ConsumerState<PlatformPage> {
       body: session == null
           ? ListView(
               padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-              children: const [
-                StatsCard(child: Text('全平台统计需 Bot 授权后可见。在「我的 → 账号与接入」完成授权即可。')),
-              ],
+              children: const [StatsCard(child: Text('暂未开放'))],
             )
           : RefreshIndicator(
               onRefresh: () async {

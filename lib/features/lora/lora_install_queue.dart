@@ -161,7 +161,7 @@ class LoraInstallQueue extends Notifier<List<LoraInstallJob>> {
 
         final sid = (await ref.read(botSessionProvider.future))?.sessionId;
         if (sid == null || sid.isEmpty) {
-          _patch(vid, status: LoraInstallStatus.failed, message: '需要 Bot 授权登录');
+          _patch(vid, status: LoraInstallStatus.failed, message: '暂未开放');
         } else {
           // 下载期间每秒把机房侧进度贴上来(拿不到不影响下载本身)
           final ticker = Stream.periodic(const Duration(seconds: 1)).listen((

@@ -322,7 +322,7 @@ class RentalState {
   final bool busy;
   final String error;
 
-  /// 没有 Bot 会话:租卡整条路都不可用,面板据此给出去授权的提示。
+  /// 没有 Bot 会话:租卡整条路都不可用,面板据此显示暂未开放。
   final bool authed;
 
   /// 机型(服务端下发;没到货前是占位)。在跑时取**第一台**的 ——

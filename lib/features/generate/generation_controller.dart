@@ -479,7 +479,11 @@ class GenerationNotifier extends Notifier<GenPool> {
       }
       // Anima / Krea 走服务端 Modal 后端,直连 token 模式没有服务器会话,无从代理。
       if (!isBot) {
-        return _reject('$modalName 仅 Bot 授权模式可用,请在「我的」页切换接入方式');
+        return _reject(
+          ref.read(botSessionProvider).value == null
+              ? '$modalName 暂未开放'
+              : '$modalName 仅 Bot 账户可用,请切换生成方式',
+        );
       }
     }
 
@@ -1059,7 +1063,7 @@ class GenerationNotifier extends Notifier<GenPool> {
       return _fail(jobId, '读取授权信息失败:$e', GenOutcome.notCharged);
     }
     if (session == null) {
-      return _fail(jobId, '尚未 Bot 授权,请在「我的」页完成授权', GenOutcome.notCharged);
+      return _fail(jobId, '暂未开放', GenOutcome.notCharged);
     }
     if (base.isEmpty) {
       return _fail(jobId, '未配置后端地址,请在「我的」页或授权页填写', GenOutcome.notCharged);
