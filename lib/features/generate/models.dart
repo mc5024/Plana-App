@@ -263,7 +263,7 @@ class InpaintJob {
 
   final double strength;
 
-  /// 局部重绘的贴回信息;null = 整图(结果直接入库)。
+  /// 局部重绘的贴回信息;null = 整图 / 扩图(成图混回 [image])。
   final InpaintPaste? paste;
 
   /// 底图在图库里的 id;回编辑器时用它认「是不是同一张图」。
@@ -303,7 +303,7 @@ class InpaintJob {
   return w > 0 && h > 0 ? (w, h) : null;
 }
 
-/// 局部重绘贴回:结果(发送框尺寸)中 tight 区域贴回原图对应位置。
+/// 局部重绘贴回:成图(发送框尺寸)按羽化遮罩混回原图的发送框位置。
 class InpaintPaste {
   const InpaintPaste({
     required this.original,
@@ -323,7 +323,7 @@ class InpaintPaste {
   /// 发送框原点(相对原图;发送框尺寸即快照 params.width/height)。
   final int sendX, sendY;
 
-  /// 贴回的紧凑区域(相对原图)。
+  /// 紧凑区域(相对原图)。编辑器里恒等于发送框;贴回只看发送框与遮罩。
   final int tightX, tightY, tightW, tightH;
 
   /// 入库尺寸(=原图尺寸)。

@@ -1351,7 +1351,7 @@ class GenerationNotifier extends Notifier<GenPool> {
     );
   }
 
-  /// 结果入库(直连/bot 共用):局部重绘先把结果贴回原图,
+  /// 结果入库(直连/bot 共用):重绘先把成图混回原图,
   /// 重绘任务统一打「重绘」角标;快照原样入库供「重新生成」复现。
   /// 一次采样的产出入库。[batch] 是这一批的全部 PNG —— anima / krea 的
   /// `batch_size` 让一次采样出 N 张(NAI 那条路恒为 1)。
@@ -1458,24 +1458,22 @@ class GenerationNotifier extends Notifier<GenPool> {
     var out = bytes;
     var w = s.params.width;
     var h = s.params.height;
-    final paste = job?.paste;
-    if (paste != null) {
+    if (job != null) {
+      // 局部重绘混回原图的发送框;整图 / 扩图混回发出去的那张底图
+      final paste = job.paste;
       try {
-        out = await pasteBack(
-          original: paste.original,
+        final r = await blendInpaintResult(
+          base: paste?.original ?? job.image,
           patch: bytes,
-          send: (x: paste.sendX, y: paste.sendY, w: w, h: h),
-          tight: (
-            x: paste.tightX,
-            y: paste.tightY,
-            w: paste.tightW,
-            h: paste.tightH,
-          ),
+          mask: job.mask,
+          x: paste?.sendX ?? 0,
+          y: paste?.sendY ?? 0,
         );
-        w = paste.outW;
-        h = paste.outH;
+        out = r.png;
+        w = r.width;
+        h = r.height;
       } catch (e) {
-        logd('[gen] pasteBack failed: $e'); // 贴回失败退化为子图入库
+        logd('[gen] inpaint blend failed: $e'); // 混合失败退化为成图原样入库
       }
     } else if (pngSizeOf(bytes) case (final pw, final ph)) {
       // 按成图实际尺寸记:Max 放大重绘、Anima 重绘放大的出图都比请求宽高大

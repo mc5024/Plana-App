@@ -359,6 +359,8 @@ Map<String, double> _center(String? pos) {
     }
     params['noise'] = 0;
     params['extra_noise_seed'] = seed;
+    // 服务端不叠原图:成图由客户端按羽化遮罩混回原图(同官方),遮罩边缘不留接缝
+    params['add_original_image'] = false;
   } else if (img2img != null) {
     // 图生图:action 改 img2img,底图(已 cover 到目标分辨率)+ 强度/噪声/噪声种子。
     params['image'] = img2img.image;

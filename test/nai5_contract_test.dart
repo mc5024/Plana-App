@@ -269,6 +269,17 @@ void main() {
       expect(p['img2img'], {'strength': .5, 'color_correct': true});
     });
 
+    test('重绘不让服务端叠原图,文生图照旧', () {
+      expect(infill('NAI 4.5 Full', 1)['add_original_image'], isFalse);
+      final p =
+          buildNaiPayload(
+                _state('NAI 4.5 Full'),
+                presetId: 'none',
+              ).body['parameters']
+              as Map<String, dynamic>;
+      expect(p['add_original_image'], isTrue);
+    });
+
     test('等于 1:不带 img2img 块', () {
       final p = infill('NAI 4.5 Full', 1);
       expect(p['inpaintImg2ImgStrength'], 1);

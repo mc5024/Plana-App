@@ -139,6 +139,8 @@ Map<String, dynamic> buildBotParams(
       'maskBase64': base64Encode(inpaint.mask),
       'strength': inpaint.strength,
       'noise': 0,
+      // 同直连:服务端不叠原图,成图回来按羽化遮罩混回
+      'addOriginalImage': false,
     };
   } else if (img2img != null) {
     // 图生图
