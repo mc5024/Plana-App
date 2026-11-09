@@ -52,6 +52,7 @@ class GenJob {
     this.taskId,
     this.pasteUnder,
     this.pasteAt,
+    this.pasteSize,
     this.galleryTarget = const GallerySaveTarget.all(),
   });
 
@@ -74,6 +75,9 @@ class GenJob {
   /// 就是贴回去的。两个都为空 = 整图生成,流帧直接就是全貌。
   final Uint8List? pasteUnder;
   final ({int x, int y, int w, int h})? pasteAt;
+
+  /// [pasteUnder] 那张原图的尺寸,与它同时有或同时没有。
+  final ({int w, int h})? pasteSize;
 
   final int step;
   final int total;
@@ -128,6 +132,7 @@ class GenJob {
     preview: preview ?? this.preview,
     pasteUnder: pasteUnder,
     pasteAt: pasteAt,
+    pasteSize: pasteSize,
     note: clearNote ? null : (note ?? this.note),
     taskId: taskId ?? this.taskId,
   );

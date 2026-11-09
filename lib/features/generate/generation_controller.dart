@@ -63,6 +63,7 @@ class GenStatus {
     this.note,
     this.pasteUnder,
     this.pasteAt,
+    this.pasteSize,
   });
 
   final bool busy;
@@ -81,6 +82,7 @@ class GenStatus {
   /// 局部重绘的预览底与贴回位置(见 [GenJob.pasteUnder])。
   final Uint8List? pasteUnder;
   final ({int x, int y, int w, int h})? pasteAt;
+  final ({int w, int h})? pasteSize;
 
   /// 进度未知阶段的状态文案(bot 排队「排队中 · 第 N 位」等),
   /// 画布进度胶囊优先显示;null 时显「准备中」。
@@ -188,6 +190,7 @@ GenStatus _statusOf(GenJob j) => GenStatus(
   note: j.note,
   pasteUnder: j.pasteUnder,
   pasteAt: j.pasteAt,
+  pasteSize: j.pasteSize,
 );
 
 /// 同时**在跑**的任务数上限。
@@ -500,6 +503,12 @@ class GenerationNotifier extends Notifier<GenPool> {
     final firstOfBatch = state.jobs.isEmpty;
 
     // 挂占位卡:等位/拼载荷都可能要几秒,这段时间也得让用户看见任务已受理。
+    // 局部重绘:流帧只是那块裁切区,画布要拿整张原图垫底才看得出在改哪儿。
+    // 原图尺寸缺失(老存档)时不垫 —— 按别的尺寸排版会把流帧贴歪。
+    final paste = s.inpaint?.paste;
+    final under = paste != null && paste.outW > 0 && paste.outH > 0
+        ? paste
+        : null;
     final job = GenJob(
       galleryTarget: galleryTarget ?? ref.read(gallerySaveTargetProvider),
       id: 'job${_seq++}',
@@ -511,12 +520,16 @@ class GenerationNotifier extends Notifier<GenPool> {
       total: s.params.activeSteps,
       // 已经有别的在跑 → 这条多半要等位,先说清楚是在等而不是在准备
       note: state.jobs.isEmpty ? null : '等待中',
-      // 局部重绘:流帧只是那块裁切区,画布要拿整张原图垫底才看得出在改哪儿。
-      pasteUnder: s.inpaint?.paste?.original,
-      pasteAt: switch (s.inpaint?.paste) {
-        final p? => (x: p.sendX, y: p.sendY, w: p.tightW, h: p.tightH),
-        _ => null,
-      },
+      pasteUnder: under?.original,
+      pasteAt: under == null
+          ? null
+          : (
+              x: under.sendX,
+              y: under.sendY,
+              w: s.params.width,
+              h: s.params.height,
+            ),
+      pasteSize: under == null ? null : (w: under.outW, h: under.outH),
     );
     final run = _JobRun(GenAbort(), ref.read(promptPresetsProvider.future))
       ..origin = origin ?? (using == null ? currentCanvasOrigin() : null);

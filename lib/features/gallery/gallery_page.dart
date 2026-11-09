@@ -321,12 +321,8 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
                     // 整图。整图生成时 pasteUnder 为空,走原来那条。
                     _ZoomableImage(
                       bytes: gen.pasteUnder ?? gen.preview ?? selBytes,
-                      width: gen.pasteUnder != null
-                          ? (selected?.width ?? gen.width)
-                          : gen.width,
-                      height: gen.pasteUnder != null
-                          ? (selected?.height ?? gen.height)
-                          : gen.height,
+                      width: gen.pasteSize?.w ?? gen.width,
+                      height: gen.pasteSize?.h ?? gen.height,
                       overlay: gen.pasteUnder == null ? null : gen.preview,
                       overlayAt: gen.pasteAt,
                     ),
