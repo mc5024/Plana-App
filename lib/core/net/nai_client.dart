@@ -251,8 +251,9 @@ class NaiClient {
   }
 
   /// 流式文生图:POST /ai/generate-image-stream。
-  /// 响应为「4 字节大端长度 + msgpack 消息」帧序列,消息 {step_ix, image, code}:
-  /// step_ix 非空=中间预览、为空=终图;code!=200=错误。单帧解析失败跳过(与后端一致)。
+  /// 响应为「4 字节大端长度 + msgpack 消息」帧序列,消息
+  /// {event_type, step_ix, image, code}:event_type 为 intermediate / final / error;
+  /// code!=200 也是错误。单帧解析失败跳过(与后端一致)。
   Stream<NaiFrame> generateImageStream({
     required String token,
     required Map<String, dynamic> body,
@@ -328,8 +329,9 @@ class NaiClient {
           }
           if (msg is! Map) continue;
 
+          final type = msg['event_type'];
           final code = msg['code'];
-          if (code != null && code != 200) {
+          if (type == 'error' || (code != null && code != 200)) {
             final m = msg['message'];
             throw NaiException(
               m is String ? m : '生成失败(code $code)',
@@ -343,7 +345,8 @@ class NaiClient {
             yielded++;
             yield (
               step: stepIx is int ? stepIx + 1 : null,
-              isFinal: stepIx == null,
+              // 带 event_type 的按它认;老格式没有这个字段,靠 step_ix 为空认终图
+              isFinal: type is String ? type == 'final' : stepIx == null,
               bytes: img is Uint8List ? img : Uint8List.fromList(img),
             );
           }

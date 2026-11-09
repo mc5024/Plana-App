@@ -133,6 +133,14 @@ enum GenOutcome {
 bool isNai5QuotaBlock(String msg) =>
     msg.contains('NAI5') && (msg.contains('额度') || msg.contains('资格'));
 
+/// 收到的「成图」尺寸对不上发送尺寸,其实是预览帧。
+class _PreviewOnly implements Exception {
+  const _PreviewOnly();
+
+  @override
+  String toString() => '没收到成图,只拿到了预览帧';
+}
+
 /// 服务端明确拒收的状态码:请求没被受理,重试不花钱。
 /// 401 令牌无效 · 402 点数不足 · 404/405 端点不可用 · 429 限流。
 bool _rejectedOutright(int? status) =>
@@ -241,6 +249,7 @@ class GenerationNotifier extends Notifier<GenPool> {
   final _runs = <String, _JobRun>{}; // 每条任务的运行时,键同 GenJob.id
   var _seq = 0; // 提交序号,只增
   int _focusRevision = 0;
+  var _streamMisses = 0; // 直连流式结束却没收到终图的次数(本次启动内)
 
   // ---- 并发闸门 ----
   // 槽位用**下标**而不是计数:直连模式下「第 i 个槽」就是「第 i 把 Key」,
@@ -647,7 +656,8 @@ class GenerationNotifier extends Notifier<GenPool> {
 
     // 走流式还是一次性,整单开头定一次:中途设置变了不该让这一单换端点。
     // 接口没有逐步预览(OpenAI 兼容)时按一次性走,进度条显示不确定态。
-    final streaming = _streamGen && client.streams;
+    // 流里缺终图累计满 3 次,之后都走一次性端点(同官方)。
+    final streaming = _streamGen && client.streams && _streamMisses < 3;
 
     final abort = run.abort;
 
@@ -702,7 +712,6 @@ class GenerationNotifier extends Notifier<GenPool> {
             body: built.body,
             abort: abort,
           )) {
-            last = f.bytes;
             final step = f.isFinal ? total : (f.step ?? 0);
             _patch(
               jobId,
@@ -715,7 +724,15 @@ class GenerationNotifier extends Notifier<GenPool> {
               ),
             );
             _pushProgress();
-            if (f.isFinal) break;
+            if (f.isFinal) {
+              last = f.bytes;
+              break;
+            }
+          }
+          // 流结束却没有终图:预览帧只有成图约 1/8 大,不能拿来顶替
+          if (last == null) {
+            if (!abort.aborted) _streamMisses++;
+            throw NaiException('没收到成图,只拿到了预览帧');
           }
         } else {
           // 关了流式:整张画完才回来,期间没有步数 —— 置 step 0 走不确定进度条
@@ -739,7 +756,6 @@ class GenerationNotifier extends Notifier<GenPool> {
           // 那也不能入库:任务卡此刻已在等这个返回值才肯消失。
           if (abort.aborted) return _cancelled(jobId);
         }
-        if (last == null) throw NaiException('未收到图片数据');
         await finish(last, built.seed);
         return GenOutcome.ok;
       } on NaiException catch (e) {
@@ -1337,6 +1353,7 @@ class GenerationNotifier extends Notifier<GenPool> {
     required String jobId,
   }) async {
     if (batch.isEmpty) return;
+    if (s.inpaint != null) await _expectSendSize(s, batch.first);
     // 画布正跟着这条 → 出图后把画布交给成图;跟着别的(或在看历史)→ 只前插、
     // **不夺焦点**。并行之后这条最要紧:后台某一张出完就把你正看着的画面换掉,
     // 比不显示还糟。
@@ -1394,6 +1411,13 @@ class GenerationNotifier extends Notifier<GenPool> {
         ref.read(charLibraryProvider.notifier).markUsed(usedCharRefIds),
       );
     }
+  }
+
+  /// 重绘的成图必须和发送尺寸一致。对不上 = 服务端拿预览帧(约 1/8 大)顶了成图,
+  /// 贴回去只会在框角留一小块缩略图。
+  Future<void> _expectSendSize(GenerateState s, Uint8List bytes) async {
+    final size = pngSizeOf(bytes) ?? await decodeImageSize(bytes);
+    if (size != (s.params.width, s.params.height)) throw const _PreviewOnly();
   }
 
   /// 出的图记进发起那张画布的历史;那张画布已经删了就不记。
