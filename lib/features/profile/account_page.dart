@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/auth/auth_mode.dart';
 import '../../core/auth/bot_session_store.dart';
 import '../../core/auth/nai_keys.dart';
+import '../../core/net/backend_client.dart';
 import '../../core/net/nai_client.dart';
 import '../../core/net/nai_key_status.dart';
 import '../../core/net/nai_proxy.dart';
@@ -26,6 +27,26 @@ class AccountPage extends ConsumerStatefulWidget {
 }
 
 class _AccountPageState extends ConsumerState<AccountPage> {
+  @override
+  void initState() {
+    super.initState();
+    _syncBotExpiry();
+  }
+
+  /// 后端会话随使用滑动续期,进页时取一次最新过期时间写回本地。
+  Future<void> _syncBotExpiry() async {
+    final sid = (await ref.read(botSessionProvider.future))?.sessionId;
+    if (sid == null || !mounted) return;
+    try {
+      final v = await ref.read(backendClientProvider).validate(sid);
+      if (!mounted || !v.valid) return;
+      if (ref.read(botSessionProvider).value?.sessionId != sid) return;
+      await ref
+          .read(botSessionProvider.notifier)
+          .touch(expiresAtMs: v.expiresAtMs, botUserId: v.botUserId);
+    } catch (_) {}
+  }
+
   void _openTokens() =>
       Navigator.of(context).push(sharedAxisRoute(const TokenManagePage()));
 
