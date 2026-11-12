@@ -379,10 +379,10 @@ class TagCompletion {
         // ['General','Character'],不写死的话新旧服务端搜出来的东西不一样。
         body: jsonEncode({
           'query': q,
-          'limit': 20,
+          // 取服务端允许的最大值,条数由服务端分数线决定。
+          'limit': 200,
           'show_nsfw': true,
-          // Copyright(作品/出处)是本地角色库退役后作品行的唯一来源;
-          // limit 不能再小 —— 实测搜「咒术回战」时 jujutsu_kaisen 排在第 9 位后。
+          // Copyright(作品/出处)是本地角色库退役后作品行的唯一来源。
           'target_categories': ['General', 'Character', 'Copyright'],
         }),
       ),
