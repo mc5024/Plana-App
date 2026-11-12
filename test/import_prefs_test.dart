@@ -8,8 +8,6 @@ void main() {
     const p = ImportPrefs();
     // 这几条是改动前 _initSelections 里硬编码的默认,变了就是老用户的行为被改了
     expect(p.presetImport, isTrue); // _presetImport = true
-    // 预设详情默认收起 —— 这条是新行为(以前那段文本常驻),刻意与其余折叠区相反
-    expect(p.presetExpanded, isFalse);
     // 区级「这类要不要导」默认全开 = 改动前的行为(角色/Vibe/LoRA 都预勾满)
     expect(p.charImport, isTrue);
     expect(p.vibeImport, isTrue);
@@ -30,7 +28,6 @@ void main() {
   test('往返序列化', () {
     const p = ImportPrefs(
       presetImport: false,
-      presetExpanded: true,
       charImport: false,
       vibeImport: false,
       loraImport: false,
@@ -46,7 +43,6 @@ void main() {
       jsonDecode(jsonEncode(p.toJson())) as Map<String, dynamic>,
     );
     expect(back.presetImport, isFalse);
-    expect(back.presetExpanded, isTrue);
     expect(back.charImport, isFalse);
     expect(back.vibeImport, isFalse);
     expect(back.loraImport, isFalse);

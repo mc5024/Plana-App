@@ -144,21 +144,11 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
   /// 把 a1111 权重语法转成 NAI 方言。只在「源是 a1111、目标是 NovelAI」时有意义。
   bool _convertPrompt = true;
 
-  /// 识别并剥离提示词预设。
-  ///
-  /// 出图时预设文本是拼进提示词发的,导入若原样填回,当前预设下次生成会**再拼
-  /// 一遍**。勾上就把那段文本剥掉;档位动不动看 [_presetImport]。
-  bool _usePreset = false;
-
-  /// true = 「导入」(顺带把档位切成这张图用的那一档,认不出切「无」);
-  /// false = 「剥离」(只删文本,档位保持用户现在选的)。
-  ///
-  /// **两档都剥文本** —— 留着文本又把档位切过去,下次生成必定重复拼一遍,
-  /// 那个组合没有意义,所以不做成两个独立开关。
+  /// 提示词预设:true = 档位切成这张图用的那一档,false = 档位不动。
+  /// 认出预设时两种都会把那段预设文本从提示词里删掉。
   bool _presetImport = true;
 
-  /// 预设卡的详情(会被剥掉的那段文本 + 说明)默认收起 —— 那段文本重度档能有
-  /// 二十来个词,常驻着会把下面的角色/Vibe/参数全顶出屏幕。点头部展开。
+  /// 预设卡的详情(会被删掉的那段文本 + 说明),每次打开面板都收起。
   bool _presetExpanded = false;
 
   bool _promptAppend = false; // false=完全覆盖,true=新建分区
@@ -428,14 +418,8 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     _secExpanded = _prefs.sectionExpanded;
     _useNegative = m.negativePrompt.isNotEmpty;
     _convertPrompt = needsPromptConversion(m, _targetCategory);
-    // NAI 图默认勾上:认出档位时不剥的话,当前档下次生成会把那段文本重复拼
-    // 一遍。认不出时这个开关不产生任何动作(见导入落地那段),整张卡也不显示,
-    // 所以勾着无害。其余来源(SD / 第三方 ComfyUI)不勾。
-    _usePreset =
-        m.isNovelAI && (m.prompt.isNotEmpty || m.negativePrompt.isNotEmpty);
     // ↓ 以下几项与这张图无关,还原上一次导入用的(见 [ImportPrefs])
     _presetImport = _prefs.presetImport;
-    _presetExpanded = _prefs.presetExpanded;
     _charAppend = _prefs.charAppend;
     _vibeAppend = _prefs.vibeAppend;
     _loraAppend = _prefs.loraAppend;
@@ -818,7 +802,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
 
   /// 即将导入的正 / 负向(剥过预设,同导入落地)。
   ({String positive, String negative}) _importTexts(ImageMetadata m) {
-    final hit = _usePreset ? _presetMatch : null;
+    final hit = _presetMatch;
     return (
       positive: hit?.positive ?? _preparedPositive(m),
       negative: hit?.negative ?? _prep(m.negativePrompt),
@@ -857,7 +841,6 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
           .save(
             _prefs.copyWith(
               presetImport: _presetImport,
-              presetExpanded: _presetExpanded,
               // 区级「这类要不要导」。**只在这张图确实有可选项时才更新** ——
               // 图里根本没角色时 _charChecked 也是空的,那不是用户的选择。
               charImport: m.characters.isEmpty
@@ -899,16 +882,15 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
       neg = _prep(m.negativePrompt);
     }
 
-    // 提示词预设。**两档都剥文本**(只剥被勾选要导的那一侧);区别只在档位:
-    //  - 剥离:档位保持用户现在选的
-    //  - 导入:切成这张图用的那一档
+    // 提示词预设。认出时剥掉被勾选要导的那一侧的预设文本;勾上预设再把档位
+    // 切成这张图用的那一档。
     //
     // **认不出就什么都不做** —— 没有文本可剥,也不动用户当前的档位。
     // 原先认不出会一律切到「无」,理由是"万一图里烤着剥不掉的预设文本,留着当前
     // 档下次生成就会在它之上再拼一遍"。但那是拿一个**猜测**去改用户明确选过的
     // 设置:绝大多数认不出的图根本没有预设文本(手写提示词、别处导来的),代价是
     // 每导一张这样的图,用户的质量档就被悄悄清掉一次。宁可漏防也不误伤。
-    if (_usePreset && (pos != null || neg != null)) {
+    if (pos != null || neg != null) {
       final hit = _presetMatch;
       if (hit == null) {
         // 认不出:不剥、不改档位、也不报消息
@@ -932,8 +914,6 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
             );
           }
           msgs.add('预设 ${hit.preset.name}');
-        } else {
-          msgs.add('剥掉 ${hit.preset.name}');
         }
       }
     }
@@ -1532,18 +1512,21 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     );
   }
 
-  /// 提示词预设的识别 / 剥离开关。
-  /// 副标题直接报识别结果 —— 认不认得出、会切到哪一档,用户看得见也改得动。
+  /// 提示词预设:标题 + 认出的档位名 + 勾选(勾上 = 档位切成这一档)。
   Widget _presetRow(ColorScheme scheme) {
     // 预设是异步载入的:watch 一下,载入完成后这一行的识别结果要跟着刷新
     // (_presetMatch 自己只能 read —— 它同时被导入回调调用,那里 watch 非法)。
     ref.watch(promptPresetsProvider);
     final needPrompt = !_positiveOn && !_useNegative;
-    final hit = needPrompt ? null : _presetMatch;
-    final on = _usePreset && !needPrompt;
+    final match = _presetMatch;
+    final hit = needPrompt ? null : match;
+    final on = _presetImport && !needPrompt;
     final fg = needPrompt
         ? scheme.onSurfaceVariant.withValues(alpha: .5)
         : scheme.onSurface;
+    final sub = needPrompt
+        ? scheme.onSurfaceVariant.withValues(alpha: .5)
+        : scheme.onSurfaceVariant;
     return Material(
       color: context.raisedFill(scheme.surfaceContainer),
       shape: _cardShape(),
@@ -1551,52 +1534,48 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 头部整行可点 = 展开/收起;分段控件与勾选框自带手势,不连带展开。
+          // 头部整行可点 = 展开/收起;勾选框自带手势,不连带展开。
           InkWell(
             onTap: () => setState(() => _presetExpanded = !_presetExpanded),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 9, 10),
+              padding: const EdgeInsets.fromLTRB(14, 12, 13, 12),
               child: Row(
                 children: [
                   Icon(
                     Icons.auto_awesome_motion_outlined,
                     size: 20,
-                    color: needPrompt
-                        ? scheme.onSurfaceVariant.withValues(alpha: .5)
-                        : scheme.onSurfaceVariant,
+                    color: sub,
                   ),
                   const SizedBox(width: 11),
-                  Expanded(
-                    child: Text(
-                      '提示词预设',
-                      style: context.texts.bodyLarge!.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: fg,
-                      ),
+                  Text(
+                    '提示词预设',
+                    style: context.texts.bodyLarge!.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: fg,
                     ),
                   ),
-                  // 两档都剥,差别只在档位动不动 —— 所以是二选一而不是第二个开关。
-                  // 两字标签把格宽收到 52(默认 76 是按「完全覆盖」定的),否则这
-                  // 一行在窄屏上会把标题挤没。
-                  _SlideSeg(
-                    options: const ['剥离', '导入'],
-                    index: _presetImport ? 1 : 0,
-                    enabled: on,
-                    optWidth: 52,
-                    onChanged: (i) => setState(() => _presetImport = i == 1),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      match?.preset.name ?? '',
+                      textAlign: TextAlign.right,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13, color: sub),
+                    ),
                   ),
                   const SizedBox(width: 8),
                   InkResponse(
                     onTap: needPrompt
                         ? null
-                        : () => setState(() => _usePreset = !_usePreset),
+                        : () => setState(() => _presetImport = !_presetImport),
                     radius: 22,
                     child: Padding(
                       padding: const EdgeInsets.all(4),
                       child: _checkBox(scheme, on),
                     ),
                   ),
-                  const SizedBox(width: 3),
+                  const SizedBox(width: 5),
                   AnimatedRotation(
                     turns: _presetExpanded ? .5 : 0,
                     duration: Motion.medium,
@@ -1628,8 +1607,8 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
                     _presetNote(
                       scheme,
                       _presetImport
-                          ? '以上文本会从提示词里剥掉,档位切成「${hit.preset.name}」。'
-                          : '以上文本会从提示词里剥掉,档位保持你现在选的那一档。',
+                          ? '以上文本会从提示词里删掉,档位切成「${hit.preset.name}」。'
+                          : '以上文本会从提示词里删掉,档位不变。',
                     ),
                   ],
                 ],
@@ -2996,22 +2975,14 @@ class _SlideSeg extends StatelessWidget {
     required this.options,
     required this.index,
     required this.onChanged,
-    this.enabled = true,
-    this.optWidth = 76,
   });
 
   final List<String> options;
   final int index;
   final ValueChanged<int> onChanged;
 
-  /// 禁用:指示块与文字一起褪色、点击不响应。**不整块隐藏** —— 用户仍要看得见
-  /// 现在选的是哪一档,只是暂时改不动。
-  final bool enabled;
-
-  /// 每格宽度。默认 76 是按「完全覆盖」这种四字标签定的;两字标签传小一点,
-  /// 免得把同一行的标题挤没。
-  final double optWidth;
-
+  /// 每格宽度,按「完全覆盖」这种四字标签定。
+  static const double _optWidth = 76;
   static const double _height = 30;
 
   @override
@@ -3024,22 +2995,20 @@ class _SlideSeg extends StatelessWidget {
         borderRadius: BorderRadius.circular(9),
       ),
       child: SizedBox(
-        width: optWidth * options.length,
+        width: _optWidth * options.length,
         height: _height,
         child: Stack(
           children: [
             AnimatedPositioned(
               duration: Motion.medium,
               curve: Motion.emphasized,
-              left: index * optWidth,
+              left: index * _optWidth,
               top: 0,
               bottom: 0,
-              width: optWidth,
+              width: _optWidth,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: enabled
-                      ? scheme.primary
-                      : scheme.onSurfaceVariant.withValues(alpha: .18),
+                  color: scheme.primary,
                   borderRadius: BorderRadius.circular(7),
                 ),
               ),
@@ -3050,12 +3019,12 @@ class _SlideSeg extends StatelessWidget {
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () {
-                      if (!enabled || i == index) return;
+                      if (i == index) return;
                       Haptics.selection();
                       onChanged(i);
                     },
                     child: SizedBox(
-                      width: optWidth,
+                      width: _optWidth,
                       height: _height,
                       child: Center(
                         child: AnimatedDefaultTextStyle(
@@ -3064,9 +3033,7 @@ class _SlideSeg extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w600,
-                            color: !enabled
-                                ? scheme.onSurfaceVariant.withValues(alpha: .4)
-                                : i == index
+                            color: i == index
                                 ? scheme.onPrimary
                                 : scheme.onSurfaceVariant,
                           ),

@@ -10,7 +10,6 @@ import '../../core/store/prefs_store.dart';
 /// 只记「跟这张图无关」的那些选择。面板里另一半开关是**元数据驱动**的，必须每次
 /// 现算，记了反而出错：
 ///   · `_usePrompt` / `_useNegative` —— 这张图有没有那段文本
-///   · `_usePreset`                  —— 是不是 NAI 图
 ///   · `_convertPrompt`              —— 源是不是 a1111 语法、目标是不是 NAI
 ///   · 角色 / Vibe / LoRA 的勾选下标 —— 逐图不同，下标本身就没有跨图含义
 ///
@@ -20,7 +19,6 @@ import '../../core/store/prefs_store.dart';
 class ImportPrefs {
   const ImportPrefs({
     this.presetImport = true,
-    this.presetExpanded = false,
     this.charImport = true,
     this.vibeImport = true,
     this.loraImport = true,
@@ -37,12 +35,8 @@ class ImportPrefs {
     this.loraExpanded = true,
   });
 
-  /// 提示词预设:true=「导入」(顺带切档位),false=「剥离」(只删文本)。
+  /// 提示词预设:true=档位切成图里那一档,false=档位不动。
   final bool presetImport;
-
-  /// 预设卡详情的展开态。默认收起 —— 那段会被剥掉的文本重度档有二十来个词,
-  /// 常驻着会把下面的角色/Vibe/参数顶出屏幕。
-  final bool presetExpanded;
 
   /// 角色 / Vibe / LoRA **这一整类要不要导**。
   ///
@@ -77,7 +71,6 @@ class ImportPrefs {
 
   ImportPrefs copyWith({
     bool? presetImport,
-    bool? presetExpanded,
     bool? charImport,
     bool? vibeImport,
     bool? loraImport,
@@ -94,7 +87,6 @@ class ImportPrefs {
     bool? loraExpanded,
   }) => ImportPrefs(
     presetImport: presetImport ?? this.presetImport,
-    presetExpanded: presetExpanded ?? this.presetExpanded,
     charImport: charImport ?? this.charImport,
     vibeImport: vibeImport ?? this.vibeImport,
     loraImport: loraImport ?? this.loraImport,
@@ -113,7 +105,6 @@ class ImportPrefs {
 
   Map<String, dynamic> toJson() => {
     'presetImport': presetImport,
-    'presetExpanded': presetExpanded,
     'charImport': charImport,
     'vibeImport': vibeImport,
     'loraImport': loraImport,
@@ -136,7 +127,6 @@ class ImportPrefs {
     final raw = j['settings'];
     return ImportPrefs(
       presetImport: b('presetImport', true),
-      presetExpanded: b('presetExpanded', false),
       charImport: b('charImport', true),
       vibeImport: b('vibeImport', true),
       loraImport: b('loraImport', true),
