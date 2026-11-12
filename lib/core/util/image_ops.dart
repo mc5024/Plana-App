@@ -17,6 +17,21 @@ Future<(int, int)> decodeImageSize(Uint8List bytes) async {
   return size;
 }
 
+/// NAI 收的图片格式(PNG / JPEG / WebP),只看文件头。
+bool isNaiImageFormat(Uint8List b) {
+  bool at(int i, List<int> sig) {
+    if (b.length < i + sig.length) return false;
+    for (var k = 0; k < sig.length; k++) {
+      if (b[i + k] != sig[k]) return false;
+    }
+    return true;
+  }
+
+  return at(0, const [0x89, 0x50, 0x4E, 0x47]) ||
+      at(0, const [0xFF, 0xD8, 0xFF]) ||
+      (at(0, 'RIFF'.codeUnits) && at(8, 'WEBP'.codeUnits));
+}
+
 /// 转成 PNG:本来就是 PNG 的原样返回,其余格式(JPEG / WebP 等)解码后重编码。
 Future<Uint8List> ensurePng(Uint8List src) async {
   const sig = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];

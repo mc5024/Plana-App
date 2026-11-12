@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
+import 'package:plana_app/core/util/image_ops.dart';
 import 'package:plana_app/core/util/png_meta.dart';
 import 'package:plana_app/features/inpaint/inpaint_ops.dart';
 
@@ -161,6 +162,29 @@ void main() {
         ),
         throwsStateError,
       );
+    });
+  });
+
+  test('NAI 收的格式只认 PNG / JPEG / WebP', () {
+    final im = img.Image(width: 8, height: 8, numChannels: 3);
+    expect(isNaiImageFormat(Uint8List.fromList(img.encodePng(im))), isTrue);
+    expect(isNaiImageFormat(Uint8List.fromList(img.encodeJpg(im))), isTrue);
+    final webp = Uint8List(16)
+      ..setRange(0, 4, 'RIFF'.codeUnits)
+      ..setRange(8, 12, 'WEBP'.codeUnits);
+    expect(isNaiImageFormat(webp), isTrue);
+    expect(isNaiImageFormat(Uint8List.fromList(img.encodeBmp(im))), isFalse);
+    expect(isNaiImageFormat(Uint8List.fromList(img.encodeGif(im))), isFalse);
+    expect(isNaiImageFormat(Uint8List(0)), isFalse);
+  });
+
+  testWidgets('别的格式转成 PNG,像素不变', (tester) async {
+    await tester.runAsync(() async {
+      final im = img.Image(width: 8, height: 8, numChannels: 3)
+        ..clear(img.ColorRgb8(10, 200, 30));
+      final png = await ensurePng(Uint8List.fromList(img.encodeBmp(im)));
+      expect(isNaiImageFormat(png), isTrue);
+      expect(px(img.decodePng(png)!, 3, 3), (10, 200, 30));
     });
   });
 

@@ -478,7 +478,7 @@ class GenerationNotifier extends Notifier<GenPool> {
     // 面板发起(using == null)按模块配置剥离隐藏模块的数据;
     // 快照复跑(图库重新生成等)忠实执行,不受当前模块配置影响。
     // 快照在这一刻定死:之后随便改编辑器都不影响已提交的这条。
-    final GenerateState s = using ?? _panelJob();
+    final GenerateState s = withoutInpaintVibes(using ?? _panelJob());
 
     final isBot = ref.read(authModeProvider).value == AuthMode.bot;
 

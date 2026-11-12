@@ -168,12 +168,26 @@ class _VibeCardState extends ConsumerState<VibeCard> {
       }
     }
     selected ??= vibes.isNotEmpty ? vibes.first : null;
+    // 挂着遮罩时这组 Vibe 不发(见 withoutInpaintVibes),卡片照常可编辑
+    final idle = state.inpaint != null && vibes.isNotEmpty;
 
     return SectionCard(
       icon: Icons.palette_outlined,
       title: context.l10n.vibeTransfer,
       reorderIndex: widget.reorderIndex,
       badge: vibes.isEmpty ? null : CountBadge('${vibes.length}'),
+      muted: idle,
+      inline: [
+        if (idle)
+          Flexible(
+            child: Text(
+              '重绘时不生效',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.texts.labelSmall!.copyWith(color: scheme.outline),
+            ),
+          ),
+      ],
       actions: [
         RoundIconBtn(
           Icons.grid_view,

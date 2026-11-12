@@ -26,6 +26,7 @@ import 'censor_infer.dart';
 import 'censor_ops.dart';
 import 'inpaint_ops.dart';
 import '../../core/util/haptics.dart';
+import '../../core/util/image_ops.dart' show ensurePng, isNaiImageFormat;
 import '../../l10n/l10n.dart';
 
 /// 内容层功能色(画在图片上,与 app 主题无关):
@@ -1267,7 +1268,10 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
           outH: img.height,
         );
       } else {
-        image = _currentBytes;
+        // NAI 只收 PNG / JPEG / WebP,别的格式(HEIC、AVIF…)先转成 PNG
+        image = isNaiImageFormat(_currentBytes)
+            ? _currentBytes
+            : await ensurePng(_currentBytes);
         mask = await maskToPng(grid);
       }
       if (!mounted) return;

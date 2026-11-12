@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:plana_app/features/generate/bot_request.dart';
 import 'package:plana_app/features/generate/char_position.dart';
 import 'package:plana_app/features/generate/cost.dart';
+import 'package:plana_app/features/generate/gen_modules.dart';
 import 'package:plana_app/features/generate/models.dart';
 import 'package:plana_app/features/generate/nai_request.dart';
 import 'package:plana_app/features/generate/prompt_presets.dart';
@@ -244,6 +245,38 @@ void main() {
         inpaint: InpaintJob(image: bytes, mask: bytes, strength: 0.7),
       );
       expect(direct(s, thirdParty: true).containsKey('tag_hint_qt'), isFalse);
+    });
+  });
+
+  group('重绘不带 Vibe', () {
+    final bytes = Uint8List.fromList([1, 2, 3]);
+    GenerateState withVibe({bool inpaint = true}) =>
+        _state('NAI 4.5 Full').copyWith(
+          vibes: const [VibeItem(id: 'v1')],
+          inpaint: inpaint
+              ? InpaintJob(image: bytes, mask: bytes, strength: 1)
+              : null,
+        );
+
+    test('发送快照剥掉 Vibe,载荷和附加费里都没有', () {
+      final sent = stripHiddenModules(withVibe(), const GenModuleSettings());
+      expect(sent.vibes, isEmpty);
+      expect(sent.enabledVibes, 0);
+      expect(
+        (buildNaiPayload(sent, presetId: 'none').body['parameters'] as Map)
+            .containsKey('reference_image_multiple'),
+        isFalse,
+      );
+    });
+
+    test('没有遮罩照常带;快照复跑也按同一条剥', () {
+      final plain = stripHiddenModules(
+        withVibe(inpaint: false),
+        const GenModuleSettings(),
+      );
+      expect(plain.vibes, hasLength(1));
+      expect(withoutInpaintVibes(withVibe()).vibes, isEmpty);
+      expect(withoutInpaintVibes(withVibe(inpaint: false)).vibes, hasLength(1));
     });
   });
 
