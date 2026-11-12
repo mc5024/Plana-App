@@ -57,7 +57,7 @@ Map<String, dynamic> buildBotParams(
   String sendPosition(String? pos) {
     final v = resolveCharacterCenter(pos);
     if (crop == null || v == null) return pos ?? '';
-    final m = centerInSendBox(v, crop, sendW: p.width, sendH: p.height);
+    final m = centerInSendBox(v, crop);
     return positionOfCenter(m.x, m.y)!;
   }
 

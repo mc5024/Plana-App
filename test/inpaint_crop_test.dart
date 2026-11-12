@@ -88,6 +88,19 @@ void main() {
     );
   });
 
+  test('focusSendSize:不足 80 万像素放大到约 100 万,宽高取 64 倍数', () {
+    expect(focusSendSize(448, 448), (w: 1024, h: 1024));
+    expect(focusSendSize(256, 256), (w: 1024, h: 1024));
+    expect(focusSendSize(1024, 256), (w: 2048, h: 512));
+    expect(focusSendSize(1024, 768), (w: 1152, h: 832));
+    expect(focusSendSize(1024, 832), (w: 1024, h: 832)); // 够大不放大
+    for (final (w, h) in const [(320, 704), (576, 384), (1024, 512)]) {
+      final s = focusSendSize(w, h);
+      expect(s.w % 64 + s.h % 64, 0);
+      expect(s.w * s.h, lessThanOrEqualTo(1024 * 1024));
+    }
+  });
+
   test('hasCellsOutside:按格心判,框边上的格不算出界', () {
     final g = MaskGrid(512, 512)..cells[8 * 64 + 8] = 1; // 格 (8,8) = [64,72)²
     expect(g.hasCellsOutside((x: 64, y: 64, w: 64, h: 64)), isFalse);

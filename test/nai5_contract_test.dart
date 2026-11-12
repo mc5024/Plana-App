@@ -673,6 +673,34 @@ void main() {
         );
       });
 
+      test('框放大发送:按框在原图里的大小换算,不按发送尺寸', () {
+        // 框 (1024,512) 512²,发送放大到 1024²
+        final s = cropped('NAI 5.0 Full');
+        final p = s.inpaint!.paste!;
+        final zoomed = s.copyWith(
+          inpaint: InpaintJob(
+            image: s.inpaint!.image,
+            mask: s.inpaint!.mask,
+            strength: 1,
+            paste: InpaintPaste(
+              original: p.original,
+              sendX: 1024,
+              sendY: 512,
+              tightX: 1024,
+              tightY: 512,
+              tightW: 512,
+              tightH: 512,
+              outW: 2048,
+              outH: 1536,
+            ),
+          ),
+        );
+        final cs = centersOf(buildNaiPayload(zoomed, presetId: 'none').body);
+        // (0.85,0.55) → 原图 (1740.8, 844.8) → 框内 (716.8/512, 332.8/512) 夹到 1
+        expect(cs[1]['x'], 1.0);
+        expect(cs[1]['y'], closeTo(0.65, 1e-9));
+      });
+
       test('整图重绘不换算', () {
         final s = cropped('NAI 5.0 Full');
         final whole = s.copyWith(

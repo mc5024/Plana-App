@@ -303,7 +303,7 @@ class InpaintJob {
   return w > 0 && h > 0 ? (w, h) : null;
 }
 
-/// 局部重绘贴回:成图(发送框尺寸)按羽化遮罩混回原图的发送框位置。
+/// 局部重绘贴回:成图(发送尺寸)缩回 [region] 大小,按羽化遮罩混回原图。
 class InpaintPaste {
   const InpaintPaste({
     required this.original,
@@ -320,14 +320,19 @@ class InpaintPaste {
   /// 原完整图 PNG(贴回底)。
   final Uint8List original;
 
-  /// 发送框原点(相对原图;发送框尺寸即快照 params.width/height)。
+  /// 发送那块在原图里的左上角(同 [tightX] / [tightY])。
   final int sendX, sendY;
 
-  /// 紧凑区域(相对原图)。编辑器里恒等于发送框;贴回只看发送框与遮罩。
+  /// 发送那块在原图里的位置与大小,见 [region]。
   final int tightX, tightY, tightW, tightH;
 
   /// 入库尺寸(=原图尺寸)。
   final int outW, outH;
+
+  /// 发送那块在原图里的位置与大小。局部框会放大到约 100 万像素再发,
+  /// 这里是放大前的;实际发送尺寸是快照的 params.width / height。
+  ({int x, int y, int w, int h}) get region =>
+      (x: tightX, y: tightY, w: tightW, h: tightH);
 }
 
 class Img2ImgConfig {

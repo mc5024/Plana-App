@@ -521,14 +521,7 @@ class GenerationNotifier extends Notifier<GenPool> {
       // 已经有别的在跑 → 这条多半要等位,先说清楚是在等而不是在准备
       note: state.jobs.isEmpty ? null : '等待中',
       pasteUnder: under?.original,
-      pasteAt: under == null
-          ? null
-          : (
-              x: under.sendX,
-              y: under.sendY,
-              w: s.params.width,
-              h: s.params.height,
-            ),
+      pasteAt: under?.region,
       pasteSize: under == null ? null : (w: under.outW, h: under.outH),
     );
     final run = _JobRun(GenAbort(), ref.read(promptPresetsProvider.future))
@@ -1466,8 +1459,10 @@ class GenerationNotifier extends Notifier<GenPool> {
           base: paste?.original ?? job.image,
           patch: bytes,
           mask: job.mask,
-          x: paste?.sendX ?? 0,
-          y: paste?.sendY ?? 0,
+          x: paste?.region.x ?? 0,
+          y: paste?.region.y ?? 0,
+          regionW: paste?.region.w,
+          regionH: paste?.region.h,
         );
         out = r.png;
         w = r.width;

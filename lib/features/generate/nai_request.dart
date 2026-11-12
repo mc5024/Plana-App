@@ -128,39 +128,26 @@ const kLegacyAutoCenters = <Map<String, double>>[
 /// 「不指定站位」现在由全局 `use_coords=false` 表达,不再靠每个角色的空值。
 ///
 /// 局部重绘([crop] 非空)时换算到发送框里,见 [centerInSendBox]。
-Map<String, double> _center(
-  String? pos, {
-  InpaintPaste? crop,
-  int sendW = 0,
-  int sendH = 0,
-}) {
+Map<String, double> _center(String? pos, {InpaintPaste? crop}) {
   final c = centerInSendBox(
     resolveCharacterCenter(pos) ?? (x: 0.5, y: 0.5),
     crop,
-    sendW: sendW,
-    sendH: sendH,
   );
   return {'x': c.x, 'y': c.y};
 }
 
-/// 局部重绘只发裁切那块:整图坐标的角色中心换算到发送框里,框外的夹到框边(同官方)。
-/// [crop] 为空(整图 / 扩图)或缺原图尺寸时原样返回。
+/// 局部重绘只发裁切那块:整图坐标的角色中心换算到那块([InpaintPaste.region])里,
+/// 框外的夹到框边(同官方)。[crop] 为空(整图 / 扩图)或缺尺寸时原样返回。
 ({double x, double y}) centerInSendBox(
   ({double x, double y}) c,
-  InpaintPaste? crop, {
-  required int sendW,
-  required int sendH,
-}) {
-  if (crop == null ||
-      crop.outW <= 0 ||
-      crop.outH <= 0 ||
-      sendW <= 0 ||
-      sendH <= 0) {
-    return c;
-  }
+  InpaintPaste? crop,
+) {
+  final r = crop?.region;
+  if (crop == null || crop.outW <= 0 || crop.outH <= 0) return c;
+  if (r == null || r.w <= 0 || r.h <= 0) return c;
   return (
-    x: ((c.x * crop.outW - crop.sendX) / sendW).clamp(0.0, 1.0),
-    y: ((c.y * crop.outH - crop.sendY) / sendH).clamp(0.0, 1.0),
+    x: ((c.x * crop.outW - r.x) / r.w).clamp(0.0, 1.0),
+    y: ((c.y * crop.outH - r.y) / r.h).clamp(0.0, 1.0),
   );
 }
 
@@ -214,13 +201,7 @@ Map<String, double> _center(
   // false**。早先这里恒发 `chars.isNotEmpty`,那是我们自己的模型,不是官方行为。
   final useCoords = s.params.useCoords;
   final centers = [
-    for (final c in chars)
-      _center(
-        c.position,
-        crop: inpaint?.paste,
-        sendW: p.width,
-        sendH: p.height,
-      ),
+    for (final c in chars) _center(c.position, crop: inpaint?.paste),
   ];
   // 只有 V5 吃自由坐标(官方能力位 freeformCharacterPosition);其余模型官方在
   // 发送前把坐标吸附到 5×5 格心,存着的值不动。char_captions 发吸附后的,

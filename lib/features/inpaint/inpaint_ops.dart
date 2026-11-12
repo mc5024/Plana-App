@@ -350,13 +350,33 @@ IntRect capSendRect(
   return (best, cap);
 }
 
+/// 局部重绘的实际发送尺寸(同官方):不足 80 万像素就等比放大到约 100 万像素,
+/// 宽高各自向下取 64 的倍数;够大的原样发。
+({int w, int h}) focusSendSize(int w, int h) {
+  const target = 1024 * 1024;
+  final n = w * h;
+  if (n >= target * 0.8) return (w: w, h: h);
+  final r = math.sqrt(target / n);
+  return (w: (w * r).floor() ~/ 64 * 64, h: (h * r).floor() ~/ 64 * 64);
+}
+
 /// 网格导出黑白 mask PNG(白=重绘区)。[region] 非空时输出该区域
-/// (坐标相对原图,尺寸=region;框外格子自然丢弃),空时输出整图尺寸。
-Future<Uint8List> maskToPng(MaskGrid g, {IntRect? region}) async {
-  final w = region?.w ?? g.imgW;
-  final h = region?.h ?? g.imgH;
+/// (坐标相对原图;框外格子自然丢弃),空时输出整图。
+///
+/// 输出尺寸默认等于区域;给了 [outW] / [outH] 且不同就是放大发送:按输出尺寸的
+/// 8px 网格逐格取原图对应位置的格子(格心最近邻,同官方),重绘区仍落在网格上。
+Future<Uint8List> maskToPng(
+  MaskGrid g, {
+  IntRect? region,
+  int? outW,
+  int? outH,
+}) async {
+  final rw = region?.w ?? g.imgW;
+  final rh = region?.h ?? g.imgH;
   final ox = region?.x ?? 0;
   final oy = region?.y ?? 0;
+  final w = outW ?? rw;
+  final h = outH ?? rh;
 
   final recorder = ui.PictureRecorder();
   final canvas = ui.Canvas(recorder, ui.Rect.fromLTWH(0, 0, w * 1.0, h * 1.0));
@@ -365,15 +385,48 @@ Future<Uint8List> maskToPng(MaskGrid g, {IntRect? region}) async {
     ui.Paint()..color = const ui.Color(0xFF000000),
   );
   final white = ui.Paint()..color = const ui.Color(0xFFFFFFFF);
-  for (final r in g.displayRects()) {
-    final shifted = r.shift(ui.Offset(-ox * 1.0, -oy * 1.0));
-    if (shifted.right <= 0 ||
-        shifted.bottom <= 0 ||
-        shifted.left >= w ||
-        shifted.top >= h) {
-      continue;
+  if (w == rw && h == rh) {
+    for (final r in g.displayRects()) {
+      final shifted = r.shift(ui.Offset(-ox * 1.0, -oy * 1.0));
+      if (shifted.right <= 0 ||
+          shifted.bottom <= 0 ||
+          shifted.left >= w ||
+          shifted.top >= h) {
+        continue;
+      }
+      canvas.drawRect(shifted, white);
     }
-    canvas.drawRect(shifted, white);
+  } else {
+    bool on(int px, int py) {
+      final gx = px ~/ 8, gy = py ~/ 8;
+      return px >= 0 &&
+          py >= 0 &&
+          gx < g.gw &&
+          gy < g.gh &&
+          g.cells[gy * g.gw + gx] != 0;
+    }
+
+    final sgw = (w / 8).ceil(), sgh = (h / 8).ceil();
+    for (var sy = 0; sy < sgh; sy++) {
+      final py = oy + ((sy * 8 + 4) * rh / h).floor();
+      var runStart = -1;
+      for (var sx = 0; sx <= sgw; sx++) {
+        final hit = sx < sgw && on(ox + ((sx * 8 + 4) * rw / w).floor(), py);
+        if (hit && runStart < 0) runStart = sx;
+        if (!hit && runStart >= 0) {
+          canvas.drawRect(
+            ui.Rect.fromLTWH(
+              runStart * 8.0,
+              sy * 8.0,
+              (sx - runStart) * 8.0,
+              8,
+            ),
+            white,
+          );
+          runStart = -1;
+        }
+      }
+    }
   }
   final picture = recorder.endRecording();
   final img = await picture.toImage(w, h);
@@ -383,25 +436,32 @@ Future<Uint8List> maskToPng(MaskGrid g, {IntRect? region}) async {
   return data!.buffer.asUint8List();
 }
 
-/// 从 PNG 裁出子区(像素精确),输出 PNG。
-Future<Uint8List> cropPng(Uint8List src, IntRect rect) async {
+/// 从 PNG 裁出子区,输出 PNG。默认像素精确;给了 [outW] / [outH] 就缩放到该尺寸。
+Future<Uint8List> cropPng(
+  Uint8List src,
+  IntRect rect, {
+  int? outW,
+  int? outH,
+}) async {
   final codec = await ui.instantiateImageCodec(src);
   final frame = await codec.getNextFrame();
   final img = frame.image;
+  final w = outW ?? rect.w;
+  final h = outH ?? rect.h;
 
   final recorder = ui.PictureRecorder();
-  final canvas = ui.Canvas(
-    recorder,
-    ui.Rect.fromLTWH(0, 0, rect.w * 1.0, rect.h * 1.0),
-  );
+  final canvas = ui.Canvas(recorder, ui.Rect.fromLTWH(0, 0, w * 1.0, h * 1.0));
   canvas.drawImageRect(
     img,
     ui.Rect.fromLTWH(rect.x * 1.0, rect.y * 1.0, rect.w * 1.0, rect.h * 1.0),
-    ui.Rect.fromLTWH(0, 0, rect.w * 1.0, rect.h * 1.0),
-    ui.Paint(),
+    ui.Rect.fromLTWH(0, 0, w * 1.0, h * 1.0),
+    ui.Paint()
+      ..filterQuality = w == rect.w && h == rect.h
+          ? ui.FilterQuality.none
+          : ui.FilterQuality.high,
   );
   final picture = recorder.endRecording();
-  final out = await picture.toImage(rect.w, rect.h);
+  final out = await picture.toImage(w, h);
   final data = await out.toByteData(format: ui.ImageByteFormat.png);
   img.dispose();
   out.dispose();
@@ -545,7 +605,9 @@ Uint8List _boxBlur(Uint8List src, int w, int h, int r) {
 /// 重绘成图按羽化遮罩混回底图,输出底图尺寸的 PNG。
 ///
 /// [base]:局部重绘是原图,整图 / 扩图是发出去的那张底图;[patch] 与 [mask] 是
-/// 发送尺寸的成图和黑白遮罩(白 = 重绘),发送框在 [base] 里的左上角是 ([x], [y])。
+/// 发送尺寸的成图和黑白遮罩(白 = 重绘)。它们在 [base] 里占的区域左上角是
+/// ([x], [y]),大小 [regionW]×[regionH](不给 = 发送尺寸;局部框放大发送时
+/// 成图与羽化遮罩一起缩回这个大小,同官方)。
 /// 混合按预乘 alpha 线性插值:透明成图在遮罩里照样透明,不会透出底图。
 /// 成图里的 PNG 文本块(生成参数)搬到输出上。
 Future<({Uint8List png, int width, int height})> blendInpaintResult({
@@ -554,6 +616,8 @@ Future<({Uint8List png, int width, int height})> blendInpaintResult({
   required Uint8List mask,
   int x = 0,
   int y = 0,
+  int? regionW,
+  int? regionH,
 }) async {
   Future<ui.Image> decode(Uint8List b) async =>
       (await (await ui.instantiateImageCodec(b)).getNextFrame()).image;
@@ -600,8 +664,14 @@ Future<({Uint8List png, int width, int height})> blendInpaintResult({
     alphaImg = await done.future;
 
     final bw = baseImg.width, bh = baseImg.height;
+    final rw = regionW != null && regionW > 0 ? regionW : w;
+    final rh = regionH != null && regionH > 0 ? regionH : h;
     final src = ui.Rect.fromLTWH(0, 0, w * 1.0, h * 1.0);
-    final dst = ui.Rect.fromLTWH(x * 1.0, y * 1.0, w * 1.0, h * 1.0);
+    final dst = ui.Rect.fromLTWH(x * 1.0, y * 1.0, rw * 1.0, rh * 1.0);
+    // 缩回区域时成图与遮罩同一种采样;缩小用 medium(带 mipmap),high 缩小会出锯齿
+    final q = rw == w && rh == h
+        ? ui.FilterQuality.none
+        : ui.FilterQuality.medium;
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(
       recorder,
@@ -613,15 +683,19 @@ Future<({Uint8List png, int width, int height})> blendInpaintResult({
       alphaImg,
       src,
       dst,
-      ui.Paint()..blendMode = ui.BlendMode.dstOut,
+      ui.Paint()
+        ..blendMode = ui.BlendMode.dstOut
+        ..filterQuality = q,
     );
     canvas.saveLayer(dst, ui.Paint()..blendMode = ui.BlendMode.plus);
-    canvas.drawImageRect(patchImg, src, dst, ui.Paint());
+    canvas.drawImageRect(patchImg, src, dst, ui.Paint()..filterQuality = q);
     canvas.drawImageRect(
       alphaImg,
       src,
       dst,
-      ui.Paint()..blendMode = ui.BlendMode.dstIn,
+      ui.Paint()
+        ..blendMode = ui.BlendMode.dstIn
+        ..filterQuality = q,
     );
     canvas.restore();
     final picture = recorder.endRecording();

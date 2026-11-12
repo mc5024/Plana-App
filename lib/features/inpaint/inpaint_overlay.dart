@@ -316,15 +316,16 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
     if (job!.sourceId != widget.session.sourceId) return;
     if (!grid.decodeInto(data)) return;
     IntRect? box;
-    final paste = job.paste;
-    if (_mode == _Mode.paint && paste != null) {
-      if (job.sendSize case (final w, final h)
-          when paste.sendX >= 0 &&
-              paste.sendY >= 0 &&
-              paste.sendX + w <= img.width &&
-              paste.sendY + h <= img.height) {
-        box = (x: paste.sendX, y: paste.sendY, w: w, h: h);
-      }
+    final r = job.paste?.region;
+    if (_mode == _Mode.paint &&
+        r != null &&
+        r.x >= 0 &&
+        r.y >= 0 &&
+        r.w > 0 &&
+        r.h > 0 &&
+        r.x + r.w <= img.width &&
+        r.y + r.h <= img.height) {
+      box = r;
     }
     setState(() {
       _rev++;
@@ -1237,8 +1238,10 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
       hintSnack(context, '黄框外还有涂抹,拉大黄框或分两次重绘', icon: Icons.crop);
       return;
     }
-    final sw = send?.w ?? img.width;
-    final sh = send?.h ?? img.height;
+    // 局部框放大到约 100 万像素再发(同官方),成图回来再缩回框里
+    final out = send == null ? null : focusSendSize(send.w, send.h);
+    final sw = out?.w ?? img.width;
+    final sh = out?.h ?? img.height;
     if (sw * sh > _maxSendPixels) {
       hintSnack(
         context,
@@ -1258,8 +1261,8 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
       final Uint8List mask;
       InpaintPaste? paste;
       if (send != null) {
-        image = await cropPng(_currentBytes, send);
-        mask = await maskToPng(grid, region: send);
+        image = await cropPng(_currentBytes, send, outW: sw, outH: sh);
+        mask = await maskToPng(grid, region: send, outW: sw, outH: sh);
         paste = InpaintPaste(
           original: _currentBytes,
           sendX: send.x,
