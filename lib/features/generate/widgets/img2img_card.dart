@@ -342,7 +342,7 @@ class _Img2ImgCardState extends ConsumerState<Img2ImgCard> {
             ],
           ),
           const SizedBox(height: 8),
-          const InfoNote('遮罩已存好,点下方「生成」开始重绘;点缩略图回编辑器改涂抹范围。'),
+          const InfoNote('点缩略图可改遮罩。'),
         ],
       ),
     );
