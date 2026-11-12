@@ -30,7 +30,7 @@ class ImportOption {
 }
 
 /// 「自选导入内容」确认层:逐项勾选 + 冲突预览,确认返回选中的 key 集合,
-/// 取消返回 null。
+/// 取消返回 null。[mergeHint] = false 时不显示底部的「按 id 合并」说明。
 ///
 /// 高度自控(内部滚动 + 85% 封顶):默认弹层 9/16 屏高会**静默裁掉**超出部分,
 /// 条目一多或系统字号一大就看不到底下的按钮。
@@ -40,6 +40,7 @@ Future<Set<String>?> showImportPicker(
   String? notice,
   required List<ImportOption> options,
   String confirmLabel = '导入',
+  bool mergeHint = true,
 }) {
   return showModalBottomSheet<Set<String>>(
     context: context,
@@ -52,6 +53,7 @@ Future<Set<String>?> showImportPicker(
       notice: notice,
       options: options,
       confirmLabel: confirmLabel,
+      mergeHint: mergeHint,
     ),
   );
 }
@@ -61,6 +63,7 @@ class _ImportPicker extends StatefulWidget {
     required this.title,
     required this.options,
     required this.confirmLabel,
+    required this.mergeHint,
     this.notice,
   });
 
@@ -68,6 +71,7 @@ class _ImportPicker extends StatefulWidget {
   final String? notice;
   final List<ImportOption> options;
   final String confirmLabel;
+  final bool mergeHint;
 
   @override
   State<_ImportPicker> createState() => _ImportPickerState();
@@ -191,16 +195,18 @@ class _ImportPickerState extends State<_ImportPicker> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  totalConflict > 0
-                      ? '按 id 合并:同 id 覆盖($totalConflict 条),其余新增;本地独有的条目保留。'
-                      : '按 id 合并:本地已有的条目一个都不会丢。',
-                  style: context.texts.bodySmall!.copyWith(
-                    color: totalConflict > 0 ? scheme.error : scheme.outline,
-                    height: 1.4,
+                if (widget.mergeHint) ...[
+                  Text(
+                    totalConflict > 0
+                        ? '按 id 合并:同 id 覆盖($totalConflict 条),其余新增;本地独有的条目保留。'
+                        : '按 id 合并:本地已有的条目一个都不会丢。',
+                    style: context.texts.bodySmall!.copyWith(
+                      color: totalConflict > 0 ? scheme.error : scheme.outline,
+                      height: 1.4,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
+                  const SizedBox(height: 10),
+                ],
                 Row(
                   children: [
                     Expanded(

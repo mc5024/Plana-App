@@ -68,7 +68,7 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
   /// 当前页签的分类;在法典页时停在进法典之前那一类。
   TagCategory _cat = TagCategory.character;
 
-  /// 当前在法典页。法典不属于 [TagCategory](无我的/公共库、无备份/新建),
+  /// 当前在法典页。法典不属于 [TagCategory](无我的/公共库、无新建),
   /// 故独立成一个模式位。
   bool _codex = false;
   static const _kCodexSel = '__codex__';
@@ -380,7 +380,7 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
               capsule: true,
             ),
           ),
-          // 备份 / 新建:翻向法典页时跟着翻页进度收起、淡出,翻回来再展开
+          // 新建:翻向法典页时跟着翻页进度收起、淡出,翻回来再展开
           ValueListenableBuilder(
             valueListenable: _pagePos,
             builder: (context, pos, child) {
@@ -400,20 +400,10 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
                 ),
               );
             },
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  tooltip: '数据备份',
-                  icon: const Icon(Icons.cloud_outlined),
-                  onPressed: () => showTagBackupSheet(context, ref),
-                ),
-                IconButton(
-                  tooltip: '新建',
-                  icon: const Icon(Icons.add),
-                  onPressed: () => _openNew(_cat),
-                ),
-              ],
+            child: IconButton(
+              tooltip: '新建',
+              icon: const Icon(Icons.add),
+              onPressed: () => _openNew(_cat),
             ),
           ),
         ],

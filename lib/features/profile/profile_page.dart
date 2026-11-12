@@ -6,12 +6,12 @@ import '../../core/theme/app_theme.dart';
 import '../../core/ui/scroll_memory.dart';
 import '../generate/preset_manage_page.dart';
 import '../generate/widgets/common.dart' show sharedAxisRoute;
-import '../migrate/web_backup_page.dart';
 import '../stats/stats_page.dart';
 import '../tools/tools_page.dart';
 import 'about_page.dart';
 import 'account_page.dart';
 import 'appearance_page.dart';
+import 'backup_page.dart';
 import 'gen_settings_page.dart';
 import 'storage_page.dart';
 
@@ -40,17 +40,11 @@ class ProfilePage extends ConsumerWidget {
                   ),
                 ),
               ),
-              // 这两个都不是"设置项",不值得在列表里占一张与存储管理等宽的卡。
-              // 导入备份更是一次性的迁移动作,常驻列表里只会天天碍眼。
-              //
-              // 但只挂两枚裸图标又太哑:info 还算通用,import_export 那枚
-              // 没人猜得出是「把 web 的备份搬进来」。各配两个字。
+              // 这两个都不是"设置项",不在列表里占卡;图标各配两个字。
               _HeaderBtn(
-                icon: Icons.import_export,
-                // 不叫「同步」:这是选文件→预览→落库的单向一次性导入,
-                // 手机这边的改动不会回流,叫同步会让人等一个不存在的回程。
-                label: '导入',
-                onTap: () => push(const WebBackupPage()),
+                icon: Icons.settings_backup_restore,
+                label: '备份',
+                onTap: () => push(const BackupPage()),
               ),
               const SizedBox(width: 8),
               _HeaderBtn(

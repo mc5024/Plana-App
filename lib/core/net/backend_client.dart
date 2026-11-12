@@ -183,37 +183,6 @@ class CloudVibeMeta {
   }
 }
 
-/// 备份/恢复操作记录一条(`GET /api/user-vibes/backup-log`)。
-class BackupLogEntry {
-  BackupLogEntry({
-    required this.device,
-    required this.action,
-    required this.time,
-    required this.count,
-    required this.detail,
-  });
-
-  final String device;
-
-  /// `backup` | `restore`
-  final String action;
-
-  /// unix 秒。
-  final int time;
-  final int count;
-  final String detail;
-
-  bool get isBackup => action == 'backup';
-
-  factory BackupLogEntry.fromJson(Map<String, dynamic> j) => BackupLogEntry(
-    device: j['device']?.toString() ?? '未知设备',
-    action: j['action']?.toString() ?? 'backup',
-    time: (j['time'] as num?)?.toInt() ?? 0,
-    count: (j['vibe_count'] as num?)?.toInt() ?? 0,
-    detail: j['detail']?.toString() ?? '',
-  );
-}
-
 /// 公共画师串列表项(`GET /api/artists/list`)。
 class PublicArtistMeta {
   PublicArtistMeta({
@@ -2175,21 +2144,6 @@ class BackendClient {
       'session_id': sessionId,
       'tags': tags,
     }, sessionId);
-  }
-
-  /// 备份/恢复操作记录(最近 20 条,与 web 共用)。失败给空表,不打扰主流程。
-  Future<List<BackupLogEntry>> getBackupLog(String sessionId) async {
-    try {
-      final j = await _getJson('/user-vibes/backup-log', sessionId);
-      final log = j['log'];
-      if (log is! List) return const [];
-      return [
-        for (final e in log)
-          if (e is Map<String, dynamic>) BackupLogEntry.fromJson(e),
-      ];
-    } catch (_) {
-      return const [];
-    }
   }
 
   /// NAI 官方超分(bot 模式;登录:Bearer 头)。后端按 [mode] 分流到两个并存的端点:

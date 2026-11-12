@@ -24,7 +24,6 @@ import '../generate/vibe_encoder.dart';
 import '../generate/widgets/common.dart'
     show ParamSlider, confirmDialog, hintSnack;
 import 'naiv4vibe_codec.dart' show buildBundleText, kModelToEncodingKey;
-import 'vibe_backup_sheet.dart';
 import 'public_vibes.dart';
 import 'vibe_detail_sheet.dart';
 import 'vibe_import.dart' show ingestVibeFiles;
@@ -893,12 +892,7 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
                 ),
               ),
             )
-          else ...[
-            IconButton(
-              tooltip: '云备份',
-              icon: const Icon(Icons.cloud_outlined),
-              onPressed: () => showVibeBackupSheet(context),
-            ),
+          else
             PopupMenuButton<String>(
               tooltip: '导入',
               icon: const Icon(Icons.add),
@@ -924,7 +918,6 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
                 ),
               ],
             ),
-          ],
         ],
       ),
       body: Column(
