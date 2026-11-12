@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/net/backend_config.dart';
+import '../../../core/net/backend_http.dart';
 import '../../inspiration/tag_library.dart';
 import '../../inspiration/tag_models.dart';
 import 'artist_oc_library.dart';
@@ -42,7 +43,7 @@ class TagCompletion {
     required this.artistOcLib,
     this.localOcs,
     http.Client? client,
-  }) : _client = client ?? http.Client();
+  }) : _client = client ?? backendHttpClient();
 
   /// 后端基址,形如 `https://nai.sora214.top`,末尾无斜杠。
   final String baseUrl;

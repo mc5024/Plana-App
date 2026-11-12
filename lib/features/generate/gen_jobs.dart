@@ -109,30 +109,34 @@ class GenJob {
 
   bool get isRunning => stage == GenJobStage.running;
 
+  /// [clearPaste]:预览已经是贴回后的整图,不再垫原图。
   GenJob copyWith({
     GenJobStage? stage,
+    int? width,
+    int? height,
     int? step,
     int? total,
     int? prepPct,
     Uint8List? preview,
     String? note,
     bool clearNote = false,
+    bool clearPaste = false,
     String? taskId,
   }) => GenJob(
     id: id,
     galleryTarget: galleryTarget,
     kind: kind,
     stage: stage ?? this.stage,
-    width: width,
-    height: height,
+    width: width ?? this.width,
+    height: height ?? this.height,
     seq: seq,
     step: step ?? this.step,
     total: total ?? this.total,
     prepPct: prepPct ?? this.prepPct,
     preview: preview ?? this.preview,
-    pasteUnder: pasteUnder,
-    pasteAt: pasteAt,
-    pasteSize: pasteSize,
+    pasteUnder: clearPaste ? null : pasteUnder,
+    pasteAt: clearPaste ? null : pasteAt,
+    pasteSize: clearPaste ? null : pasteSize,
     note: clearNote ? null : (note ?? this.note),
     taskId: taskId ?? this.taskId,
   );

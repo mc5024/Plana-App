@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 
 import '../util/log.dart';
 import 'backend_config.dart';
+import 'backend_http.dart';
 import 'nai_client.dart' show NaiUsage, parseNaiUsage;
 
 /// 后端请求失败(网络/非 2xx/格式)。`message` 为可直接展示的人类可读文案。
@@ -1193,6 +1194,9 @@ class BackendClient {
   /// 形如 `http://host:8765`,末尾无斜杠。
   final String baseUrl;
 
+  /// 首次请求时取定,见 [backendHttpClient]。
+  late final http.Client _http = backendHttpClient();
+
   static const _timeout = Duration(seconds: 15);
 
   /// 带 body 的请求超时:**显式值与体积折算值取大者**。
@@ -1266,8 +1270,77 @@ class BackendClient {
       logi('[net] POST $path body=${payload.length >> 10}KB');
     }
     return _handle(
-      () => http.post(_u(path), headers: _headers(bearer), body: payload),
+      () => _http.post(_u(path), headers: _headers(bearer), body: payload),
       timeout: _sendTimeout(payload.length, timeout),
+    );
+  }
+
+  /// 没有分片提交入口的后端(旧版),之后直接走 JSON。
+  static final _noMultipart = <String>{};
+
+  static final _b64 = RegExp(r'^[A-Za-z0-9+/]+={0,2}$');
+
+  /// 把 [v] 里的长 base64 串(图片、Vibe 编码)抽进 [parts],原处换成 `@part:名字`。
+  /// 只抽解码再编码逐字一致的串,服务端换回 base64 后和原来一模一样;同一串只抽一份。
+  static Object? _extractParts(
+    Object? v,
+    Map<String, Uint8List> parts,
+    Map<String, String> seen,
+  ) {
+    if (v is String) {
+      if (v.length < 1024 || v.length % 4 != 0 || !_b64.hasMatch(v)) return v;
+      final hit = seen[v];
+      if (hit != null) return '@part:$hit';
+      final bytes = base64Decode(v);
+      if (base64Encode(bytes) != v) return v;
+      final name = 'p${parts.length}';
+      parts[name] = bytes;
+      seen[v] = name;
+      return '@part:$name';
+    }
+    if (v is Map) {
+      return <String, dynamic>{
+        for (final e in v.entries) '${e.key}': _extractParts(e.value, parts, seen),
+      };
+    }
+    if (v is List) return [for (final x in v) _extractParts(x, parts, seen)];
+    return v;
+  }
+
+  Future<Map<String, dynamic>> _postMultipart(
+    String path,
+    Map<String, dynamic> body,
+    Map<String, Uint8List> parts,
+    String? bearer,
+  ) {
+    final req = http.MultipartRequest('POST', _u(path));
+    if (bearer != null) req.headers['Authorization'] = 'Bearer $bearer';
+    var size = 0;
+    parts.forEach((name, bytes) {
+      size += bytes.length;
+      req.files.add(
+        http.MultipartFile.fromBytes(
+          name,
+          bytes,
+          filename: 'blob',
+          contentType: http.MediaType('image', 'png'),
+        ),
+      );
+    });
+    final json = utf8.encode(jsonEncode(body));
+    size += json.length;
+    req.files.add(
+      http.MultipartFile.fromBytes(
+        'request',
+        json,
+        filename: 'blob',
+        contentType: http.MediaType('application', 'json'),
+      ),
+    );
+    if (size > 512 * 1024) logi('[net] POST $path multipart=${size >> 10}KB');
+    return _handle(
+      () async => http.Response.fromStream(await _http.send(req)),
+      timeout: _sendTimeout(size, null),
     );
   }
 
@@ -1276,7 +1349,7 @@ class BackendClient {
     String? bearer,
     Duration? timeout,
   ]) => _handle(
-    () => http.get(_u(path), headers: _headers(bearer)),
+    () => _http.get(_u(path), headers: _headers(bearer)),
     timeout: timeout,
   );
 
@@ -1288,7 +1361,7 @@ class BackendClient {
   ]) {
     final payload = jsonEncode(body ?? const <String, dynamic>{});
     return _handle(
-      () => http.put(_u(path), headers: _headers(bearer), body: payload),
+      () => _http.put(_u(path), headers: _headers(bearer), body: payload),
       timeout: _sendTimeout(payload.length, timeout),
     );
   }
@@ -1326,16 +1399,54 @@ class BackendClient {
   /// 提交 bot 模式生成任务(登录:Bearer 头 + body 里 session_id)。
   /// → (是否受理, task_id?, 文案)。⚠️ 入队失败也返 200 success:false。
   /// 重绘/参考图会往 params 里塞几 MB base64,超时交 [_sendTimeout] 按体积放宽。
+  ///
+  /// 带 [clientRequestId](幂等键)时,连接层出错(没拿到响应)自动重发一次:服务端
+  /// 按键去重,第一次其实已受理也只回同一个 task_id,不会建第二单。
+  ///
+  /// 带图(重绘 / 图生图 / 参考图)时走 `/bot/generate/multipart`,图片作二进制分片,
+  /// 比 base64 少传三分之一。后端没有这个入口(404 / 405)就退回 JSON,并记住这台后端。
   Future<({bool success, String? taskId, String message})> botGenerate({
     required String sessionId,
     required Map<String, dynamic> params,
     String imageBackend = 'novelai',
+    String? clientRequestId,
   }) async {
-    final j = await _postJson('/bot/generate', {
+    final body = {
       'session_id': sessionId,
       'params': params,
       'image_backend': imageBackend,
-    }, sessionId);
+      'client_request_id': ?clientRequestId,
+    };
+    Future<Map<String, dynamic>> submit() async {
+      if (!_noMultipart.contains(baseUrl)) {
+        final parts = <String, Uint8List>{};
+        final mpBody = _extractParts(body, parts, {}) as Map<String, dynamic>;
+        if (parts.isNotEmpty) {
+          try {
+            return await _postMultipart(
+              '/bot/generate/multipart',
+              mpBody,
+              parts,
+              sessionId,
+            );
+          } on BackendException catch (e) {
+            if (e.status != 404 && e.status != 405) rethrow;
+            _noMultipart.add(baseUrl);
+            logi('[net] 后端没有分片提交入口,改回 JSON');
+          }
+        }
+      }
+      return _postJson('/bot/generate', body, sessionId);
+    }
+
+    Map<String, dynamic> j;
+    try {
+      j = await submit();
+    } on BackendException catch (e) {
+      if (clientRequestId == null || e.status != null) rethrow;
+      logi('[net] 提交出图没拿到响应,带同一个幂等键重发: ${e.message}');
+      j = await submit();
+    }
     return (
       success: j['success'] == true,
       taskId: j['task_id'] as String?,
@@ -1361,7 +1472,7 @@ class BackendClient {
     if (baseUrl.isEmpty) throw BackendException('未配置后端地址');
     final http.Response resp;
     try {
-      resp = await http
+      resp = await _http
           .get(Uri.parse('$baseUrl$url'))
           .timeout(const Duration(seconds: 60));
     } on TimeoutException {
@@ -1396,7 +1507,7 @@ class BackendClient {
         // 2026-09-04 起这个端点要鉴权（此前完全敞着，知道 task_id 就能撤别人的任务）。
         // 不带会话会 401 —— 而 401 在这里被当成「没取消成」吞掉，表现是「点了取消
         // 但服务端照常出图」，很难查。所以调用方务必把 sessionId 传进来。
-        () => http.delete(_u('/task/$taskId'), headers: _headers(sessionId)),
+        () => _http.delete(_u('/task/$taskId'), headers: _headers(sessionId)),
       );
       return j['success'] == true;
     } catch (_) {
@@ -1577,7 +1688,7 @@ class BackendClient {
     final uri = _u('/vibes/file/${Uri.encodeComponent(filename)}');
     final http.Response resp;
     try {
-      resp = await http
+      resp = await _http
           .get(uri, headers: _headers(sessionId))
           .timeout(const Duration(seconds: 30));
     } on TimeoutException {
@@ -1759,7 +1870,7 @@ class BackendClient {
 
   Future<void> deletePublicOc(String sessionId, String enName) async {
     await _handle(
-      () => http.delete(
+      () => _http.delete(
         _u('/oc/${Uri.encodeComponent(enName)}'),
         headers: _headers(sessionId),
       ),
@@ -1836,7 +1947,7 @@ class BackendClient {
 
   Future<void> deletePublicArtist(String sessionId, String id) async {
     await _handle(
-      () => http.delete(
+      () => _http.delete(
         _u('/artists/${Uri.encodeComponent(id)}'),
         headers: _headers(sessionId),
       ),
@@ -2303,7 +2414,7 @@ class BackendClient {
   /// 撤销一把,立即生效。已经撤销过 / 不是自己的回 404。
   Future<void> revokeApiKey(String sessionId, int id) async {
     await _handle(
-      () => http.delete(_u('/user/api-keys/$id'), headers: _headers(sessionId)),
+      () => _http.delete(_u('/user/api-keys/$id'), headers: _headers(sessionId)),
     );
   }
 

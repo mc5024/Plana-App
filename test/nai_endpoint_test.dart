@@ -214,6 +214,100 @@ void main() {
     });
   });
 
+  test('官方 / 代理:带图的请求照官网拆成二进制分片;第三方照旧 JSON', () {
+    final img = base64Encode([0x89, 0x50, 1, 2, 3]);
+    final vibe = base64Encode([9, 9, 9]);
+    final body = {
+      'input': 'x',
+      'action': 'infill',
+      'parameters': {
+        'image': img,
+        'mask': base64Encode([7]),
+        'reference_image_multiple': [vibe, vibe],
+        'director_reference_images': [img],
+        'width': 832,
+      },
+    };
+    final mp = encodeNaiBody(body, multipart: true);
+    expect(mp.contentType, startsWith('multipart/form-data; boundary='));
+    final boundary = mp.contentType.split('boundary=').last;
+    // 拆分片:名字 → 字节
+    final parts = <String, List<int>>{};
+    final raw = mp.bytes;
+    final text = latin1.decode(raw);
+    for (final seg in text.split('--$boundary').skip(1)) {
+      if (seg.startsWith('--')) break;
+      final name = RegExp(r'name="([^"]+)"').firstMatch(seg)!.group(1)!;
+      final data = seg.substring(seg.indexOf('\r\n\r\n') + 4, seg.length - 2);
+      parts[name] = latin1.encode(data);
+    }
+    // 同一张图只放一份,request 在最后
+    expect(parts.keys.toList(), [
+      'image',
+      'mask',
+      'reference_image_multiple_0',
+      'request',
+    ]);
+    expect(parts['image'], [0x89, 0x50, 1, 2, 3]);
+    expect(parts['reference_image_multiple_0'], [9, 9, 9]);
+    final req = jsonDecode(utf8.decode(parts['request']!)) as Map;
+    expect(req['parameters'], {
+      'image': 'image',
+      'mask': 'mask',
+      'reference_image_multiple': [
+        'reference_image_multiple_0',
+        'reference_image_multiple_0',
+      ],
+      'director_reference_images': ['image'],
+      'width': 832,
+    });
+    expect(req['action'], 'infill');
+
+    final js = encodeNaiBody(body, multipart: false);
+    expect(js.contentType, 'application/json');
+    expect(jsonDecode(utf8.decode(js.bytes)), body);
+    // 文生图没图:就算对面收分片也照旧 JSON
+    expect(
+      encodeNaiBody(const {
+        'input': 'x',
+        'parameters': {'width': 832},
+      }, multipart: true).contentType,
+      'application/json',
+    );
+  });
+
+  test('流式拿到终图就停止收流,连接照样回池复用', () async {
+    final ports = <int>[];
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((req) async {
+      ports.add(req.connectionInfo!.remotePort);
+      await req.drain<void>();
+      req.response.add(
+        _frame({'event_type': 'final', 'image': Uint8List.fromList([9])}),
+      );
+      await req.response.flush();
+      // 终图之后响应还要过一会儿才结束(对外 API 等记完账才收尾)
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await req.response.close();
+    });
+    addTearDown(() => server.close(force: true));
+
+    final client = NaiClient(base: 'http://127.0.0.1:${server.port}');
+    await withRealHttp(() async {
+      for (var i = 0; i < 2; i++) {
+        await for (final f in client.generateImageStream(
+          token: 'tok',
+          body: const {'input': 'x'},
+        )) {
+          if (f.isFinal) break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      }
+    });
+    expect(ports, hasLength(2));
+    expect(ports.toSet(), hasLength(1));
+  });
+
   test('非流式生成也能取消:abort 一响就断连接', () async {
     // 收下请求但永远不回,让取消成为唯一的结束方式
     final arrived = Completer<void>();

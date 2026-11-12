@@ -7,6 +7,7 @@ import '../../core/auth/auth_mode.dart';
 import '../../core/auth/bot_session_store.dart';
 import '../../core/net/backend_client.dart';
 import '../../core/net/backend_config.dart';
+import '../../core/net/bot_socket.dart';
 import '../../core/net/bot_stream.dart';
 import '../../core/net/nai_client.dart';
 import '../../core/net/nai_gate.dart';
@@ -106,6 +107,7 @@ Future<Uint8List> generateTagPreview(
     if (session == null) throw BackendException('暂未开放');
     final base = await ref.read(backendBaseProvider.future);
     if (base.isEmpty) throw BackendException('未配置后端地址');
+    BotSocket.instance.warm(base, session.sessionId);
     final client = ref.read(backendClientProvider);
     final params = buildBotParams(
       s,

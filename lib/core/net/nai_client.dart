@@ -5,10 +5,13 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:msgpack_dart/msgpack_dart.dart' as msgpack;
 
+import 'backend_config.dart' show kDefaultBackendBase;
 import 'gen_abort.dart';
 import 'nai_chat_compat.dart';
 import 'nai_endpoint.dart';
@@ -16,6 +19,94 @@ import 'nai_proxy.dart';
 
 /// 流式生成的一帧:step 非空=中间预览,isFinal=终图。
 typedef NaiFrame = ({int? step, bool isFinal, Uint8List bytes});
+
+/// 直连出图共用的连接池,连续出图复用连接。官方与 Plana 代理(都在 Cloudflare
+/// 后面)、Plana 后端(nginx 保活 60s)空闲连接留 50s;第三方站点保活时长不定,只留 4s。
+final HttpClient _longIdleHttp = HttpClient()
+  ..connectionTimeout = const Duration(seconds: 30)
+  ..idleTimeout = const Duration(seconds: 50);
+final HttpClient _shortIdleHttp = HttpClient()
+  ..connectionTimeout = const Duration(seconds: 30)
+  ..idleTimeout = const Duration(seconds: 4);
+final _longIdleIo = IOClient(_longIdleHttp);
+final _shortIdleIo = IOClient(_shortIdleHttp);
+
+/// 请求体编码。带图且对面收分片时照官网:JSON 里图片字段的值换成分片名,字节单独
+/// 成片,request 分片放最后,省掉 base64 的三分之一。图片字段必须全部外提 ——
+/// 留在 JSON 里的 base64 会被 NAI 当成分片名去找,整单 400。
+@visibleForTesting
+({String contentType, Uint8List bytes}) encodeNaiBody(
+  Map<String, dynamic> body, {
+  required bool multipart,
+}) {
+  final asJson = (
+    contentType: 'application/json',
+    bytes: utf8.encode(jsonEncode(body)),
+  );
+  final p = body['parameters'];
+  if (!multipart || p is! Map) return asJson;
+  final params = Map<String, dynamic>.from(p);
+  final parts = <String, Uint8List>{};
+  final seen = <String, String>{};
+  try {
+    String put(String b64, String name) {
+      final hit = seen[b64];
+      if (hit != null) return hit;
+      parts[name] = base64Decode(b64);
+      seen[b64] = name;
+      return name;
+    }
+
+    for (final k in const ['image', 'mask']) {
+      final v = params[k];
+      if (v is String && v.isNotEmpty) params[k] = put(v, k);
+    }
+    for (final k in const [
+      'reference_image_multiple',
+      'director_reference_images',
+    ]) {
+      final v = params[k];
+      if (v is List && v.isNotEmpty) {
+        params[k] = [
+          for (var i = 0; i < v.length; i++)
+            v[i] is String && (v[i] as String).isNotEmpty
+                ? put(v[i] as String, '${k}_$i')
+                : v[i],
+        ];
+      }
+    }
+  } on FormatException {
+    return asJson;
+  }
+  if (parts.isEmpty) return asJson;
+  final boundary =
+      '----PlanaFormBoundary${Random().nextInt(1 << 32).toRadixString(16)}'
+      '${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
+  final out = BytesBuilder(copy: false);
+  void part(String name, String type, List<int> data) {
+    out.add(
+      utf8.encode(
+        '--$boundary\r\n'
+        'Content-Disposition: form-data; name="$name"; filename="blob"\r\n'
+        'Content-Type: $type\r\n\r\n',
+      ),
+    );
+    out.add(data);
+    out.add(const [13, 10]);
+  }
+
+  parts.forEach((name, data) => part(name, 'image/png', data));
+  part(
+    'request',
+    'application/json',
+    utf8.encode(jsonEncode({...body, 'parameters': params})),
+  );
+  out.add(utf8.encode('--$boundary--\r\n'));
+  return (
+    contentType: 'multipart/form-data; boundary=$boundary',
+    bytes: out.takeBytes(),
+  );
+}
 
 /// NAI 5 的 Opus 充电式额度(官方叫 Opus Generations allowance)。
 ///
@@ -207,6 +298,12 @@ class NaiClient {
   /// 报错文案里的主机名(自定义地址时不能再张口就说「novelai.net 被拦了」)。
   String get _hostName => Uri.tryParse(_host)?.host ?? _host;
 
+  /// 官方、Plana 代理、Plana 后端(对外 API)的保活时长都已知够长。
+  bool get _longIdle =>
+      _host == kNaiOfficialBase ||
+      _host == kNaiProxyBase ||
+      _host == kDefaultBackendBase;
+
   static const _ua =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
       'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
@@ -221,6 +318,14 @@ class NaiClient {
     'referer': 'https://novelai.net/',
     'user-agent': _ua,
   };
+
+  /// 官方与 Plana 代理收二进制分片(官网 2026-08 起默认这么发,代理原样透传);
+  /// 第三方站点不一定认,照旧发 JSON。
+  bool get _multipart => _host == kNaiOfficialBase || _host == kNaiProxyBase;
+
+  ({String contentType, Uint8List bytes}) _encodeBody(
+    Map<String, dynamic> body,
+  ) => encodeNaiBody(body, multipart: _multipart);
 
   /// 流式端点头:NAI 前端每请求都带 x-correlation-id(6 hex)+ x-initiated-at。
   Map<String, String> _streamHeaders(String token) => {
@@ -265,14 +370,11 @@ class NaiClient {
       return;
     }
     final uri = Uri.parse('$_host/ai/generate-image-stream');
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 30);
-    // 取消:强制关连接,进行中的请求/流随即断开抛错(对齐 web abort fetch)。
-    abort?.whenAbort(() {
-      try {
-        client.close(force: true);
-      } catch (_) {}
-    });
+    // 取消:中止这一个请求,进行中的流随即断开抛错(对齐 web abort fetch)。
+    // 连接池是共用的,不能整个关掉。
+    HttpClientRequest? req;
+    var finished = false;
+    abort?.whenAbort(() => req?.abort());
 
     var received = 0; // 诊断:累计字节
     var parseFails = 0; // 诊断:解析失败帧数
@@ -280,13 +382,16 @@ class NaiClient {
     var yielded = 0;
 
     try {
-      final payload = utf8.encode(jsonEncode(body));
-      final req = await client.postUrl(uri);
-      _streamHeaders(token).forEach(req.headers.set);
-      req.contentLength = payload.length;
-      req.add(payload);
+      final payload = _encodeBody(body);
+      final r = req = await (_longIdle ? _longIdleHttp : _shortIdleHttp)
+          .postUrl(uri);
+      if (abort?.aborted ?? false) throw NaiException('已取消生成');
+      _streamHeaders(token).forEach(r.headers.set);
+      r.headers.set('Content-Type', payload.contentType);
+      r.contentLength = payload.bytes.length;
+      r.add(payload.bytes);
 
-      final resp = await req.close().timeout(const Duration(seconds: 60));
+      final resp = await r.close().timeout(const Duration(seconds: 60));
       if (resp.statusCode != 200) {
         final text = await resp
             .transform(utf8.decoder)
@@ -300,7 +405,9 @@ class NaiClient {
 
       final buf = <int>[];
       // 帧间隔超 90s 视为断流(出图步间通常 1~3s)
-      await for (final chunk in resp.timeout(const Duration(seconds: 90))) {
+      final chunks = StreamIterator(resp.timeout(const Duration(seconds: 90)));
+      while (await chunks.moveNext()) {
+        final chunk = chunks.current;
         received += chunk.length;
         buf.addAll(chunk);
         var off = 0;
@@ -342,13 +449,20 @@ class NaiClient {
           final img = msg['image'];
           if (img is List<int>) {
             final stepIx = msg['step_ix'];
+            // 带 event_type 的按它认;老格式没有这个字段,靠 step_ix 为空认终图
+            final isFinal = type is String ? type == 'final' : stepIx == null;
             yielded++;
+            if (isFinal) {
+              // 下游拿到成图就停止收流:剩下的响应交给后台读完,连接才能回池
+              finished = true;
+              unawaited(_drain(chunks));
+            }
             yield (
               step: stepIx is int ? stepIx + 1 : null,
-              // 带 event_type 的按它认;老格式没有这个字段,靠 step_ix 为空认终图
-              isFinal: type is String ? type == 'final' : stepIx == null,
+              isFinal: isFinal,
               bytes: img is Uint8List ? img : Uint8List.fromList(img),
             );
+            if (isFinal) return;
           }
         }
         if (off > 0) buf.removeRange(0, off);
@@ -360,6 +474,7 @@ class NaiClient {
         diag.write(')');
         throw NaiException(diag.toString());
       }
+      finished = true;
     } on NaiException {
       rethrow;
     } on TimeoutException {
@@ -371,7 +486,22 @@ class NaiClient {
     } catch (e) {
       throw NaiException('流式生成失败:$e');
     } finally {
-      client.close(force: true);
+      // 没正常读完(出错、超时、取消、下游不再收)就拆掉这条连接,别放回池里
+      if (!finished) req?.abort();
+    }
+  }
+
+  /// 读完成图帧之后的剩余响应;15 秒内读不完就断开,不放回池。
+  static Future<void> _drain(StreamIterator<List<int>> chunks) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 15));
+    try {
+      while (true) {
+        final left = deadline.difference(DateTime.now());
+        if (left <= Duration.zero) throw TimeoutException('drain');
+        if (!await chunks.moveNext().timeout(left)) return;
+      }
+    } catch (_) {
+      await chunks.cancel();
     }
   }
 
@@ -380,7 +510,7 @@ class NaiClient {
   /// 两种情况走这条:用户在生成设置里关了流式,或流式端点回 404/405。
   /// 没有逐步预览 —— 整张图画完才回来。
   ///
-  /// [abort] 一触发就关掉客户端,进行中的请求随即断开(同流式那条)。取消之后
+  /// [abort] 一触发就中止这个请求,进行中的请求随即断开(同流式那条)。取消之后
   /// 这里抛的是「网络错误」,调用方先看 `abort.aborted` 再判错误。
   Future<Uint8List> generateImage({
     required String token,
@@ -389,21 +519,26 @@ class NaiClient {
   }) async {
     if (_chat) return _chatGenerate(token, body, abort);
     final uri = Uri.parse('$_host/ai/generate-image');
-    final client = http.Client();
-    abort?.whenAbort(() {
-      try {
-        client.close();
-      } catch (_) {}
-    });
+    final stop = Completer<void>();
+    void stopNow() {
+      if (!stop.isCompleted) stop.complete();
+    }
+
+    abort?.whenAbort(stopNow);
+    final payload = _encodeBody(body);
+    final req = http.AbortableRequest('POST', uri, abortTrigger: stop.future)
+      ..headers.addAll(_genHeaders(token))
+      ..headers['Content-Type'] = payload.contentType
+      ..bodyBytes = payload.bytes;
     final http.Response resp;
     try {
-      resp = await client
-          .post(uri, headers: _genHeaders(token), body: jsonEncode(body))
+      resp = await (_longIdle ? _longIdleIo : _shortIdleIo)
+          .send(req)
+          .then(http.Response.fromStream)
           .timeout(const Duration(seconds: 120));
     } catch (e) {
+      stopNow();
       throw NaiException('网络错误:$e');
-    } finally {
-      client.close();
     }
 
     if (resp.statusCode != 200) {

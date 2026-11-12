@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import '../util/log.dart';
 import 'backend_client.dart';
+import 'bot_socket.dart';
 import 'gen_abort.dart';
 
 /// 跑一个 bot 生成任务的实时链路:WebSocket `/ws/bot`(逐步进度 + 中间预览图)
@@ -107,9 +106,21 @@ Future<List<Uint8List>> streamBotTask({
   /// 上一次瞬时失败很常见,而结果在服务端只留 10 分钟 —— 值得赌这一次,但
   /// 不值得赌第二次。
   var fetching = false;
+  // WS 推来的成图(序号 → 字节),先于完成消息到达。收齐了就不用再下载。
+  final pushed = <int, Uint8List>{};
   Future<void> done(List<String> urls) async {
     if (completer.isCompleted || fetching) return;
     fetching = true;
+    if (pushed.length == urls.length &&
+        Iterable<int>.generate(urls.length).every(pushed.containsKey)) {
+      final out = [for (var i = 0; i < urls.length; i++) pushed[i]!];
+      logi(
+        '[bot] $taskId done(WS 推送): ${out.length} 张 / '
+        '${out.fold<int>(0, (a, b) => a + b.length)}B',
+      );
+      completer.complete(out);
+      return;
+    }
     for (var attempt = 0; attempt < 2; attempt++) {
       if (completer.isCompleted) return;
       try {
@@ -165,10 +176,6 @@ Future<List<Uint8List>> streamBotTask({
     onProgress?.call(step, total, preview, stageText);
   }
 
-  WebSocket? ws;
-  StreamSubscription<dynamic>? wsSub;
-  Timer? heartbeat;
-
   // 超时看门狗。**准备阶段(拉 LoRA / 加载模型)会把它重新上弦** ——
   // 服务端那 600s 出图预算是**采样期单独**的,不含准备:跨境把一个 448MB 的
   // LoRA 拉下来,R2 慢的时候只有 0.84 MB/s,那就是 9 分钟,加载模型那段更是
@@ -182,43 +189,19 @@ Future<List<Uint8List>> streamBotTask({
 
   armWatchdog();
 
-  /// 解一帧二进制预览。头 24 字节,其余是原始图片字节:
-  ///   ver(1) type(1) step(2) total(2) fmt(1) 保留(1) task_id(16 ASCII)
-  ///
-  /// 头里的 step/total 只供调试。**进度以 task_progress 为准** —— 那条紧挨着
-  /// 二进制帧发送,而且带着「准备阶段读数不可采信」那套判据(readProgressMsg
-  /// 的 useSteps),这里另起一套只会打架。
-  void handleBinary(List<int> raw) {
-    if (raw.length <= 24) return;
-    final b = raw is Uint8List ? raw : Uint8List.fromList(raw);
-    if (b[0] != 1 || b[1] != 1) return; // 版本/类型不认识就整帧丢弃
-    var id = '';
-    for (var i = 8; i < 24 && b[i] != 0; i++) {
-      id += String.fromCharCode(b[i]);
-    }
-    if (id != taskId) return;
+  /// 一帧二进制预览(头已由 [BotSocket] 解掉)。帧头里的 step/total 只供调试,
+  /// **进度以 task_progress 为准** —— 那条紧挨着二进制帧发送,而且带着「准备
+  /// 阶段读数不可采信」那套判据(readProgressMsg 的 useSteps)。
+  void handleBinary(Uint8List preview) {
     onProgress?.call(
       lastStep < 0 ? 0 : lastStep,
       lastTotal,
-      Uint8List.sublistView(b, 24),
+      preview,
       lastStage,
     );
   }
 
-  void handle(dynamic raw) {
-    // 预览帧走二进制,其余是 JSON 文本
-    if (raw is! String) {
-      if (raw is List<int>) handleBinary(raw);
-      return;
-    }
-    Map<String, dynamic> m;
-    try {
-      final d = jsonDecode(raw);
-      if (d is! Map<String, dynamic>) return;
-      m = d;
-    } catch (_) {
-      return;
-    }
+  void handle(Map<String, dynamic> m) {
     switch (m['action']) {
       case 'task_progress':
         // 预览帧不在这条消息里了(走二进制帧),这里只有读数和文案
@@ -262,21 +245,15 @@ Future<List<Uint8List>> streamBotTask({
     }
   }
 
-  // —— WS 主链路(连不上就纯靠轮询兜底)——
-  try {
-    final wsUrl = '${baseUrl.replaceFirst(RegExp(r'^http'), 'ws')}/ws/bot';
-    ws = await WebSocket.connect(wsUrl).timeout(const Duration(seconds: 12));
-    wsSub = ws.listen(handle, onError: (_) {}, onDone: () {});
-    ws.add(jsonEncode({'action': 'bind_session', 'session_id': sessionId}));
-    ws.add(jsonEncode({'action': 'subscribe_task', 'task_id': taskId}));
-    heartbeat = Timer.periodic(const Duration(seconds: 25), (_) {
-      try {
-        ws?.add(jsonEncode({'action': 'heartbeat'}));
-      } catch (_) {}
-    });
-  } catch (_) {
-    // 忽略:轮询兜底仍会跑
-  }
+  // —— WS 主链路:共用常驻连接(连不上就纯靠轮询兜底)——
+  final wsSub = BotSocket.instance.subscribe(
+    base: baseUrl,
+    sessionId: sessionId,
+    taskId: taskId,
+    onJson: handle,
+    onBinary: handleBinary,
+    onResult: (i, _, bytes) => pushed[i] = bytes,
+  );
 
   // —— HTTP 轮询兜底(每 2.5s)——
   // 连续失败计数:断网时 WS 已死、轮询静默空转,原先只能干等满 [timeout](5 分钟)。
@@ -292,7 +269,7 @@ Future<List<Uint8List>> streamBotTask({
   final poll = Timer.periodic(const Duration(milliseconds: 2500), (_) async {
     if (completer.isCompleted) return;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final gap = ws?.readyState == WebSocket.open ? 30000 : 2500;
+    final gap = wsSub.live ? 30000 : 2500;
     if (now - lastPollAt < gap) return;
     lastPollAt = now;
     try {
@@ -322,7 +299,7 @@ Future<List<Uint8List>> streamBotTask({
         // ⚠ WS 通着的时候**轮询一律不碰进度**:它粒度粗、还可能是几秒前的旧值,
         //   和 WS 抢着写只会让进度条抖;而且它分不清「重绘二段合法归零」和
         //   「过期数据回退」,让它出手就会误判。
-        if (ws?.readyState == WebSocket.open) return;
+        if (wsSub.live) return;
         if (t.step < lastStep) return; // WS 已死,这条兜底自己防回退
         progress(t.step, t.totalSteps, null, '');
       }
@@ -344,8 +321,6 @@ Future<List<Uint8List>> streamBotTask({
   } finally {
     watchdog?.cancel();
     poll.cancel();
-    heartbeat?.cancel();
-    await wsSub?.cancel();
-    await ws?.close();
+    wsSub.cancel();
   }
 }

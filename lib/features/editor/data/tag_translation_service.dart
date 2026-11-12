@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/net/backend_config.dart';
+import '../../../core/net/backend_http.dart';
 import '../../../core/store/app_stores.dart';
 import 'suggestions.dart';
 import 'trans_cache_store.dart';
@@ -35,7 +36,7 @@ class TagTranslationService extends ChangeNotifier {
     required this.baseUrl,
     this.saved,
     http.Client? client,
-  }) : _client = client ?? http.Client();
+  }) : _client = client ?? backendHttpClient();
 
   final bool enabled;
   final String baseUrl;

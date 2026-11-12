@@ -16,6 +16,7 @@ import '../../core/net/anlas_provider.dart';
 import '../../core/store/gen_settings.dart';
 import '../../core/net/backend_client.dart';
 import '../../core/net/backend_config.dart';
+import '../../core/net/bot_socket.dart';
 import '../../core/net/bot_stream.dart';
 import '../../core/net/gen_abort.dart';
 import '../../core/auth/nai_keys.dart';
@@ -669,7 +670,7 @@ class GenerationNotifier extends Notifier<GenPool> {
 
     // 后台进度:首张开前台服务;续张就地刷新(不重拉服务,避免岛一张一闪)。
     // 传 total(采样步数):从「准备」起就是确定态进度条,立即上岛,不必等步数。
-    await _beginIsland(total);
+    unawaited(_beginIsland(total));
 
     ({Map<String, dynamic> body, int seed})? built;
 
@@ -1090,15 +1091,21 @@ class GenerationNotifier extends Notifier<GenPool> {
     if (base.isEmpty) {
       return _fail(jobId, '未配置后端地址,请在「我的」页或授权页填写', GenOutcome.notCharged);
     }
+    // 准备参数、提交的同时把 WS 连好,拿到 taskId 就能直接订阅
+    BotSocket.instance.warm(base, session.sessionId);
 
     final total = s.params.activeSteps;
     final abort = run.abort;
 
     // bot 无逐步步数,走不确定态;续张同样就地刷新不重拉服务。
-    await _beginIsland(0);
+    unawaited(_beginIsland(0));
 
     final client = ref.read(backendClientProvider);
     final seed = _resolveSeed(s.params.seed);
+    // 这一张的幂等键:断线重发时服务端认得出是同一单
+    final requestId =
+        '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}'
+        '-${Random.secure().nextInt(1 << 32).toRadixString(36)}';
 
     // 任务是否已提交成功(拿到 taskId):之后再失败就分不清服务端有没有开跑,
     // 按最坏情况算,不让队列自动重试。
@@ -1136,6 +1143,7 @@ class GenerationNotifier extends Notifier<GenPool> {
         final sub = await client.botGenerate(
           sessionId: session.sessionId,
           params: params,
+          clientRequestId: requestId,
           // anima / krea → 服务端 Modal ComfyUI 后端(共用同一条队列与 WS 通道,
           // 任务表也与 NAI 共用);两者的参数各进自己的 *_extra。
           imageBackend: switch (providerOfModel(s.params.model)) {
@@ -1321,6 +1329,10 @@ class GenerationNotifier extends Notifier<GenPool> {
     );
   }
 
+  /// 图生图预处理结果,按源图对象 + 目标尺寸缓存:重抽、循环、队列续张不再重做
+  /// 解码 / 缩放 / 编码。源图对象释放时跟着回收。
+  static final _img2imgCache = Expando<({int w, int h, String b64})>();
+
   /// 图生图底图:cover 到当前目标分辨率 → PNG base64。无底图返回 null。
   /// 快照带重绘任务时跳过(重绘与图生图互斥,inpaint 优先)。
   Future<Img2ImgRef?> _processImg2Img(GenerateState s) async {
@@ -1328,16 +1340,22 @@ class GenerationNotifier extends Notifier<GenPool> {
     final cfg = s.img2img;
     final img = cfg?.image;
     if (cfg == null || img == null) return null;
-    // 源图真带 alpha 才保住它:透明图垫黑底 = 把透明区烧成黑色,
-    // 而不透明图垫不垫都看不见(cover 铺满画布),维持旧行为即可。
-    final png = await coverResizePng(
-      img,
-      s.params.width,
-      s.params.height,
-      keepAlpha: await pngHasAlpha(img),
-    );
+    final w = s.params.width, h = s.params.height;
+    var b64 = _img2imgCache[img];
+    if (b64 == null || b64.w != w || b64.h != h) {
+      // 源图真带 alpha 才保住它:透明图垫黑底 = 把透明区烧成黑色,
+      // 而不透明图垫不垫都看不见(cover 铺满画布),维持旧行为即可。
+      final png = await coverResizePng(
+        img,
+        w,
+        h,
+        keepAlpha: await pngHasAlpha(img),
+      );
+      b64 = (w: w, h: h, b64: base64Encode(png));
+      _img2imgCache[img] = b64;
+    }
     return (
-      image: base64Encode(png),
+      image: b64.b64,
       strength: cfg.strength,
       noise: cfg.noise,
       upscaledEnhance: cfg.upscaledEnhance,
@@ -1394,6 +1412,19 @@ class GenerationNotifier extends Notifier<GenPool> {
           select: followed && i == 0,
           galleryTarget: galleryTarget,
           canSelect: () => _focusRevision == focusRevision,
+          // 重绘:贴回完就先把整图摆上去,不等写图库、缩略图那一串。入库用的是
+          // 同一份字节,换页那一帧图片缓存直接命中,不闪。
+          onBlended: i == 0
+              ? (png, w, h) => _patch(
+                  jobId,
+                  (j) => j.copyWith(
+                    preview: png,
+                    width: w,
+                    height: h,
+                    clearPaste: true,
+                  ),
+                )
+              : null,
         ),
       );
     }
@@ -1446,6 +1477,7 @@ class GenerationNotifier extends Notifier<GenPool> {
     required bool select,
     required GallerySaveTarget galleryTarget,
     required bool Function() canSelect,
+    void Function(Uint8List png, int width, int height)? onBlended,
   }) async {
     final job = s.inpaint;
     var out = bytes;
@@ -1467,6 +1499,7 @@ class GenerationNotifier extends Notifier<GenPool> {
         out = r.png;
         w = r.width;
         h = r.height;
+        onBlended?.call(out, w, h);
       } catch (e) {
         logd('[gen] inpaint blend failed: $e'); // 混合失败退化为成图原样入库
       }

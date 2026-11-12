@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import '../../core/auth/auth_mode.dart';
 import '../../core/auth/bot_session_store.dart';
 import '../../core/auth/nai_credential_login.dart';
 import '../../core/auth/token_store.dart';
 import '../../core/net/backend_config.dart';
+import '../../core/net/bot_socket.dart';
 import '../../core/store/app_stores.dart';
 import '../../core/store/prefs_store.dart';
 import '../../core/theme/app_skin.dart';
@@ -69,7 +71,35 @@ class _AppShellState extends ConsumerState<AppShell> {
     ref.read(backendBaseProvider);
     // 账号密码登录的 JWT 临期静默换新(非该来源的令牌自动跳过)。
     ref.read(naiTokenAutoRefreshProvider);
+    unawaited(_syncBotSocket());
+    ref.listenManual(authModeProvider, (_, _) => _syncBotSocket());
+    ref.listenManual(botSessionProvider, (_, _) => _syncBotSocket());
+    ref.listenManual(backendBaseProvider, (_, _) => _syncBotSocket());
+    _life = AppLifecycleListener(
+      onResume: () {
+        BotSocket.instance.setForeground(true);
+        unawaited(_syncBotSocket());
+      },
+      onHide: () => BotSocket.instance.setForeground(false),
+    );
     _schedulePrompts();
+  }
+
+  late final AppLifecycleListener _life;
+
+  /// bot 模式下 `/ws/bot` 前台常驻;不是 bot 模式或没会话就停掉。
+  Future<void> _syncBotSocket() async {
+    try {
+      final mode = await ref.read(authModeProvider.future);
+      final session = await ref.read(botSessionProvider.future);
+      final base = await ref.read(backendBaseProvider.future);
+      if (!mounted) return;
+      if (mode == AuthMode.bot && session != null && base.isNotEmpty) {
+        BotSocket.instance.warm(base, session.sessionId, resident: true);
+      } else {
+        BotSocket.instance.stop();
+      }
+    } catch (_) {}
   }
 
   /// 冷启动的两个弹窗:浮卡介绍(只弹一次)、静默查更新(24h 节流),
@@ -111,6 +141,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   void dispose() {
     _promptTimer?.cancel();
+    _life.dispose();
     _pc.dispose();
     super.dispose();
   }
