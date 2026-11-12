@@ -918,8 +918,6 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
           // 图没扩成功时(用户又退回来)还能接着用。
           grid: _grid?.encode(),
         ),
-        width: tw,
-        height: th,
       );
     } finally {
       if (mounted) setState(() => _firing = false);
@@ -930,23 +928,17 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
   /// (对齐官网)。流式预览也跟着回到图库画布那一份,不再自己画一套。
   ///
   /// 存完直接跳创作页:主生成按钮在那儿,留在图库等于让人自己去找。
-  void _saveInto(InpaintJob job, {required int width, required int height}) {
-    // 存入会顶掉图生图底图、改分辨率:提示条上给「撤销」,整份放回存入之前
+  void _saveInto(InpaintJob job) {
+    // 存入会顶掉图生图底图:提示条上给「撤销」,整份放回存入之前
     final before = ref.read(generateProvider);
     final canvasId = ref.read(canvasWorkspaceProvider).activeId;
     final canvases = ref.read(canvasWorkspaceProvider.notifier);
-    ref
-        .read(generateProvider.notifier)
-        .setInpaint(job, width: width, height: height);
+    ref.read(generateProvider.notifier).setInpaint(job);
     Haptics.medium();
-    // 遮罩会改写生成分辨率(局部发裁切区、扩图发垫大后的画布),和图生图选底图
-    // 一个道理 —— 变了就说一声,免得回到创作页看见分辨率莫名其妙换了。
-    final resized =
-        before.params.width != width || before.params.height != height;
     hintSnack(
       context,
-      resized ? '分辨率已按重绘范围调整为 $width×$height' : '已存入重绘',
-      icon: resized ? Icons.aspect_ratio : Icons.brush,
+      '已存入重绘',
+      icon: Icons.brush,
       actionLabel: '撤销',
       onAction: () => canvases.undoWrite(before, canvasId),
     );
@@ -1288,8 +1280,6 @@ class _InpaintOverlayState extends ConsumerState<InpaintOverlay>
           sourceId: widget.session.sourceId,
           grid: grid.encode(),
         ),
-        width: sw,
-        height: sh,
       );
     } finally {
       if (mounted) setState(() => _firing = false);

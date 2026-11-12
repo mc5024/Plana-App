@@ -210,7 +210,10 @@ class _Img2ImgCardState extends ConsumerState<Img2ImgCard> {
     );
   }
 
-  /// 带遮罩的形态:缩略图上叠一层遮罩、一条强度滑杆、一颗移除。
+  /// 带遮罩的形态:缩略图上叠一层遮罩、一条强度滑杆、重绘分辨率读数、一颗移除。
+  ///
+  /// 重绘分辨率是遮罩自己的发送尺寸(局部框放大后的 / 整图 / 扩图后的),
+  /// 和创作页的主分辨率互不影响;要改就回编辑器调涂抹范围或局部框。
   ///
   /// 这里**不给「更换底图」** —— 遮罩是画在这张底图上的,换了图遮罩就对不上位。
   /// 要换就回图库对新图涂一遍。
@@ -223,11 +226,15 @@ class _Img2ImgCardState extends ConsumerState<Img2ImgCard> {
     final scheme = context.scheme;
     final model = state.params.model;
     final strengthOk = inpaintStrengthSupported(model);
+    final size = switch (job.sendSize) {
+      (final w, final h) => '$w×$h',
+      null => '—',
+    };
     return SectionCard(
       icon: Icons.brush_outlined,
       title: context.l10n.inpaint,
       reorderIndex: widget.reorderIndex,
-      badge: CountBadge('${state.params.width}×${state.params.height}'),
+      badge: CountBadge(size),
       actions: [
         RoundIconBtn(
           Icons.delete_outline,
@@ -301,17 +308,35 @@ class _Img2ImgCardState extends ConsumerState<Img2ImgCard> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: LockedParam(
-                  hint: strengthOk ? null : '${modelName(model)} 不支持「重绘强度」',
-                  child: ParamSlider(
-                    label: context.l10n.paramStrength,
-                    help: Help.img2imgStrength,
-                    value: strengthOk ? job.strength : 1,
-                    min: 0.01,
-                    max: 1,
-                    divisions: 99,
-                    onChanged: notifier.updateInpaintStrength,
-                  ),
+                child: Column(
+                  children: [
+                    LockedParam(
+                      hint: strengthOk ? null : '${modelName(model)} 不支持「重绘强度」',
+                      child: ParamSlider(
+                        label: context.l10n.paramStrength,
+                        help: Help.img2imgStrength,
+                        value: strengthOk ? job.strength : 1,
+                        min: 0.01,
+                        max: 1,
+                        divisions: 99,
+                        onChanged: notifier.updateInpaintStrength,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            context.l10n.resolution,
+                            style: context.texts.bodySmall!.copyWith(
+                              color: scheme.onSurface,
+                            ),
+                          ),
+                        ),
+                        ParamValueBox(text: size),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],

@@ -726,17 +726,12 @@ class GenerateNotifier extends Notifier<GenerateState> {
   /// 遮罩编辑器存盘:底图 + 遮罩 + 强度(+ 局部重绘的回贴信息)一起落进创作页
   /// 状态,发车交给主生成按钮。
   ///
-  /// 顺带把生成分辨率设成**发送尺寸** —— 局部重绘发的是裁切区、扩图发的是垫大
-  /// 之后的画布,两者都不是原图尺寸。不设的话下一次生成会按创作页那个旧尺寸发,
-  /// 服务端收到的图和声明的尺寸对不上。
+  /// 生成分辨率不动:重绘按遮罩自己的尺寸发([InpaintJob.sendSize],发送前由
+  /// stripHiddenModules 换进快照),主分辨率留给普通出图。
   ///
   /// 与 img2img 互斥:带遮罩的图生图就是重绘,留着另一份底图只会让发送层二选一。
-  void setInpaint(InpaintJob job, {required int width, required int height}) {
-    state = state.copyWith(
-      inpaint: job,
-      img2img: null,
-      params: state.params.copyWith(width: width, height: height),
-    );
+  void setInpaint(InpaintJob job) {
+    state = state.copyWith(inpaint: job, img2img: null);
     openPanel(Panel.i2i);
   }
 

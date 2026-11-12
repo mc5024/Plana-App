@@ -360,9 +360,9 @@ void main() {
     expect(c.read(generateProvider).loras.map((l) => l.name), ['y']);
   });
 
-  // 存入重绘后又改了尺寸:宽高要还是重绘那块的,不然底图、遮罩和声明的尺寸
+  // 存入重绘不动主分辨率;发送时宽高是重绘那块的,不然底图、遮罩和声明的尺寸
   // 对不上。重绘跟画布走,新画布没有。
-  test('挂着重绘时按重绘那块的尺寸发,存入后改了尺寸也一样', () {
+  test('挂着重绘时按重绘那块的尺寸发,主分辨率不动', () {
     final png = Uint8List.fromList(
       img.encodePng(img.Image(width: 64, height: 128)),
     );
@@ -375,12 +375,10 @@ void main() {
     }
 
     gen.setSize(1024, 1024);
-    gen.setInpaint(
-      InpaintJob(image: png, mask: png, strength: 0.7),
-      width: 64,
-      height: 128,
-    );
+    gen.setInpaint(InpaintJob(image: png, mask: png, strength: 0.7));
     expect(sent(), (64, 128));
+    final main = c.read(generateProvider).params;
+    expect((main.width, main.height), (1024, 1024));
     gen.setSize(832, 1216);
     expect(sent(), (64, 128));
     final a = c.read(canvasWorkspaceProvider).activeId;
@@ -406,8 +404,6 @@ void main() {
         sourceId: 'g1',
         grid: grid,
       ),
-      width: 64,
-      height: 64,
     );
     gen.updateInpaintStrength(0.5);
     final job = c.read(generateProvider).inpaint!;
