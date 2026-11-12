@@ -16,14 +16,17 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_info.dart' show kAppVersion;
 import '../../core/auth/bot_session_store.dart';
+import '../../core/live_progress/live_progress.dart';
 import '../../core/net/agent_stream.dart';
 import '../../core/net/backend_client.dart';
 import '../../core/net/backend_config.dart';
 import '../../core/store/app_stores.dart';
+import '../../core/store/gen_settings.dart' show genSettingsProvider;
 import '../generate/agent_chars.dart';
 import '../generate/canvas_state.dart';
 import '../generate/char_position.dart';
@@ -280,6 +283,9 @@ class AssistantNotifier extends Notifier<AssistantState> {
 
   bool get _busy => state.running || _starting;
 
+  bool get _appForeground =>
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+
   int _idSeq = 0;
 
   AssistantStore get _store => ref.read(appStoresProvider).assistant;
@@ -296,6 +302,7 @@ class AssistantNotifier extends Notifier<AssistantState> {
     ref.onDispose(() {
       _sub?.cancel();
       _sub = null;
+      LiveProgress.instance.cancelAssistant();
     });
     final s = _store;
     _traces = s.initialTraces;
@@ -641,6 +648,10 @@ class AssistantNotifier extends Notifier<AssistantState> {
         stage: '思考中',
       ),
     );
+    // 跟出图共用那条前台服务:退到后台等回复时进程不被冻结 / 回收
+    if (ref.read(genSettingsProvider).value?.genNotify ?? true) {
+      LiveProgress.instance.beginAssistant();
+    }
     // 记录跟着这条提问一起开:下面还要等灵感库、规则这些,这期间按了停止也得收尾。
     // 设置快照等那些取齐了再补上。
     final trace = AgentTrace(
@@ -930,6 +941,7 @@ class AssistantNotifier extends Notifier<AssistantState> {
     _finishTrace(msg);
     _sub?.cancel();
     _sub = null;
+    LiveProgress.instance.endAssistant(success: false, keep: !_appForeground);
     _set(
       state.copyWith(
         msgs: [
@@ -969,6 +981,7 @@ class AssistantNotifier extends Notifier<AssistantState> {
     LibraryScope scope,
   ) {
     _finishTrace(null);
+    LiveProgress.instance.endAssistant(success: true, keep: !_appForeground);
     // **不写创作页**。AI 的产出先当成一份「提议」挂在这条消息上,用户在结果卡上
     // 点「导入」才落地(或者不导入、直接拿它生成)。
     //
@@ -1106,6 +1119,7 @@ class AssistantNotifier extends Notifier<AssistantState> {
     _seq++;
     _sub?.cancel();
     _sub = null;
+    LiveProgress.instance.cancelAssistant();
     _set(
       state.copyWith(
         running: false,

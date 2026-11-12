@@ -90,14 +90,23 @@ class LiveProgressService : Service() {
      * 而小米/华为等的灵动岛是各家自己的私有实现,在低版本上照样有岛却一律探测为
      * false —— 按它分档等于在真有岛的机器上把完成反馈关掉。没岛的机器代价也只是
      * 通知条多显示 4 秒「完成 + 满进度条」,本来就是实话。
+     *
+     * [next] 非空 = 还有别的在跑(AI 助手):落地时服务不停,常驻那条换成 [next] 的不确定态。
      */
-    fun applyFinish(title: String, text: String, shortText: String, keep: Boolean) {
+    fun applyFinish(
+        title: String,
+        text: String,
+        shortText: String,
+        keep: Boolean,
+        next: String,
+        nextShort: String,
+    ) {
         handler.removeCallbacksAndMessages(null)
         nm().notify(
             NOTIF_ID,
             build(title, text, 1, 1, indeterminate = false, shortText = shortText, ongoing = true),
         )
-        handler.postDelayed({ settle(title, text, keep) }, HOLD_MS)
+        handler.postDelayed({ settle(title, text, keep, next, nextShort) }, HOLD_MS)
     }
 
     /**
@@ -110,8 +119,9 @@ class LiveProgressService : Service() {
      *    的话提醒发生在「开始」,真正该提醒的「完成」反而一声不吭,正好反了。
      * 两条通道各司其职:进度静默常驻,完成弹横幅。
      */
-    private fun settle(title: String, text: String, keep: Boolean) {
-        stopForegroundCompat(removeNotification = true)
+    private fun settle(title: String, text: String, keep: Boolean, next: String, nextShort: String) {
+        val handoff = next.isNotEmpty()
+        if (!handoff) stopForegroundCompat(removeNotification = true)
         if (keep) {
             ensureChannels(this)
             val b = NotificationCompat.Builder(this, DONE_CHANNEL_ID)
@@ -124,6 +134,13 @@ class LiveProgressService : Service() {
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
             if (text.isNotEmpty()) b.setContentText(text)
             nm().notify(DONE_ID, b.build())
+        }
+        if (handoff) {
+            nm().notify(
+                NOTIF_ID,
+                build(next, "", 0, 0, indeterminate = true, shortText = nextShort, ongoing = true),
+            )
+            return
         }
         stopSelf()
     }
@@ -305,8 +322,14 @@ class LiveProgressService : Service() {
             shortText: String,
         ) = post { it.applyUpdate(cur, total, indeterminate, title, text, shortText) }
 
-        fun finish(title: String, text: String, shortText: String, keep: Boolean) =
-            post { it.applyFinish(title, text, shortText, keep) }
+        fun finish(
+            title: String,
+            text: String,
+            shortText: String,
+            keep: Boolean,
+            next: String,
+            nextShort: String,
+        ) = post { it.applyFinish(title, text, shortText, keep, next, nextShort) }
 
         fun stop() = post { it.applyStop() }
 

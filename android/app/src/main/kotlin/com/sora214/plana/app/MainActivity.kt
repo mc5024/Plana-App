@@ -47,6 +47,8 @@ class MainActivity : FlutterActivity() {
                             call.argument<String>("text") ?: "",
                             call.argument<String>("short") ?: "",
                             call.argument<Boolean>("keep") ?: true,
+                            call.argument<String>("next") ?: "",
+                            call.argument<String>("nextShort") ?: "",
                         )
                         result.success(null)
                     }
