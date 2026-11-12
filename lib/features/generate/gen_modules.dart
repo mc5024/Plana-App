@@ -225,12 +225,14 @@ GenerateState stripHiddenModules(GenerateState s, GenModuleSettings ms) {
   if (!on(GenModule.character) && out.characters.isNotEmpty) {
     out = out.copyWith(characters: const []);
   }
-  // 角色槽位按模型截断(nai5 攒的 20 张切回 V4 只有前 6 张进载荷):超出的
-  // 发给 NAI 是未定义行为。截前 N 张与卡片顺序一致,卡头徽章同步标红,
-  // token 读数(countedCharacters)也走同一口径 —— 读数与载荷不许分叉。
-  final charCap = maxCharactersOf(model);
-  if (on(GenModule.character) && out.characters.length > charCap) {
-    out = out.copyWith(characters: out.characters.take(charCap).toList());
+  // 角色按模型上限收口,只数启用的(见 _withinCharCap):超出的发给 NAI 是
+  // 未定义行为。卡头徽章同步标红,token 读数(countedCharacters)也走同一口径
+  // —— 读数与载荷不许分叉。
+  if (on(GenModule.character)) {
+    final capped = _withinCharCap(out.characters, model);
+    if (!identical(capped, out.characters)) {
+      out = out.copyWith(characters: capped);
+    }
   }
   if (!on(GenModule.vibe) && out.vibes.isNotEmpty) {
     out = out.copyWith(vibes: const []);
@@ -262,9 +264,13 @@ GenerateState stripHiddenModules(GenerateState s, GenModuleSettings ms) {
   }
   // 重绘按它自己那块的尺寸发(局部是裁切区、扩图是垫大后的整张):存入后再改
   // 尺寸,画布那个尺寸就不是这块的了。请求、贴回、估价都读这份快照的宽高。
-  if (out.inpaint?.sendSize case (final w, final h)
-      when w != out.params.width || h != out.params.height) {
-    out = out.copyWith(params: out.params.copyWith(width: w, height: h));
+  if (out.inpaint?.sendSize case (
+    final w,
+    final h,
+  ) when w != out.params.width || h != out.params.height) {
+    out = out.copyWith(
+      params: out.params.copyWith(width: w, height: h),
+    );
   }
   return out;
 }
@@ -291,11 +297,25 @@ GenerateState retargetModel(GenerateState s, String model) {
   if (!crSupportsModel(model) && out.charRefs.isNotEmpty) {
     out = out.copyWith(charRefs: const []);
   }
-  final cap = maxCharactersOf(model);
-  if (out.characters.length > cap) {
-    out = out.copyWith(characters: out.characters.take(cap).toList());
+  final capped = _withinCharCap(out.characters, model);
+  if (!identical(capped, out.characters)) {
+    out = out.copyWith(characters: capped);
   }
   return out;
+}
+
+/// 启用数超出模型上限时,去掉排在后面的那几张启用卡;停用的不占额度,原样留着。
+List<CharacterPrompt> _withinCharCap(
+  List<CharacterPrompt> chars,
+  String model,
+) {
+  final cap = maxCharactersOf(model);
+  if (chars.where((c) => c.enabled).length <= cap) return chars;
+  var kept = 0;
+  return [
+    for (final c in chars)
+      if (!c.enabled || ++kept <= cap) c,
+  ];
 }
 
 /// 真正会进载荷、因而该计入 token 读数的角色串。
@@ -309,11 +329,11 @@ GenerateState retargetModel(GenerateState s, String model) {
 /// 角色切回去还是关着,anima 下被杀进程也不会把启用位丢掉。
 List<CharacterPrompt> countedCharacters(GenerateState s, GenModuleSettings ms) {
   if (!ms.isVisibleFor(GenModule.character, s.params.model)) return const [];
-  // take:槽位外的角色不进载荷(见 stripHiddenModules),读数也不许算它们。
-  return [
-    for (final c in s.characters.take(maxCharactersOf(s.params.model)))
-      if (c.enabled) c,
-  ];
+  // take:超出上限的启用卡不进载荷(见 stripHiddenModules),读数也不许算它们。
+  return s.characters
+      .where((c) => c.enabled)
+      .take(maxCharactersOf(s.params.model))
+      .toList();
 }
 
 const _key = 'gen_modules';

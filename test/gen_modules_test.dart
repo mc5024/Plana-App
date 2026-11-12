@@ -121,6 +121,38 @@ void main() {
       expect(out.characters, hasLength(1));
       expect(out.img2img, isNotNull);
     });
+
+    GenerateState chars(List<bool> enabled) => GenerateState.initial().copyWith(
+      characters: [
+        for (final (i, on) in enabled.indexed)
+          CharacterPrompt(
+            id: 'c$i',
+            name: '角色$i',
+            positive: 'p$i',
+            enabled: on,
+          ),
+      ],
+      params: const GenParams().copyWith(model: 'NAI 4.5 Full'),
+    );
+
+    test('角色上限只数启用的:7 张停掉前 6 张,第 7 张照发', () {
+      final s = chars([...List.filled(6, false), true]);
+      const ms = GenModuleSettings();
+      expect(identical(stripHiddenModules(s, ms), s), isTrue);
+      expect(countedCharacters(s, ms).map((c) => c.id), ['c6']);
+    });
+
+    test('启用数超出上限:排在后面的启用卡不进载荷,停用的留着', () {
+      final s = chars([true, false, ...List.filled(7, true)]);
+      const ms = GenModuleSettings();
+      final sent = ['c0', 'c2', 'c3', 'c4', 'c5', 'c6'];
+      expect(stripHiddenModules(s, ms).characters.map((c) => c.id), [
+        'c0',
+        'c1',
+        ...sent.skip(1),
+      ]);
+      expect(countedCharacters(s, ms).map((c) => c.id), sent);
+    });
   });
 
   test('crSupportsModel 仅 4.5 系为真', () {
