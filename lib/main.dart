@@ -5,6 +5,7 @@ import 'core/app_info.dart';
 import 'core/auth/auth_mode.dart';
 import 'core/auth/credential_store.dart';
 import 'core/auth/secure_storage.dart';
+import 'core/live_progress/live_progress.dart';
 import 'core/store/app_stores.dart';
 import 'core/store/gen_settings.dart';
 import 'core/theme/app_theme.dart';
@@ -87,8 +88,11 @@ class PlanaApp extends ConsumerWidget {
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       navigatorObservers: [_inputFocusGuard],
       // 三键导航机上整个应用让出系统导航栏,见 [NavBarGuard]
-      builder: (context, child) =>
-          ImeShiftSelect(child: NavBarGuard(child: child!)),
+      builder: (context, child) {
+        syncL10nNow(context);
+        LiveProgress.instance.syncChannelNames(context.l10n);
+        return ImeShiftSelect(child: NavBarGuard(child: child!));
+      },
       home: const _AuthGate(),
     );
   }
@@ -132,9 +136,9 @@ class _CredentialLostHintState extends ConsumerState<_CredentialLostHint> {
       if (!mounted) return;
       hintSnack(
         context,
-        '已存的 Key 被系统清掉了,重新添加后不会再丢',
+        context.l10n.keyWiped,
         icon: Icons.key_off_outlined,
-        actionLabel: '去添加',
+        actionLabel: context.l10n.goToAdd,
         onAction: () {
           if (mounted) {
             Navigator.of(context).push(sharedAxisRoute(const AccountPage()));

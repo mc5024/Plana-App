@@ -18,6 +18,7 @@ import 'common.dart' show hintSnack;
 import 'rental_panel.dart';
 import 'top_bar_status.dart' show topBarTextWidth;
 import '../../../l10n/l10n.dart';
+import '../display_names.dart';
 
 /// 单行顶栏：画布、模型和资源均裸显示。
 class GenerateTopBar extends ConsumerWidget {
@@ -64,8 +65,9 @@ class GenerateTopBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final model = ref.watch(generateProvider.select((s) => s.params.model));
-    final canvasName = ref.watch(
-      canvasWorkspaceProvider.select((w) => w.active.name),
+    final canvasName = canvasDisplayName(
+      context.l10n,
+      ref.watch(canvasWorkspaceProvider.select((w) => w.active.name)),
     );
     final rentalActive = ref.watch(gpuRentalProvider).active;
     final scheme = context.scheme;
@@ -91,10 +93,10 @@ class GenerateTopBar extends ConsumerWidget {
               flex: 5,
               child: Center(
                 child: Tooltip(
-                  message: '切换模型：$model',
+                  message: context.l10n.switchModelTooltip(model),
                   child: Semantics(
                     button: true,
-                    label: '切换模型，当前 $model',
+                    label: context.l10n.switchModelSemantics(model),
                     child: Material(
                       color: Colors.transparent,
                       borderRadius: BorderRadius.circular(12),
@@ -312,7 +314,7 @@ class _ModelSheetState extends State<_ModelSheet>
   );
 
   Widget _modelTile(String model) {
-    final desc = m.modelDescriptions[model];
+    final desc = _modelDescription(context.l10n, model);
     return ListTile(
       onTap: () => Navigator.pop(context, model),
       title: Text(m.modelName(model), style: context.texts.bodyMedium),
@@ -429,3 +431,15 @@ class _AuthModeChip extends ConsumerWidget {
     );
   }
 }
+
+/// 模型选择弹层的副标题:NAI 各档按界面语言取,其余见 [m.modelDescriptions]。
+String? _modelDescription(AppLocalizations l, String model) => switch (model) {
+  'NAI 5.0 Full' => l.descNai5Full,
+  'NAI 5.0 Full Medium' => l.descNai5Medium,
+  'NAI 5.0 Curated' => l.descNai5Curated,
+  'NAI 4.5 Full' => l.descNai45Full,
+  'NAI 4.5 Curated' => l.descNai45Curated,
+  'NAI 4.0 Full' => l.descNai4Full,
+  'NAI 4.0 Curated' => l.descNai4Curated,
+  _ => m.modelDescriptions[model],
+};

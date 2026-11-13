@@ -11,6 +11,8 @@
 /// 展示名用 app 自己的叫法(与出图侧下拉一致),那个不参与互通。
 library;
 
+import '../../l10n/l10n.dart';
+
 enum ArtistModelGroup { naiV5, naiV4, anima, krea }
 
 extension ArtistModelGroupX on ArtistModelGroup {
@@ -92,7 +94,7 @@ const kArtistModels = <ArtistModelDef>[
 ];
 
 /// 一条画风没标注任何模型时的说法。老数据(没有 models 字段)天然落在这一档。
-const kGenericModelLabel = '通用';
+String get kGenericModelLabel => l10nNow.genericModel;
 
 /// 筛选里「只看通用串」的哨兵,与真实分档 id 不会重名。
 const kGenericModelFilter = '__generic__';

@@ -22,6 +22,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/util/haptics.dart';
 import '../generate/widgets/common.dart' show confirmDialog, hintSnack;
 import 'preset_rules.dart';
+import '../../l10n/l10n.dart';
 
 class RulesPresetPage extends ConsumerWidget {
   const RulesPresetPage({super.key});
@@ -31,10 +32,10 @@ class RulesPresetPage extends ConsumerWidget {
     final lib = ref.watch(rulesLibraryProvider).value;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('规则预设'),
+        title: Text(context.l10n.rulePresets),
         actions: [
           IconButton(
-            tooltip: '导入',
+            tooltip: context.l10n.importLabel,
             onPressed: () => _import(context, ref),
             icon: const Icon(Icons.file_open_outlined),
           ),
@@ -78,7 +79,7 @@ class RulesPresetPage extends ConsumerWidget {
         title: info?.name ?? p.name,
         subtitle: [
           info?.author ?? p.author,
-          '${info?.version ?? defaultRulesVersionOf(f)} 版',
+          l10nNow.versionN(info?.version ?? defaultRulesVersionOf(f)),
         ].where((s) => s.isNotEmpty).join(' · '),
         isDefault: true,
         models: p.models,
@@ -92,7 +93,7 @@ class RulesPresetPage extends ConsumerWidget {
       title: p.name,
       subtitle: [
         if (p.author.isNotEmpty) p.author,
-        '${p.rules.length} 段',
+        l10nNow.sectionsN(p.rules.length),
       ].join(' · '),
       isDefault: false,
       models: p.models,
@@ -127,7 +128,7 @@ class RulesPresetPage extends ConsumerWidget {
       hintSnack(context, e.message, icon: Icons.error_outline);
       return;
     } catch (_) {
-      hintSnack(context, '读不了这个文件,请确认是 UTF-8 文本', icon: Icons.error_outline);
+      hintSnack(context, context.l10n.notUtf8, icon: Icons.error_outline);
       return;
     }
 
@@ -149,7 +150,11 @@ class RulesPresetPage extends ConsumerWidget {
           rules: file.rules,
         );
     if (context.mounted) {
-      hintSnack(context, '已导入「${meta.name}」', icon: Icons.check_circle_outline);
+      hintSnack(
+        context,
+        context.l10n.importedNamed(meta.name),
+        icon: Icons.check_circle_outline,
+      );
     }
   }
 
@@ -184,7 +189,11 @@ class RulesPresetPage extends ConsumerWidget {
       );
     } catch (e) {
       if (context.mounted) {
-        hintSnack(context, '导出失败:$e', icon: Icons.error_outline);
+        hintSnack(
+          context,
+          context.l10n.exportFailed('$e'),
+          icon: Icons.error_outline,
+        );
       }
     }
   }
@@ -223,7 +232,11 @@ class RulesPresetPage extends ConsumerWidget {
           rules: file.rules,
         );
     if (context.mounted) {
-      hintSnack(context, '已保存「${file.name}」', icon: Icons.check_circle_outline);
+      hintSnack(
+        context,
+        context.l10n.savedNamed(file.name),
+        icon: Icons.check_circle_outline,
+      );
     }
   }
 
@@ -241,7 +254,11 @@ class RulesPresetPage extends ConsumerWidget {
       d = await _fetchDefault(ref, f);
     } catch (e) {
       if (context.mounted) {
-        hintSnack(context, '读取默认规则失败:$e', icon: Icons.error_outline);
+        hintSnack(
+          context,
+          context.l10n.readDefaultRulesFailed('$e'),
+          icon: Icons.error_outline,
+        );
       }
       return;
     }
@@ -271,7 +288,7 @@ class RulesPresetPage extends ConsumerWidget {
     if (context.mounted) {
       hintSnack(
         context,
-        '已另存为「${file.name}」',
+        context.l10n.savedAsNamed(file.name),
         icon: Icons.check_circle_outline,
       );
     }
@@ -298,11 +315,19 @@ class RulesPresetPage extends ConsumerWidget {
         ),
       );
       if (path != null && context.mounted) {
-        hintSnack(context, '已导出「$name」', icon: Icons.check_circle_outline);
+        hintSnack(
+          context,
+          context.l10n.exportedNamed(name),
+          icon: Icons.check_circle_outline,
+        );
       }
     } catch (e) {
       if (context.mounted) {
-        hintSnack(context, '导出失败:$e', icon: Icons.error_outline);
+        hintSnack(
+          context,
+          context.l10n.exportFailed('$e'),
+          icon: Icons.error_outline,
+        );
       }
     }
   }
@@ -317,9 +342,9 @@ class RulesPresetPage extends ConsumerWidget {
   ) async {
     final ok = await confirmDialog(
       context,
-      title: '删除预设?',
-      message: '「${p.name}」将被删除,正在使用它的模型改用默认规则。',
-      confirmLabel: '删除',
+      title: context.l10n.deletePresetQ,
+      message: context.l10n.deleteRulePresetBody(p.name),
+      confirmLabel: context.l10n.delete,
     );
     if (!ok) return;
     await ref.read(rulesLibraryProvider.notifier).remove(p.id);
@@ -363,8 +388,8 @@ class _PresetCard extends StatelessWidget {
     final badge = inUse.isEmpty
         ? null
         : allInUse
-        ? '使用中'
-        : '${inUse.map(rulesFamilyLabel).join('、')} 使用中';
+        ? l10nNow.inUse
+        : l10nNow.inUseBy(inUse.map(rulesFamilyLabel).join(l10nNow.listSep));
     final notInUse = [
       for (final f in RulesFamily.values)
         if (models.contains(f) && !inUse.contains(f)) f,
@@ -414,7 +439,8 @@ class _PresetCard extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              if (isDefault) const _Tag('默认'),
+                              if (isDefault)
+                                _Tag(context.l10n.presetGroupDefault),
                               for (final f in RulesFamily.values)
                                 if (models.contains(f))
                                   _Tag(rulesFamilyLabel(f)),
@@ -433,7 +459,7 @@ class _PresetCard extends StatelessWidget {
                     // 与提示词预设页同一排按钮:编辑、导出直接摆出来,不收进菜单
                     const SizedBox(width: 4),
                     IconButton(
-                      tooltip: '编辑',
+                      tooltip: context.l10n.edit,
                       visualDensity: VisualDensity.compact,
                       onPressed: onEdit,
                       icon: Icon(
@@ -443,7 +469,7 @@ class _PresetCard extends StatelessWidget {
                       ),
                     ),
                     IconButton(
-                      tooltip: '导出',
+                      tooltip: context.l10n.export,
                       visualDensity: VisualDensity.compact,
                       onPressed: onExport,
                       icon: Icon(
@@ -454,7 +480,7 @@ class _PresetCard extends StatelessWidget {
                     ),
                     if (onDelete != null)
                       IconButton(
-                        tooltip: '删除',
+                        tooltip: context.l10n.delete,
                         visualDensity: VisualDensity.compact,
                         onPressed: onDelete,
                         icon: Icon(
@@ -564,7 +590,7 @@ class _ImportSheetState extends State<_ImportSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            '导入规则预设',
+            context.l10n.importRulePreset,
             style: context.texts.titleMedium!.copyWith(
               fontWeight: FontWeight.w700,
             ),
@@ -572,8 +598,8 @@ class _ImportSheetState extends State<_ImportSheet> {
           const SizedBox(height: 4),
           Text(
             [
-              '共 ${widget.file.rules.length} 段',
-              if (conditional) '含条件段',
+              context.l10n.totalSectionsN(widget.file.rules.length),
+              if (conditional) context.l10n.hasConditional,
             ].join(' · '),
             style: context.texts.labelSmall!.copyWith(color: scheme.outline),
           ),
@@ -581,22 +607,22 @@ class _ImportSheetState extends State<_ImportSheet> {
           TextField(
             controller: _name,
             onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              labelText: '预设名称',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: context.l10n.presetName,
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _author,
-            decoration: const InputDecoration(
-              labelText: '作者',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: context.l10n.author,
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 16),
           Text(
-            '支持的模型',
+            context.l10n.supportedModels,
             style: context.texts.labelLarge!.copyWith(
               color: scheme.onSurfaceVariant,
             ),
@@ -623,7 +649,7 @@ class _ImportSheetState extends State<_ImportSheet> {
                     models: {..._models},
                   ))
                 : null,
-            child: const Text('导入'),
+            child: Text(context.l10n.importLabel),
           ),
         ],
       ),
@@ -663,9 +689,9 @@ class _RulesEditorPageState extends State<_RulesEditorPage> {
     }
     // 导入时这两样能在弹层里补,这里没有弹层,文本里就得写全
     final missing = file.name.isEmpty
-        ? '缺少预设名称(name)'
+        ? context.l10n.missingPresetName
         : file.models.isEmpty
-        ? '缺少支持的模型(models 写 nai45、nai5)'
+        ? context.l10n.missingModels
         : null;
     if (missing != null) {
       hintSnack(context, missing, icon: Icons.error_outline);
@@ -677,9 +703,9 @@ class _RulesEditorPageState extends State<_RulesEditorPage> {
   Future<void> _confirmLeave() async {
     final ok = await confirmDialog(
       context,
-      title: '放弃修改?',
-      message: '还没保存的改动会丢掉。',
-      confirmLabel: '放弃',
+      title: context.l10n.discardChangesQ,
+      message: context.l10n.unsavedLost2,
+      confirmLabel: context.l10n.discardAction,
     );
     if (ok && mounted) Navigator.pop(context);
   }
@@ -696,7 +722,7 @@ class _RulesEditorPageState extends State<_RulesEditorPage> {
           title: Text(widget.title),
           actions: [
             IconButton(
-              tooltip: '保存',
+              tooltip: context.l10n.save,
               onPressed: _save,
               icon: const Icon(Icons.check),
             ),

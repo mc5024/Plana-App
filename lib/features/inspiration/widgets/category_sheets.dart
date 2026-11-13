@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../generate/widgets/common.dart' show confirmDialog, hintSnack;
 import '../tag_library.dart';
 import '../tag_models.dart';
+import '../../../l10n/l10n.dart';
 
 /// 类别管理:页签排序(拖动)、改名(内置类别也能改)、新建 / 编辑自定义类别、
 /// 删除(自定义类别与场景、其他)。
@@ -47,7 +48,7 @@ class _ManagerSheet extends ConsumerWidget {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '类别',
+                    context.l10n.categoryLabel,
                     style: context.texts.titleMedium!.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -81,7 +82,7 @@ class _ManagerSheet extends ConsumerWidget {
               child: OutlinedButton.icon(
                 onPressed: () => _create(context, ref),
                 icon: const Icon(Icons.add, size: 18),
-                label: const Text('新建类别'),
+                label: Text(context.l10n.newCategory),
               ),
             ),
           ],
@@ -145,7 +146,7 @@ class _ManagerSheet extends ConsumerWidget {
               style: mono(context, size: 12, color: scheme.outline),
             ),
           IconButton(
-            tooltip: custom ? '编辑' : '改名',
+            tooltip: custom ? context.l10n.edit : context.l10n.renameShort,
             icon: Icon(
               Icons.edit_outlined,
               size: 20,
@@ -156,7 +157,7 @@ class _ManagerSheet extends ConsumerWidget {
           // 删除钮固定在行尾;角色、画风、法典不能删,留同宽的空位让各行对齐
           if (removable)
             IconButton(
-              tooltip: '删除',
+              tooltip: context.l10n.delete,
               icon: Icon(Icons.delete_outline, size: 20, color: scheme.error),
               onPressed: () => _remove(context, ref, lib, def!),
             )
@@ -174,7 +175,8 @@ class _ManagerSheet extends ConsumerWidget {
     // 和删掉的场景 / 其他同名:把原来那一类加回来
     final lib = ref.read(tagLibraryProvider).value;
     for (final d in kTagCategoryDefs) {
-      if (d.label == v.label && (lib?.isRemoved(d.webId) ?? false)) {
+      if ((d.label == v.label || builtinCategoryLabel(d.webId) == v.label) &&
+          (lib?.isRemoved(d.webId) ?? false)) {
         await notifier.restoreBuiltin(d.webId);
         return;
       }
@@ -201,7 +203,7 @@ class _ManagerSheet extends ConsumerWidget {
     final name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('改名'),
+        title: Text(context.l10n.renameShort),
         content: TextField(
           controller: input,
           autofocus: true,
@@ -221,11 +223,11 @@ class _ManagerSheet extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, input.text),
-            child: const Text('保存'),
+            child: Text(context.l10n.save),
           ),
         ],
       ),
@@ -236,7 +238,11 @@ class _ManagerSheet extends ConsumerWidget {
     if (label.isNotEmpty &&
         label != current &&
         takenCategoryLabels(lib, except: key).contains(label)) {
-      hintSnack(context, '已有同名类别', icon: Icons.error_outline);
+      hintSnack(
+        context,
+        context.l10n.categoryExists,
+        icon: Icons.error_outline,
+      );
       return;
     }
     await ref.read(tagLibraryProvider.notifier).renameBuiltin(key, label);
@@ -269,14 +275,16 @@ class _ManagerSheet extends ConsumerWidget {
   ) async {
     final n = lib.of(def.key).length;
     final builtin = !def.key.isCustom;
-    final entries = n == 0 ? '这个类别还没有条目。' : '类别里的 $n 个条目会一起删除,不可恢复。';
+    final entries = n == 0
+        ? context.l10n.categoryEmpty
+        : context.l10n.categoryDeleteN(n);
     final ok = await confirmDialog(
       context,
-      title: '删除「${def.label}」?',
+      title: context.l10n.deleteNamedQ(def.label),
       message: builtin
-          ? '$entries\n之后新建一个叫「${kTagCategoryDefs.firstWhere((d) => d.key == def.key).label}」的类别,可以把它加回来。'
+          ? '$entries\n${context.l10n.categoryReAdd(builtinCategoryLabel(def.webId))}'
           : entries,
-      confirmLabel: '删除',
+      confirmLabel: context.l10n.delete,
     );
     if (!ok) return;
     final notifier = ref.read(tagLibraryProvider.notifier);
@@ -338,7 +346,11 @@ class _EditSheetState extends ConsumerState<_EditSheet> {
     if (label.isEmpty) return;
     final lib = ref.read(tagLibraryProvider).value ?? const TagLibraryState();
     if (takenCategoryLabels(lib, except: widget.edit?.webId).contains(label)) {
-      hintSnack(context, '已有同名类别', icon: Icons.error_outline);
+      hintSnack(
+        context,
+        context.l10n.categoryExists,
+        icon: Icons.error_outline,
+      );
       return;
     }
     Navigator.pop(context, (label: label, iconName: _icon, layout: _layout));
@@ -358,7 +370,9 @@ class _EditSheetState extends ConsumerState<_EditSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                widget.edit == null ? '新建类别' : '编辑类别',
+                widget.edit == null
+                    ? context.l10n.newCategory
+                    : context.l10n.editCategory,
                 style: context.texts.titleMedium!.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -391,7 +405,7 @@ class _EditSheetState extends ConsumerState<_EditSheet> {
                       ),
                       decoration: InputDecoration(
                         isDense: true,
-                        hintText: '类别名称',
+                        hintText: context.l10n.categoryName,
                         counterText: '',
                         filled: true,
                         fillColor: scheme.surfaceContainerHigh,
@@ -411,7 +425,7 @@ class _EditSheetState extends ConsumerState<_EditSheet> {
                 ],
               ),
               const SizedBox(height: 18),
-              _label('图标'),
+              _label(context.l10n.icon),
               GridView.count(
                 crossAxisCount: _iconCols,
                 shrinkWrap: true,
@@ -424,7 +438,7 @@ class _EditSheetState extends ConsumerState<_EditSheet> {
                 ],
               ),
               const SizedBox(height: 18),
-              _label('预览图'),
+              _label(context.l10n.previewImage),
               Row(
                 children: [
                   for (final l in TagCardLayout.values) ...[
@@ -443,7 +457,7 @@ class _EditSheetState extends ConsumerState<_EditSheet> {
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(0, 48),
                       ),
-                      child: const Text('取消'),
+                      child: Text(context.l10n.cancel),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -453,7 +467,11 @@ class _EditSheetState extends ConsumerState<_EditSheet> {
                       style: FilledButton.styleFrom(
                         minimumSize: const Size(0, 48),
                       ),
-                      child: Text(widget.edit == null ? '创建' : '保存'),
+                      child: Text(
+                        widget.edit == null
+                            ? context.l10n.create
+                            : context.l10n.save,
+                      ),
                     ),
                   ),
                 ],

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/store/app_stores.dart';
 import '../../core/store/prefs_store.dart';
 import '../generate/models.dart' show isNai5Model;
+import '../../l10n/l10n.dart';
 
 /// 放大方式。全部走 NAI 远程、全部扣点 —— 本地 ncnn-vulkan 超分已于
 /// 2026-08-24 整条砍掉(连 18MB 的 Real-ESRGAN native 一起),不再有离线档。
@@ -15,19 +16,18 @@ enum UpscaleMethod {
   /// 旧的传统 4× 超分(api 子域、只收三种固定尺寸、固定 7 点)官方已下线,
   /// 2026-08-31 从本 app 整条摘掉 —— 存量偏好里那个 `nai` 由 [UpscaleSettings]
   /// 的 orElse 落到这一档。
-  naiV5(label: 'V5 超分', badge: '2x', factor: 2),
+  naiV5(badge: '2x', factor: 2),
 
   /// NAI 图生图重绘放大(倍率可选,会轻微改画面;走生成管线,扣点)。
   /// 倍率见 [EnhanceScale],所以 [factor] 无意义。
-  redraw(label: '重绘放大', badge: '1~2x', factor: 0);
+  redraw(badge: '1~2x', factor: 0);
 
-  const UpscaleMethod({
-    required this.label,
-    required this.badge,
-    required this.factor,
-  });
+  const UpscaleMethod({required this.badge, required this.factor});
 
-  final String label;
+  String get label => switch (this) {
+    naiV5 => l10nNow.upscaleV5,
+    redraw => l10nNow.redrawUpscale,
+  };
 
   /// 角标里的倍率文案。
   final String badge;

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
 import '../util/haptics.dart';
+import '../../l10n/l10n.dart';
 
 /// 把 [v] 量化到 [divisions] 等分的刻度上。算法与 Flutter 自己的 `_discretize`
 /// 一致(归一化 → 取整 → 插值回去),换掉离散 Slider 后取值分毫不差。
@@ -198,12 +199,12 @@ class _ParamInputDialogState extends State<_ParamInputDialog> {
   void _submit() {
     final v = double.tryParse(_ctrl.text.trim());
     if (v == null) {
-      setState(() => _error = '请输入数字');
+      setState(() => _error = context.l10n.enterNumber);
       return;
     }
     // 留一点浮点容差:边界值(如 max=0.99)按位数打出来再读回来会差个尾数
     if (v < widget.min - 1e-9 || v > widget.max + 1e-9) {
-      setState(() => _error = '超出范围 $_range');
+      setState(() => _error = context.l10n.outOfRange(_range));
       return;
     }
     Navigator.pop(
@@ -277,8 +278,8 @@ class _ParamInputDialogState extends State<_ParamInputDialog> {
           Text(
             _error ??
                 (_step == null
-                    ? '范围 $_range'
-                    : '范围 $_range · 步长 ${_plain(_step)}'),
+                    ? context.l10n.rangeHint(_range)
+                    : context.l10n.rangeStepHint(_range, _plain(_step))),
             textAlign: TextAlign.center,
             style: context.texts.labelSmall!.copyWith(
               color: _error == null ? scheme.outline : scheme.error,
@@ -289,9 +290,9 @@ class _ParamInputDialogState extends State<_ParamInputDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
+          child: Text(context.l10n.cancel),
         ),
-        FilledButton(onPressed: _submit, child: const Text('确定')),
+        FilledButton(onPressed: _submit, child: Text(context.l10n.ok)),
       ],
     );
   }

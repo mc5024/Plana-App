@@ -31,10 +31,10 @@ String cleanPromptToken(String s) {
   return t.replaceAll(_reSpaces, ' ').trim().toLowerCase();
 }
 
-/// 逗号切词(中英文逗号)→ 清洗 → 去重集合。
+/// 逗号(中英文)/ 换行切词 → 清洗 → 去重集合。
 Set<String> tokenizeSet(String text) {
   final out = <String>{};
-  for (final p in text.split(RegExp(r'[，,]'))) {
+  for (final p in text.split(RegExp(r'[，,\n]'))) {
     final t = cleanPromptToken(p);
     if (t.isNotEmpty) out.add(t);
   }

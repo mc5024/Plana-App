@@ -1277,12 +1277,3 @@ Future<ImageMetadata?> _extract(Uint8List bytes, _PngTextChunks chunks) async {
     return null;
   }
 }
-
-/// 尺寸类型(与 web `getPictureSizeType` 一致)。
-String pictureSizeType(int w, int h) {
-  if (w == 832 && h == 1216) return '竖图';
-  if (w == 1216 && h == 832) return '横图';
-  if (w == 1024 && h == 1024) return '方图';
-  if (w == 1984 && h == 832) return '宽图';
-  return '$w×$h';
-}

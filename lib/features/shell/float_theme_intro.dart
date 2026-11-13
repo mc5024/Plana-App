@@ -12,6 +12,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_settings.dart';
 import '../../core/ui/theme_swatches.dart';
 import '../generate/widgets/common.dart' show hintSnack;
+import '../../l10n/l10n.dart';
 
 const _kSeenKey = 'float_theme_intro_seen';
 
@@ -51,9 +52,9 @@ Future<void> showFloatThemeIntro(BuildContext context, WidgetRef ref) async {
   if (!context.mounted) return;
   hintSnack(
     context,
-    '已换成浮卡,可在「外观与触感」换回',
+    context.l10n.switchedToFloat,
     icon: Icons.palette_outlined,
-    actionLabel: '换回',
+    actionLabel: context.l10n.switchBack,
     onAction: () => notifier.patch((x) => x.copyWith(seedKey: before.seedKey)),
   );
 }
@@ -72,12 +73,12 @@ class _IntroDialogState extends State<_IntroDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      title: const Text('试试新主题？'),
+      title: Text(context.l10n.tryNewTheme),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('全新外观上线啦!卡片更清爽,挑个喜欢的吧~'),
+          Text(context.l10n.newThemeBody),
           const SizedBox(height: 20),
           Wrap(
             alignment: WrapAlignment.center,
@@ -86,7 +87,9 @@ class _IntroDialogState extends State<_IntroDialog> {
             children: [
               for (final a in floatAccents)
                 ThemeSwatch(
-                  label: '浮卡 ${a.label}',
+                  label: context.l10n.floatCardsColor(
+                    themeColorName(context.l10n, a.key, a.label),
+                  ),
                   size: 42,
                   selected: a == _picked,
                   fill: floatSwatchFill(a),
@@ -100,11 +103,11 @@ class _IntroDialogState extends State<_IntroDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('以后再说'),
+          child: Text(context.l10n.later),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(_picked),
-          child: const Text('试试'),
+          child: Text(context.l10n.tryIt),
         ),
       ],
     );

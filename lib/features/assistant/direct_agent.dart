@@ -37,6 +37,7 @@ import 'assistant_settings.dart';
 import 'custom_endpoint.dart';
 import 'local_library.dart';
 import 'preset_rules.dart';
+import '../../l10n/l10n.dart';
 
 /// 一轮里最多跑几跳(每跳 = 一次模型调用)。
 ///
@@ -354,7 +355,7 @@ Stream<AgentEvent> streamDirectPrompt({
         yield d;
       }
       final raw = buf.toString();
-      if (raw.trim().isEmpty) throw BackendException('模型回了一段空的');
+      if (raw.trim().isEmpty) throw BackendException(l10nNow.modelEmptyReply);
       final hopRec = <String, Object?>{
         't': hopStart,
         'ms': (trace?.sinceStart() ?? 0) - hopStart,
@@ -465,7 +466,7 @@ AgentResult _toResult(
 ) {
   final d = draw ?? const <String, dynamic>{};
   return AgentResult(
-    replyText: reply.isNotEmpty ? reply : '本喵在喵~',
+    replyText: reply.isNotEmpty ? reply : l10nNow.replyHereFallback,
     positive: d['positive']?.toString() ?? '',
     negative: d['negative']?.toString() ?? '',
     characters: [
@@ -731,7 +732,9 @@ Stream<AgentDelta> directModelStream(
     )
     ..bodyBytes = utf8.encode(jsonEncode(body));
 
-  final noReply = BackendException('模型 ${timeout?.inSeconds} 秒内没有回复');
+  final noReply = BackendException(
+    l10nNow.modelNoReplyIn('${timeout?.inSeconds}'),
+  );
   Future<T> limited<T>(Future<T> f) async {
     if (timeout == null) return f;
     try {
@@ -750,7 +753,7 @@ Stream<AgentDelta> directModelStream(
   } on BackendException {
     rethrow;
   } catch (_) {
-    throw BackendException('连不上 ${uri.host}');
+    throw BackendException(l10nNow.cantConnectHost(uri.host));
   }
 
   if (resp.statusCode < 200 || resp.statusCode >= 300) {
@@ -1128,15 +1131,16 @@ String? thinkLevelNote(CustomEndpoint e, ThinkLevel level) {
   switch (e.format) {
     case AgentApiFormat.openai:
       return switch (level) {
-        ThinkLevel.off => '该格式没有「关闭」档,按最低档发送',
-        ThinkLevel.ultra => '该格式没有「超高」档,按「高」发送',
+        ThinkLevel.off => l10nNow.thinkNoOffFormat,
+        ThinkLevel.ultra => l10nNow.thinkNoUltraFormat,
         _ => null,
       };
     case AgentApiFormat.google:
       if (geminiThinkingOf(e.model) != GeminiThinking.level) return null;
       return switch (level) {
-        ThinkLevel.off => '该模型不能关闭思考,按「低」发送',
-        ThinkLevel.ultra when !_geminiHasXHigh(e.model) => '该模型没有「超高」档,按「高」发送',
+        ThinkLevel.off => l10nNow.thinkNoOffModel,
+        ThinkLevel.ultra when !_geminiHasXHigh(e.model) =>
+          l10nNow.thinkNoUltraModel,
         _ => null,
       };
     case AgentApiFormat.anthropic:
@@ -1163,7 +1167,7 @@ Future<Duration> testEndpoint(CustomEndpoint e, {http.Client? client}) async {
       stream: false,
     ).drain<void>();
     if (out.toString().trim().isEmpty) {
-      throw BackendException('接口有响应,但没读出回复内容,检查格式是否选对');
+      throw BackendException(l10nNow.replyUnreadable);
     }
     return sw.elapsed;
   } finally {
@@ -1219,5 +1223,5 @@ String _errorOf(Object? body, int status) {
     final m = body['message']?.toString();
     if (m != null && m.isNotEmpty) return m;
   }
-  return '模型返回 $status';
+  return l10nNow.modelReturned('$status');
 }

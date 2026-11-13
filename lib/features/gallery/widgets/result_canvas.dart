@@ -31,6 +31,7 @@ import '../save_settings.dart';
 import '../upscale_model.dart';
 import '../upscale_nai.dart';
 import 'save_sheet.dart';
+import '../../../l10n/l10n.dart';
 
 /// 持久大图层:有字节 → `Image.memory`(gaplessPlayback);否则画一个目标尺寸的空画框。
 /// 生成/查看全程复用同一个 Image widget,借 gaplessPlayback 桥接逐帧预览与终图,消除切换闪烁。
@@ -146,7 +147,8 @@ class ProgressPill extends StatelessWidget {
     if (status.sampling && status.step < status.total) {
       return '${status.step}/${status.total}';
     }
-    return status.note ?? (status.sampling ? '收尾中' : '准备中');
+    return status.note ??
+        (status.sampling ? l10nNow.finishing : l10nNow.preparing);
   }
 
   /// 胶囊那一套配套的数。**别单独动其中一个** —— 它们互相定死了:
@@ -357,26 +359,28 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     _RailButton(
-                      label: '重绘',
+                      label: context.l10n.inpaint,
                       icon: Icons.brush,
                       onTap: () => _inpaint(context, ref),
                     ),
                     const SizedBox(height: 10),
                     _RailButton(
-                      label: '放大',
+                      label: context.l10n.upscale,
                       icon: Icons.open_in_full,
                       onTap: () => _upscale(context, ref),
                     ),
                     const SizedBox(height: 10),
                     _RailButton(
-                      label: result.saved ? '已保存' : '保存',
+                      label: result.saved
+                          ? context.l10n.savedLabel
+                          : context.l10n.save,
                       icon: result.saved ? Icons.download_done : Icons.download,
                       onTap: () => _download(context, ref),
                       onLongPress: () => _openSaveSheet(context, ref),
                     ),
                     const SizedBox(height: 10),
                     _RailButton(
-                      label: '导入',
+                      label: context.l10n.importLabel,
                       icon: Icons.input,
                       onTap: () => _import(context, ref),
                     ),
@@ -398,7 +402,7 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
               // 只有重绘产物才有「之前」可看;源图被删了也不给(取不到字节)。
               if (result.inpaintFrom != null) ...[
                 _RailButton(
-                  label: '对比',
+                  label: context.l10n.compare,
                   icon: Icons.compare,
                   onHold: (down) => _compare(context, ref, down),
                   onTap: () {},
@@ -406,7 +410,7 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
                 const SizedBox(width: 10),
               ],
               _RailButton(
-                label: '重新生成',
+                label: context.l10n.regenerate,
                 icon: Icons.refresh,
                 primary: true,
                 onTap: () => _regenerate(context, ref),
@@ -472,7 +476,11 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
   /// 排不排得下由池子的上限说了算。
   bool _blockWhileInpainting(BuildContext context, WidgetRef ref) {
     if (!ref.read(inpaintStatusProvider).busy) return false;
-    hintSnack(context, '重绘进行中,请稍候', icon: Icons.hourglass_top);
+    hintSnack(
+      context,
+      context.l10n.inpaintInProgress,
+      icon: Icons.hourglass_top,
+    );
     return true;
   }
 
@@ -489,7 +497,7 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
     if (isModalModel(model)) {
       hintSnack(
         context,
-        '${isKreaModel(model) ? 'Krea 2' : 'Anima'} 模型不支持重绘,请先切回 NovelAI 模型',
+        context.l10n.inpaintNeedNai(isKreaModel(model) ? 'Krea 2' : 'Anima'),
         icon: Icons.block,
       );
       return;
@@ -497,7 +505,7 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
     final bytes = await _bytesOf(ref);
     if (!context.mounted) return;
     if (bytes == null) {
-      hintSnack(context, '此图无像素数据', icon: Icons.error_outline);
+      hintSnack(context, context.l10n.noPixelData, icon: Icons.error_outline);
       return;
     }
     ref
@@ -511,7 +519,7 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
     final bytes = await _bytesOf(ref);
     if (!context.mounted) return;
     if (bytes == null) {
-      hintSnack(context, '此图无像素数据', icon: Icons.error_outline);
+      hintSnack(context, context.l10n.noPixelData, icon: Icons.error_outline);
       return;
     }
     final w = result.width, h = result.height;
@@ -533,11 +541,11 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
         : enhanceScaleOptions(w, h, curModel);
     // 不可用时把**原因**一起算出来:三种原因差得远,看不见的缺席最难查。
     final redrawWhy = snapshot == null
-        ? '这张图没有参数快照,重绘放大用不了(只有本机生成的图带快照)'
+        ? context.l10n.redrawNoSnapshot
         : isModalModel(curModel)
-        ? '$curModel 不支持图生图,重绘放大要先切回 NAI 模型'
+        ? context.l10n.redrawModelUnsupported(curModel)
         : scales.isEmpty
-        ? '源图 $w×$h 已超过 NAI 的总像素上限,重绘放不出任何倍率'
+        ? context.l10n.redrawTooLarge(w, h)
         : null;
 
     // 1. 上次那套参数(不可用的方式/倍率就地回退,免得面板一开就是个死选项)。
@@ -595,7 +603,7 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
     }
 
     // 2. 进度对话框:远程一次性调用没有逐步进度,只走阶段文案 + 不确定动画
-    final stage = ValueNotifier<String>('准备…');
+    final stage = ValueNotifier<String>(context.l10n.preparingEllipsis);
     unawaited(
       showDialog<void>(
         context: context,
@@ -638,14 +646,18 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
       if (context.mounted) {
         hintSnack(
           context,
-          '${method.label}完成 $outW×$outH,已存入图库',
+          context.l10n.upscaleDone(method.label, outW, outH),
           icon: Icons.check_circle_outline,
         );
       }
     } catch (e) {
       if (context.mounted) Navigator.of(context).pop();
       if (context.mounted) {
-        hintSnack(context, '超分失败: $e', icon: Icons.error_outline);
+        hintSnack(
+          context,
+          context.l10n.upscaleFailed('$e'),
+          icon: Icons.error_outline,
+        );
       }
     } finally {
       stage.dispose();
@@ -669,7 +681,11 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
   ) async {
     final scale = cfg.enhanceScale;
     if (input == null) {
-      hintSnack(context, '缺少参数快照,无法重绘放大', icon: Icons.error_outline);
+      hintSnack(
+        context,
+        context.l10n.redrawNoSnapshotShort,
+        icon: Icons.error_outline,
+      );
       return;
     }
     final isMax = scale.factor == null;
@@ -695,8 +711,17 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
     hintSnack(
       context,
       isMax
-          ? '开始 Max 重绘 ≈${target.w}×${target.h} · ${modelName(input.params.model)}'
-          : '开始 ${scale.label} 重绘 ${t.w}×${t.h} · ${modelName(input.params.model)}',
+          ? context.l10n.redrawStartMax(
+              target.w,
+              target.h,
+              modelName(input.params.model),
+            )
+          : context.l10n.redrawStart(
+              scale.label,
+              t.w,
+              t.h,
+              modelName(input.params.model),
+            ),
       icon: Icons.auto_fix_high,
     );
   }
@@ -706,7 +731,11 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
     final bytes = await _bytesOf(ref);
     if (!context.mounted) return;
     if (bytes == null) {
-      hintSnack(context, '图片尚未就绪', icon: Icons.hourglass_empty);
+      hintSnack(
+        context,
+        context.l10n.imageNotReady,
+        icon: Icons.hourglass_empty,
+      );
       return;
     }
     unawaited(
@@ -730,7 +759,11 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
       final ok = await Gal.hasAccess() || await Gal.requestAccess();
       if (!ok) {
         if (context.mounted) {
-          hintSnack(context, '未获相册权限', icon: Icons.error_outline);
+          hintSnack(
+            context,
+            context.l10n.noPhotoPermission,
+            icon: Icons.error_outline,
+          );
         }
         return;
       }
@@ -744,15 +777,23 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
       );
       gallery.markSaved([result.id]);
       if (context.mounted) {
-        hintSnack(context, '已保存到相册', icon: Icons.check_circle_outline);
+        hintSnack(
+          context,
+          context.l10n.savedToPhotos1,
+          icon: Icons.check_circle_outline,
+        );
       }
     } on GalException catch (_) {
       if (context.mounted) {
-        hintSnack(context, '保存失败', icon: Icons.error_outline);
+        hintSnack(context, context.l10n.saveFailed, icon: Icons.error_outline);
       }
     } catch (e) {
       if (context.mounted) {
-        hintSnack(context, '保存失败: $e', icon: Icons.error_outline);
+        hintSnack(
+          context,
+          context.l10n.saveFailedSpace('$e'),
+          icon: Icons.error_outline,
+        );
       }
     }
   }
@@ -762,7 +803,11 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
     final bytes = await _bytesOf(ref);
     if (!context.mounted) return;
     if (bytes == null) {
-      hintSnack(context, '图片尚未就绪', icon: Icons.hourglass_empty);
+      hintSnack(
+        context,
+        context.l10n.imageNotReady,
+        icon: Icons.hourglass_empty,
+      );
       return;
     }
     await showSaveSheet(context, bytes: bytes, image: result);
@@ -773,7 +818,11 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
     final input = await _inputOf(ref);
     if (!context.mounted) return;
     if (input == null) {
-      hintSnack(context, '缺少参数快照,无法重新生成', icon: Icons.error_outline);
+      hintSnack(
+        context,
+        context.l10n.regenNoSnapshot,
+        icon: Icons.error_outline,
+      );
       return;
     }
     unawaited(
@@ -954,7 +1003,7 @@ class _SaveAlbumChip extends ConsumerWidget {
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 160),
                   child: Text(
-                    '保存到 $name',
+                    context.l10n.saveToNamed(name),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: context.texts.labelLarge?.copyWith(
@@ -1058,7 +1107,13 @@ class _UpscalePanelState extends ConsumerState<_UpscalePanel> {
       if (!mounted) return;
       setState(() => _ext = _ExternalImage(file.baseName, file.bytes, w, h));
     } catch (_) {
-      if (mounted) hintSnack(context, '无法读取这张图片', icon: Icons.error_outline);
+      if (mounted) {
+        hintSnack(
+          context,
+          context.l10n.cantReadImage,
+          icon: Icons.error_outline,
+        );
+      }
     } finally {
       if (mounted) setState(() => _importing = false);
     }
@@ -1116,14 +1171,14 @@ class _UpscalePanelState extends ConsumerState<_UpscalePanel> {
 
   /// 超分那一句话说明(含价钱);尺寸不受理时说清为什么。
   String get _upscaleNote => _upscaleOk
-      ? 'V5 扩散超分 · 固定 2× · ${naiV5UpscalePrice(_w, _h)} 点'
-      : '源图 $_w×$_h 超过 3,145,728 像素,超分不受理';
+      ? context.l10n.upscaleNote(naiV5UpscalePrice(_w, _h) ?? 0)
+      : context.l10n.upscaleTooLarge(_w, _h);
 
   /// 当前倍率档在干什么。Max 档的尺寸是服务端定的,这里只能给估值。
   String get _scaleNote => switch (_s.enhanceScale) {
-    EnhanceScale.x1 => '同尺寸重新生成,只精修细节、不放大',
-    EnhanceScale.max => '发原图尺寸,由 NovelAI 放到最大后重绘',
-    final s => '以 ${s.label} 分辨率重新生成,画面会变',
+    EnhanceScale.x1 => context.l10n.scaleNoteX1,
+    EnhanceScale.max => context.l10n.scaleNoteMax,
+    final s => context.l10n.scaleNoteScale(s.label),
   };
 
   /// Max 档为什么没出现。**看不见的缺席最难查** —— 两个条件各有各的说法,
@@ -1133,11 +1188,10 @@ class _UpscalePanelState extends ConsumerState<_UpscalePanel> {
     final model = widget.redrawInput?.params.model;
     if (model == null) return null;
     if (!isNai5Model(model)) {
-      return 'Max 档只有 V5 有;当前模型是 ${modelName(model)},重绘也按它跑';
+      return context.l10n.maxOnlyV5(modelName(model));
     }
     // 官方阈值:源图像素要小于 0.8×上限才提供 Max
-    return 'Max 档要求源图小于 2,516,582 像素,'
-        '这张 ${widget.width}×${widget.height} 太大了';
+    return context.l10n.maxTooLarge(widget.width, widget.height);
   }
 
   @override
@@ -1163,7 +1217,7 @@ class _UpscalePanelState extends ConsumerState<_UpscalePanel> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '放大',
+                    context.l10n.upscale,
                     style: context.texts.titleMedium!.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -1187,7 +1241,7 @@ class _UpscalePanelState extends ConsumerState<_UpscalePanel> {
                       Icons.add_photo_alternate_outlined,
                       size: 18,
                     ),
-                    label: const Text('导入图片'),
+                    label: Text(context.l10n.importImage),
                   ),
                 ],
               ),
@@ -1249,7 +1303,7 @@ class _UpscalePanelState extends ConsumerState<_UpscalePanel> {
           onPressed: () => setState(() => _ext = null),
           icon: const Icon(Icons.close_rounded, size: 20),
           color: scheme.onSurfaceVariant,
-          tooltip: '取消',
+          tooltip: context.l10n.cancel,
         ),
       ],
     );
@@ -1262,12 +1316,12 @@ class _UpscalePanelState extends ConsumerState<_UpscalePanel> {
       segments: [
         ButtonSegment(
           value: false,
-          label: const Text('超分辨率'),
+          label: Text(context.l10n.upscaleResolution),
           enabled: _upscaleOk,
         ),
         ButtonSegment(
           value: true,
-          label: const Text('图生图放大'),
+          label: Text(context.l10n.img2imgUpscale),
           enabled: widget.redrawWhy == null,
         ),
       ],
@@ -1302,7 +1356,7 @@ class _UpscalePanelState extends ConsumerState<_UpscalePanel> {
           Expanded(
             child: _dropdown<EnhanceScale>(
               scheme,
-              label: '倍率',
+              label: context.l10n.scaleLabel,
               value: _s.enhanceScale,
               items: [
                 for (final s in widget.redrawScales) (value: s, text: s.label),
@@ -1315,14 +1369,17 @@ class _UpscalePanelState extends ConsumerState<_UpscalePanel> {
           Expanded(
             child: _dropdown<int>(
               scheme,
-              label: '档位',
+              label: context.l10n.magnitudeLabel,
               value: mag,
               items: [
                 for (var i = 0; i < kMagnitudePresets.length; i++)
-                  (value: i, text: '档 ${kMagnitudePresets[i].label}'),
+                  (
+                    value: i,
+                    text: context.l10n.magnitudeN(kMagnitudePresets[i].label),
+                  ),
                 // 两个滑杆微调过之后就不在任何一档上 —— 列一个占位项,
                 // 否则 DropdownButton 的 value 不在 items 里会直接抛。
-                if (mag < 0) (value: -1, text: '自定义'),
+                if (mag < 0) (value: -1, text: context.l10n.sizeCustom),
               ],
               onChanged: (i) {
                 if (i < 0) return;
@@ -1346,7 +1403,7 @@ class _UpscalePanelState extends ConsumerState<_UpscalePanel> {
       ],
       const SizedBox(height: 6),
       ParamSlider(
-        label: '强度 Strength',
+        label: context.l10n.strengthStrength,
         help: Help.img2imgStrength,
         value: _s.strength,
         min: kStrengthMin,
@@ -1357,7 +1414,7 @@ class _UpscalePanelState extends ConsumerState<_UpscalePanel> {
         onChanged: (v) => _set(_s.copyWith(strength: v)),
       ),
       ParamSlider(
-        label: '噪声 Noise',
+        label: context.l10n.noiseNoise,
         help: Help.img2imgNoise,
         value: _s.noise,
         max: kNoiseMax,
@@ -1441,9 +1498,9 @@ class _UpscalePanelState extends ConsumerState<_UpscalePanel> {
               size: 18,
             ),
             const SizedBox(width: 7),
-            const Text(
-              '开始放大',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+            Text(
+              context.l10n.startUpscale,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
             ),
             const SizedBox(width: 8),
             Text(

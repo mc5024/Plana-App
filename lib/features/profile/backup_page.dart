@@ -17,6 +17,7 @@ import '../migrate/web_backup_import.dart';
 import '../vibe_library/vibe_cloud_sync.dart';
 import '../vibe_library/vibe_library.dart';
 import 'widgets/settings_ui.dart';
+import '../../l10n/l10n.dart';
 
 /// 云端条数与更新时间(unix 秒)。
 typedef _Cloud = ({int count, int updatedAt});
@@ -105,7 +106,11 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     if (_busy != null) return;
     final session = ref.read(botSessionProvider).value;
     if (session == null) {
-      hintSnack(context, '暂未开放', icon: Icons.cloud_off_outlined);
+      hintSnack(
+        context,
+        context.l10n.notAvailableYet,
+        icon: Icons.cloud_off_outlined,
+      );
       return;
     }
     setState(() {
@@ -394,25 +399,33 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         final f = parseBackupFile(j);
         out = await _importTagFile(f.cat, f.items);
       } else {
-        throw const FormatException('不是可识别的备份文件');
+        throw FormatException(context.l10n.notBackupFile);
       }
       if (out == null || !mounted) return; // 自选面板里取消
       setState(() => _result = out);
       hintSnack(
         context,
-        out.errors.isEmpty ? '导入完成' : '导入完成,${out.errors.length} 项失败',
+        out.errors.isEmpty
+            ? context.l10n.importComplete
+            : context.l10n.importCompleteFailed(out.errors.length),
         icon: out.errors.isEmpty ? Icons.check : Icons.warning_amber_outlined,
       );
     } on FormatException catch (e) {
       if (mounted) {
         hintSnack(
           context,
-          e.message.isEmpty ? '不是有效的 JSON 文件' : e.message,
+          e.message.isEmpty ? context.l10n.notValidJson : e.message,
           icon: Icons.error_outline,
         );
       }
     } catch (e) {
-      if (mounted) hintSnack(context, '导入失败:$e', icon: Icons.error_outline);
+      if (mounted) {
+        hintSnack(
+          context,
+          context.l10n.importFailed('$e'),
+          icon: Icons.error_outline,
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -425,7 +438,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
 
   /// web「设置 → 数据备份」的全量备份:五类自选导入。
   Future<WebBackupImportOutcome?> _importWebBackup(WebBackup b) {
-    if (b.isEmpty) throw const FormatException('这份 web 备份里没有可导入的内容');
+    if (b.isEmpty) throw FormatException(context.l10n.webBackupEmpty);
     return runWebBackupImport(
       context,
       ref,
@@ -443,21 +456,22 @@ class _BackupPageState extends ConsumerState<BackupPage> {
   ) async {
     final custom = ref.read(tagLibraryProvider).value?.customDefs ?? const [];
     if (cat.isCustom && !custom.any((d) => d.key == cat)) {
-      throw const FormatException('文件里的自定义分类在本机不存在');
+      throw FormatException(context.l10n.customCatMissing);
     }
-    if (items.isEmpty) throw const FormatException('文件里没有条目');
+    if (items.isEmpty) throw FormatException(context.l10n.fileNoEntries);
     final lib = ref.read(tagLibraryProvider.notifier);
     final d = tagCategoryDef(cat);
-    final label = '灵感库 · ${d.label}';
+    final l = context.l10n;
+    final label = l.inspirationOf(d.label);
     final payload = {d.webId: items};
     final picked = await showImportPicker(
       context,
-      title: '选择要导入的内容',
+      title: context.l10n.chooseImportContent,
       options: [
         ImportOption(
           key: d.webId,
           label: label,
-          detail: '${items.length} 条',
+          detail: context.l10n.itemsN(items.length),
           conflict: lib.previewMerge(payload).overwrite,
         ),
       ],
@@ -465,7 +479,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     if (picked == null || picked.isEmpty) return null;
     final s = (await lib.mergeBackup(payload))[cat];
     return (
-      rows: [(label, '新增 ${s?.added ?? 0} · 覆盖 ${s?.updated ?? 0}')],
+      rows: [(label, l.addedUpdated(s?.added ?? 0, s?.updated ?? 0))],
       errors: const <String>[],
     );
   }
@@ -491,19 +505,25 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       if (path != null && mounted) {
         hintSnack(
           context,
-          '已导出 ${items.length} 个${d.label}',
+          context.l10n.exportedNOf(items.length, d.label),
           icon: Icons.check_circle_outline,
         );
       }
     } catch (e) {
-      if (mounted) hintSnack(context, '导出失败:$e', icon: Icons.error_outline);
+      if (mounted) {
+        hintSnack(
+          context,
+          context.l10n.exportFailed('$e'),
+          icon: Icons.error_outline,
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = null);
     }
   }
 
   String _cloudStatus(bool authed, bool loading, _Cloud? c) {
-    if (!authed) return '暂未开放';
+    if (!authed) return context.l10n.notAvailableYet;
     if (loading) return '读取中…';
     if (c == null) return '读取失败';
     if (c.updatedAt <= 0) return '暂无备份';
@@ -523,8 +543,9 @@ class _BackupPageState extends ConsumerState<BackupPage> {
   }
 
   /// 动作行在跑时的右侧值:进度或「处理中…」。
-  String? _busyValue(String tag) =>
-      _busy == tag ? (_progress.isEmpty ? '处理中…' : _progress) : null;
+  String? _busyValue(String tag) => _busy == tag
+      ? (_progress.isEmpty ? context.l10n.processing : _progress)
+      : null;
 
   @override
   Widget build(BuildContext context) {
@@ -532,16 +553,16 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     final authed = ref.watch(botSessionProvider).value != null;
     final idle = _busy == null;
     return Scaffold(
-      appBar: AppBar(title: const Text('备份')),
+      appBar: AppBar(title: Text(context.l10n.backup)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
         children: [
-          const SettingsLabel('云端备份'),
+          SettingsLabel(context.l10n.cloudBackup),
           SettingsCard(
             children: [
               SettingsRow(
                 icon: Icons.lightbulb_outline,
-                title: '灵感库',
+                title: context.l10n.inspirationLibrary,
                 value: _cloudStatus(authed, _tagLoading, _tagCloud),
               ),
               SettingsRow(
@@ -551,25 +572,25 @@ class _BackupPageState extends ConsumerState<BackupPage> {
               ),
               SettingsRow(
                 icon: Icons.cloud_upload_outlined,
-                title: '备份到云端',
+                title: context.l10n.backupToCloud,
                 value: _busyValue('backup'),
                 onTap: idle ? _cloudBackup : null,
               ),
               SettingsRow(
                 icon: Icons.cloud_download_outlined,
-                title: '从云端恢复',
+                title: context.l10n.restoreFromCloud,
                 value: _busyValue('restore'),
                 onTap: idle ? _cloudRestore : null,
               ),
             ],
           ),
           const SizedBox(height: 16),
-          const SettingsLabel('导入'),
+          SettingsLabel(context.l10n.importLabel),
           SettingsCard(
             children: [
               SettingsRow(
                 icon: Icons.folder_open_outlined,
-                title: '选择备份文件',
+                title: context.l10n.selectBackupFile,
                 value: _busyValue('import'),
                 onTap: idle ? _importFile : null,
               ),
@@ -580,7 +601,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
             _ResultCard(r),
           ],
           const SizedBox(height: 16),
-          const SettingsLabel('导出'),
+          SettingsLabel(context.l10n.export),
           SettingsCard(
             children: [
               for (final d in _defs(lib))
@@ -646,7 +667,7 @@ class _ExportRow extends StatelessWidget {
             ),
           ),
           Text(
-            '$count 条',
+            context.l10n.itemsN(count),
             style: mono(context, size: 12, color: scheme.onSurfaceVariant),
           ),
           const SizedBox(width: 4),
@@ -661,7 +682,7 @@ class _ExportRow extends StatelessWidget {
                       padding: EdgeInsets.zero,
                       visualDensity: VisualDensity.compact,
                     ),
-                    child: const Text('导出'),
+                    child: Text(context.l10n.export),
                   ),
           ),
         ],
@@ -687,7 +708,7 @@ class _ResultCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                '导入结果',
+                context.l10n.importResult,
                 style: context.texts.bodyMedium!.copyWith(
                   fontWeight: FontWeight.w600,
                 ),

@@ -21,6 +21,7 @@ import '../assistant_settings.dart';
 import '../assistant_state.dart';
 import '../preset_rules.dart';
 import '../rules_page.dart';
+import '../../../l10n/l10n.dart';
 
 Future<void> showAssistantSettings(BuildContext context) async {
   await showModalBottomSheet<void>(
@@ -46,7 +47,7 @@ class _SettingsSheet extends ConsumerWidget {
     final authorized = ref.watch(assistantBotAuthorizedProvider);
     final customEndpoint = ref.watch(assistantEndpointProvider) != null;
     return SettingSheet(
-      title: '助手设置',
+      title: context.l10n.assistantSettings,
       children: [
         if (s == null)
           const Padding(
@@ -54,11 +55,11 @@ class _SettingsSheet extends ConsumerWidget {
             child: Center(child: CircularProgressIndicator()),
           )
         else ...[
-          settingSection(context, '显示'),
+          settingSection(context, context.l10n.settingDisplay),
           SettingStepperRow(
             icon: Icons.format_size,
-            title: '消息字号',
-            desc: '对话消息的文字显示大小',
+            title: context.l10n.settingMessageSize,
+            desc: context.l10n.settingMessageSizeDesc,
             value: s.fontSize,
             min: AssistantSettings.fontSizeMin,
             max: AssistantSettings.fontSizeMax,
@@ -68,59 +69,59 @@ class _SettingsSheet extends ConsumerWidget {
           ),
           SettingRow(
             icon: Icons.keyboard_outlined,
-            title: '流式输出',
-            desc: '逐字显示回复',
+            title: context.l10n.streamOutput,
+            desc: context.l10n.streamOutputDesc,
             value: s.stream,
             onChanged: (v) => n.patch((o) => o.copyWith(stream: v)),
           ),
-          settingSection(context, '出图'),
+          settingSection(context, context.l10n.settingDraw),
           SettingRow(
             icon: Icons.notes,
-            title: '纯文本格式',
-            desc: '提示词只显示为文本,不导入也不出图',
+            title: context.l10n.plainTextFormat,
+            desc: context.l10n.plainTextFormatDesc,
             value: s.noDraw,
             onChanged: (v) => n.patch((o) => o.copyWith(noDraw: v)),
           ),
           SettingChoiceRow<SectionImport>(
             icon: Icons.splitscreen_outlined,
-            title: '导入方式',
-            desc: '提示词写入创作页主提示词的位置',
+            title: context.l10n.importMode,
+            desc: context.l10n.importModeDesc,
             enabled: !s.noDraw,
             value: s.importTo,
             options: SectionImport.values,
             labelOf: sectionImportLabel,
             onChanged: (v) => n.patch((o) => o.copyWith(importTo: v)),
           ),
-          settingSection(context, '自动'),
+          settingSection(context, context.l10n.settingAuto),
           // 纯文本格式开着时这两项不会发生,淡显
           SettingRow(
             icon: Icons.bolt_outlined,
-            title: '生成提示词后自动出图',
-            desc: '提示词生成完成后立即开始出图',
+            title: context.l10n.autoDraw,
+            desc: context.l10n.autoDrawDesc,
             enabled: !s.noDraw,
             value: s.autoGenerate,
             onChanged: (v) => n.patch((o) => o.copyWith(autoGenerate: v)),
           ),
           SettingRow(
             icon: Icons.image_outlined,
-            title: '在对话内显示图片',
-            desc: '生成的图片显示在对话内,同时保存至图库',
+            title: context.l10n.inlineImages,
+            desc: context.l10n.inlineImagesDesc,
             value: s.inlineImage,
             onChanged: (v) => n.patch((o) => o.copyWith(inlineImage: v)),
           ),
           SettingRow(
             icon: Icons.draw_outlined,
-            title: '自动写入创作页',
-            desc: '生成的提示词自动写回创作页,无需手动导入',
+            title: context.l10n.autoWrite,
+            desc: context.l10n.autoWriteDesc,
             enabled: !s.noDraw,
             value: s.autoImport,
             onChanged: (v) => n.patch((o) => o.copyWith(autoImport: v)),
           ),
-          settingSection(context, '对话'),
+          settingSection(context, context.l10n.settingChat),
           SettingStepperRow(
             icon: Icons.history,
-            title: '上下文轮数',
-            desc: '每次发送带上最近几轮对话',
+            title: context.l10n.contextTurns,
+            desc: context.l10n.contextTurnsDesc,
             value: s.historyTurns.toDouble(),
             min: AssistantSettings.historyTurnsMin.toDouble(),
             max: AssistantSettings.historyTurnsMax.toDouble(),
@@ -129,11 +130,11 @@ class _SettingsSheet extends ConsumerWidget {
             onChanged: (v) =>
                 n.patch((o) => o.copyWith(historyTurns: v.round())),
           ),
-          settingSection(context, '资料'),
+          settingSection(context, context.l10n.settingLibrary),
           SettingChoiceRow<LibraryScope>(
             icon: Icons.library_books_outlined,
-            title: '资料库范围',
-            desc: '查询画师串与角色时使用的资料来源',
+            title: context.l10n.libraryScope,
+            desc: context.l10n.libraryScopeDesc,
             value: effectiveLibraryScope(
               s.libraryScope,
               botAuthorized: authorized,
@@ -144,37 +145,37 @@ class _SettingsSheet extends ConsumerWidget {
                 libraryScopeAllowed(o, botAuthorized: authorized),
             optionNote: (o) => libraryScopeAllowed(o, botAuthorized: authorized)
                 ? libraryScopeDesc(o)
-                : '暂未开放',
+                : context.l10n.notAvailableYet,
             onChanged: (v) => n.patch((o) => o.copyWith(libraryScope: v)),
           ),
           SettingRow(
             icon: Icons.person_outline,
-            title: 'OC 使用占位符',
+            title: context.l10n.ocPlaceholder,
             desc: customEndpoint
-                ? '本地与公共 OC 只给 AI 占位符，出图时还原；调整原设时请关闭'
-                : '仅自定义接口渠道可用',
+                ? context.l10n.ocPlaceholderDesc
+                : context.l10n.customEndpointOnly,
             value: customEndpoint && s.ocPlaceholders,
             enabled: customEndpoint,
             onChanged: (v) => n.patch((o) => o.copyWith(ocPlaceholders: v)),
           ),
-          settingSection(context, '规则'),
+          settingSection(context, context.l10n.settingRules),
           SettingNavRow(
             icon: Icons.rule_outlined,
-            title: '规则预设',
-            desc: '生成提示词时遵循的规则',
+            title: context.l10n.rulePresets,
+            desc: context.l10n.rulePresetsDesc,
             value: _rulesValue(ref),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const RulesPresetPage()),
             ),
           ),
-          settingSection(context, '调试'),
+          settingSection(context, context.l10n.settingDebug),
           SettingNavRow(
             icon: Icons.bug_report_outlined,
-            title: '导出对话记录',
-            desc: '当前对话每一轮发给 AI 的内容和返回',
+            title: context.l10n.exportChatLog,
+            desc: context.l10n.exportChatLogDesc,
             value: switch (ref.read(assistantProvider.notifier).traceCount) {
               0 => '',
-              final n => '$n 轮',
+              final n => context.l10n.turnsN(n),
             },
             onTap: () => _exportTrace(context, ref),
           ),
@@ -187,7 +188,7 @@ class _SettingsSheet extends ConsumerWidget {
 /// 导出成一个文本文件,存到用户选的位置。内容见 `renderTraceExport`。
 Future<void> _exportTrace(BuildContext context, WidgetRef ref) async {
   if (ref.read(assistantProvider).msgs.isEmpty) {
-    hintSnack(context, '当前对话是空的', icon: Icons.info_outline);
+    hintSnack(context, context.l10n.chatEmpty, icon: Icons.info_outline);
     return;
   }
   try {
@@ -201,11 +202,19 @@ Future<void> _exportTrace(BuildContext context, WidgetRef ref) async {
       bytes: utf8.encode(ref.read(assistantProvider.notifier).exportTrace()),
     );
     if (path != null && context.mounted) {
-      hintSnack(context, '已导出对话记录', icon: Icons.check_circle_outline);
+      hintSnack(
+        context,
+        context.l10n.chatLogExported,
+        icon: Icons.check_circle_outline,
+      );
     }
   } catch (e) {
     if (context.mounted) {
-      hintSnack(context, '导出失败:$e', icon: Icons.error_outline);
+      hintSnack(
+        context,
+        context.l10n.exportFailed('$e'),
+        icon: Icons.error_outline,
+      );
     }
   }
 }
@@ -216,7 +225,7 @@ String _rulesValue(WidgetRef ref) {
   final lib = ref.watch(rulesLibraryProvider).value;
   if (lib == null) return '';
   final used = [for (final f in RulesFamily.values) lib.activeFor(f)];
-  if (used.every((p) => p.isDefault)) return '默认';
+  if (used.every((p) => p.isDefault)) return l10nNow.presetGroupDefault;
   if (used.every((p) => p.id == used.first.id)) return used.first.name;
-  return '自定义';
+  return l10nNow.sizeCustom;
 }

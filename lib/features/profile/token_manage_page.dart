@@ -13,6 +13,7 @@ import '../generate/widgets/common.dart'
     show confirmDialog, dragEndHaptic, dragProxy, dragStartHaptic, hintSnack;
 import '../stats/stats_providers.dart' show fmtInt;
 import 'widgets/token_add_sheet.dart';
+import '../../l10n/l10n.dart';
 
 /// 令牌管理(账号页二级)。一把一块:单选钮 + 名字 + 账户读数 + 两个勾选项。
 ///
@@ -89,7 +90,11 @@ class _TokenManagePageState extends ConsumerState<TokenManagePage> {
     await Clipboard.setData(ClipboardData(text: k.token));
     if (!mounted) return;
     Haptics.selection();
-    hintSnack(context, '已复制令牌', icon: Icons.check_circle_outline);
+    hintSnack(
+      context,
+      context.l10n.tokenCopied,
+      icon: Icons.check_circle_outline,
+    );
   }
 
   Future<void> _rename(NaiKey k) async {
@@ -97,7 +102,7 @@ class _TokenManagePageState extends ConsumerState<TokenManagePage> {
     final name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('重命名'),
+        title: Text(context.l10n.rename),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -110,11 +115,11 @@ class _TokenManagePageState extends ConsumerState<TokenManagePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, ctrl.text),
-            child: const Text('保存'),
+            child: Text(context.l10n.save),
           ),
         ],
       ),
@@ -128,9 +133,9 @@ class _TokenManagePageState extends ConsumerState<TokenManagePage> {
   Future<void> _delete(NaiKey k) async {
     final ok = await confirmDialog(
       context,
-      title: '删除令牌',
-      message: '将从本机删除「${naiKeyTitle(k)}」,直连能同时出的张数也会少一路。',
-      confirmLabel: '删除',
+      title: context.l10n.deleteToken,
+      message: context.l10n.deleteTokenBody(naiKeyTitle(k)),
+      confirmLabel: context.l10n.delete,
     );
     if (!ok) return;
     await ref.read(naiKeysStoreProvider.notifier).remove(k.id);
@@ -144,12 +149,14 @@ class _TokenManagePageState extends ConsumerState<TokenManagePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('令牌管理'),
+        title: Text(context.l10n.tokenManage),
         actions: [
           IconButton(
             onPressed: full ? null : _add,
             icon: const Icon(Icons.add),
-            tooltip: full ? '最多 $kMaxNaiKeys 把' : '添加令牌',
+            tooltip: full
+                ? context.l10n.maxTokens(kMaxNaiKeys)
+                : context.l10n.addToken,
           ),
           const SizedBox(width: 4),
         ],
@@ -220,14 +227,14 @@ class _Empty extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              '还没有令牌',
+              context.l10n.noTokensYet,
               style: context.texts.bodyLarge!.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 6),
             Text(
-              '存多把可以同时出多张 —— NAI 按账号限流,一把只能跑一条',
+              context.l10n.multiTokenHint,
               textAlign: TextAlign.center,
               style: context.texts.labelSmall!.copyWith(color: scheme.outline),
             ),
@@ -235,7 +242,7 @@ class _Empty extends StatelessWidget {
             FilledButton.icon(
               onPressed: onAdd,
               icon: const Icon(Icons.add, size: 18),
-              label: const Text('添加令牌'),
+              label: Text(context.l10n.addToken),
               style: FilledButton.styleFrom(
                 minimumSize: const Size(0, 44),
                 padding: const EdgeInsets.symmetric(horizontal: 22),
@@ -420,7 +427,7 @@ class _KeyTile extends ConsumerWidget {
                                                   BorderRadius.circular(6),
                                             ),
                                             child: Text(
-                                              '主账号',
+                                              context.l10n.primaryAccount,
                                               style: context.texts.labelSmall!
                                                   .copyWith(
                                                     fontWeight: FontWeight.w700,
@@ -441,19 +448,19 @@ class _KeyTile extends ConsumerWidget {
                       const SizedBox(width: 2),
                       _TileIcon(
                         icon: Icons.copy_outlined,
-                        tooltip: '复制令牌',
+                        tooltip: context.l10n.copyToken,
                         color: scheme.outline,
                         onPressed: onCopy,
                       ),
                       _TileIcon(
                         icon: Icons.edit_outlined,
-                        tooltip: '重命名',
+                        tooltip: context.l10n.rename,
                         color: scheme.outline,
                         onPressed: onRename,
                       ),
                       _TileIcon(
                         icon: Icons.delete_outline,
-                        tooltip: '删除',
+                        tooltip: context.l10n.delete,
                         color: scheme.error,
                         onPressed: onDelete,
                       ),
@@ -495,7 +502,7 @@ class _KeyTile extends ConsumerWidget {
                                   const SizedBox(width: 6),
                                   Flexible(
                                     child: Text(
-                                      '生成与点数都用它,不可关闭',
+                                      context.l10n.primaryAlwaysOn,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: context.texts.labelMedium!
@@ -509,14 +516,14 @@ class _KeyTile extends ConsumerWidget {
                                 children: [
                                   Expanded(
                                     child: _CheckOption(
-                                      label: '参与免费生成',
+                                      label: context.l10n.joinFree,
                                       value: k.joinFree,
                                       onChanged: (v) => onToggle('free', v),
                                     ),
                                   ),
                                   Expanded(
                                     child: _CheckOption(
-                                      label: '参与点数生成',
+                                      label: context.l10n.joinPaid,
                                       value: k.joinPaid,
                                       onChanged: (v) => onToggle('paid', v),
                                     ),
@@ -639,8 +646,10 @@ class NaiKeyStatusLine extends ConsumerWidget {
     return async.when(
       // 重查(下拉刷新、点按重试)也照样走 loading —— 见类文档。
       skipLoadingOnRefresh: false,
-      loading: () =>
-          Text('查询账户状态…', style: small.copyWith(color: scheme.outline)),
+      loading: () => Text(
+        context.l10n.queryingAccount,
+        style: small.copyWith(color: scheme.outline),
+      ),
       // 第三方接口查不到不标红:`/user/subscription` 是 NAI 官方的东西,中转站
       // 大多没实现,这条查不到并不说明 key 有问题 —— 真有问题出图时会报。
       // 官方那几把查不到才是真出了事,照旧标红;其中 401 是 NAI 不认这把了,
@@ -649,9 +658,14 @@ class NaiKeyStatusLine extends ConsumerWidget {
         onTap: () => ref.invalidate(naiKeyStatusProvider(naiTargetOf(k))),
         borderRadius: BorderRadius.circular(6),
         child: k.isThirdParty
-            ? Text('第三方接口未提供账户状态', style: small.copyWith(color: scheme.outline))
+            ? Text(
+                context.l10n.thirdPartyNoStatus,
+                style: small.copyWith(color: scheme.outline),
+              )
             : Text(
-                naiTokenRejected(e) ? '令牌已失效' : '状态查询失败,点按重试',
+                naiTokenRejected(e)
+                    ? context.l10n.tokenExpired
+                    : context.l10n.statusQueryFailedRetry,
                 style: small.copyWith(color: scheme.error),
               ),
       ),
@@ -664,7 +678,7 @@ class NaiKeyStatusLine extends ConsumerWidget {
             'Anlas ${fmtInt(s.anlas)}',
             // V5 额度只有拿得到才写:官方没承诺过这块字段,读不到就干脆不提 ——
             // 顶个假的 0% 上去比不显示糟得多。
-            if (usage != null) '额度 ${usage.batteryPct.round()}%',
+            if (usage != null) context.l10n.quotaPct(usage.batteryPct.round()),
           ].join(' · '),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,

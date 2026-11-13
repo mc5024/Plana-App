@@ -11,6 +11,7 @@ import '../../inspiration/tag_models.dart';
 import 'artist_oc_library.dart';
 import 'local_tag_db.dart';
 import 'suggestions.dart';
+import '../../../l10n/l10n.dart';
 
 /// Danbooru wiki 预览(增强模式):标题 + 中/英摘要 + 别名。缩略图因 Cloudflare 不取。
 class WikiPreview {
@@ -62,7 +63,7 @@ class TagCompletion {
 
   /// 作品行的附注。本地库退役后拿不到「N 个角色」这个数了(那是遍历全库现算的),
   /// 随机角色改成点骰子时按需拉,见 [randomCharacterOf]。
-  static const _kWorkNote = '点骰子随机抽一个角色';
+  static String get _kWorkNote => l10nNow.workNote;
 
   static const _timeout = Duration(seconds: 12);
   static const _limit = 12;
@@ -311,7 +312,7 @@ class TagCompletion {
         Suggestion(
           text: q,
           kind: SuggestionKind.tag,
-          trans: '翻译为英文',
+          trans: l10nNow.translateToEnglish,
           natural: true,
         ),
       );

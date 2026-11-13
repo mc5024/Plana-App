@@ -1,16 +1,17 @@
 import 'package:flutter/foundation.dart' show setEquals;
+import '../../../l10n/l10n.dart';
 
-const allPhotosName = '全部相册';
+String get allPhotosName => l10nNow.allAlbumsName;
 
 /// 固定的「收藏」相册:和用户相册一样记在 memberships 里,但不在 [AlbumsData.albums]
 /// 列表中,不能改名、删除,也不能设为保存相册;封面是固定的图标。
 const favoritesId = 'favorites';
-const favoritesName = '收藏';
+String get favoritesName => l10nNow.favorites;
 
 /// 相册墙末尾的「回收站」:不是相册,只在图库面板里当一本来浏览,
 /// 图来自 `GalleryState.trash`。
 const trashId = 'trash';
-const trashName = '回收站';
+String get trashName => l10nNow.trashName;
 bool validGalleryId(String id) => RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(id);
 
 /// null 是明确的“仅全部作品”；参数本身为 null 才表示读取当前设置。
@@ -156,11 +157,11 @@ class AlbumsData {
   }) {
     if (targets.any((id) => !exists(id)) ||
         sources?.any((id) => !exists(id)) == true) {
-      throw StateError('图库已不存在，请重新选择');
+      throw StateError(l10nNow.galleryGone);
     }
     if (sources != null &&
         (sources.isEmpty || sources.intersection(targets).isNotEmpty)) {
-      throw StateError('请选择不同的来源和目标图库');
+      throw StateError(l10nNow.chooseDifferentAlbums);
     }
     final next = {...memberships};
     for (final id in imageIds) {

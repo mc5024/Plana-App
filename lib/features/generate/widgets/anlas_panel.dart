@@ -15,6 +15,7 @@ import '../generate_state.dart';
 import '../models.dart' as m;
 import 'common.dart' show hintSnack, sharedAxisRoute;
 import 'top_bar_status.dart';
+import '../../../l10n/l10n.dart';
 
 /// 创作页顶栏的余额入口,以及它点开的「点数与额度」弹层。
 ///
@@ -89,7 +90,7 @@ class AnlasChip extends ConsumerWidget {
     final bar = meter != null && !percent;
 
     return TopBarStatus(
-      tooltip: bot ? '钱包余额' : '点数与额度',
+      tooltip: bot ? '钱包余额' : context.l10n.anlasAndQuota,
       // 顶栏只报**合计**:常驻在那儿,一眼要的是「还剩多少」。
       // 「订阅额+已购额」的拆分留给弹层里的 Anlas 那行 —— 想分清
       // 哪截月底会重置的人,本来就会点进去看。
@@ -307,7 +308,7 @@ class _AnlasSheetState extends ConsumerState<_AnlasSheet> {
                 children: [
                   Text(
                     !bot
-                        ? '点数与额度'
+                        ? context.l10n.anlasAndQuota
                         : relay
                         ? '钱包与中转'
                         : '钱包与额度',
@@ -322,7 +323,7 @@ class _AnlasSheetState extends ConsumerState<_AnlasSheet> {
                       _refresh();
                     },
                     visualDensity: VisualDensity.compact,
-                    tooltip: '刷新',
+                    tooltip: context.l10n.refresh,
                     icon: AnimatedRotation(
                       turns: _turns,
                       duration: Motion.slow,
@@ -361,14 +362,18 @@ class _AnlasSheetState extends ConsumerState<_AnlasSheet> {
             if (relay) ...[_RelayRow(quota: quota), _divider(context)],
             _row(
               context,
-              '订阅档位',
+              context.l10n.subscriptionTier,
               bot ? 'Bot 授权' : (sub == null ? '—' : naiTierName(sub.tier)),
             ),
             _divider(context),
             if (relay)
               _row(context, '点数', points == null ? '—' : _fmtPct(points / 10))
             else
-              _row(context, 'Anlas 点数', sub == null ? '—' : fmtAnlas(sub)),
+              _row(
+                context,
+                context.l10n.anlasPoints,
+                sub == null ? '—' : fmtAnlas(sub),
+              ),
             if (relay)
               ...const <Widget>[]
             else if (bot) ...[
@@ -392,14 +397,14 @@ class _AnlasSheetState extends ConsumerState<_AnlasSheet> {
               _divider(context),
               _row(
                 context,
-                '回充速率',
+                context.l10n.refillRate,
                 usage.refillPctPerHour <= 0
                     ? '—'
                     : '${_fmtRate(usage.refillPctPerHour)}% / '
-                          '${fmtInt(usage.imagesPerHour)} 张 / 时',
+                          '${context.l10n.imagesPerHour(fmtInt(usage.imagesPerHour))}',
               ),
               _divider(context),
-              _row(context, '距充满', _fmtDaysToFull(usage)),
+              _row(context, context.l10n.timeToFull, _fmtDaysToFull(usage)),
             ] else ...[
               // 电池缺席时**说明白为什么**,不要静默少一块。两种缺席原因对用户的
               // 意思完全不同:非 Opus 是没这项权益、Opus 却拿不到则说明接口那三个
@@ -408,8 +413,12 @@ class _AnlasSheetState extends ConsumerState<_AnlasSheet> {
               _divider(context),
               _row(
                 context,
-                'NAI 5 额度',
-                sub == null ? '—' : (sub.tier == 3 ? '接口未下发' : '仅 Opus'),
+                context.l10n.nai5Quota,
+                sub == null
+                    ? '—'
+                    : (sub.tier == 3
+                          ? context.l10n.notProvided
+                          : context.l10n.opusOnly),
               ),
             ],
           ],
@@ -674,8 +683,8 @@ class UsageCard extends StatelessWidget {
                 // bot 线是多个服务号合出来的一块:标上号数,不然「87%」看着像
                 // 一个账户的水位,而下面那个张数却是好几个号的总量,对不上。
                 usage.accounts > 1
-                    ? 'NAI 5 额度 · ${usage.accounts} 号'
-                    : 'NAI 5 额度',
+                    ? context.l10n.nai5QuotaAccounts(usage.accounts)
+                    : context.l10n.nai5Quota,
                 style: context.texts.bodyMedium!.copyWith(
                   color: scheme.onSurfaceVariant,
                   fontWeight: FontWeight.w600,
@@ -706,23 +715,29 @@ class UsageCard extends StatelessWidget {
           Row(
             children: [
               Text(
-                '约 ${fmtInt(usage.imagesRemaining)} 张',
+                context.l10n.aboutImages(fmtInt(usage.imagesRemaining)),
                 style: context.texts.bodySmall!.copyWith(
                   color: scheme.onSurfaceVariant,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const Spacer(),
-              Text(
-                // 已耗尽时不报「明天到几成」:只知道跌破了 0,不知道跌了多深。
-                usage.isNegative
-                    ? '已用尽 · 免费尺寸图改扣 Anlas'
-                    : (usage.refillPctPerDay <= 0
-                          ? '已充满'
-                          : '24 小时后 ${_fmtPct(tomorrow)}%'),
-                style: context.texts.bodySmall!.copyWith(
-                  color: usage.isNegative ? color : scheme.outline,
-                  fontWeight: FontWeight.w600,
+              const SizedBox(width: 12),
+              // 英文的「已用尽」那句长,放不下时截断
+              Expanded(
+                child: Text(
+                  // 已耗尽时不报「明天到几成」:只知道跌破了 0,不知道跌了多深。
+                  usage.isNegative
+                      ? context.l10n.quotaExhausted
+                      : (usage.refillPctPerDay <= 0
+                            ? context.l10n.quotaFull
+                            : context.l10n.quotaIn24h(_fmtPct(tomorrow))),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: context.texts.bodySmall!.copyWith(
+                    color: usage.isNegative ? color : scheme.outline,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -806,9 +821,9 @@ String _fmtRate(double v) => _fmtPct(v, digits: v >= 1 ? 1 : 2);
 
 /// 距充满:满电直说满电,不到一天报小时,否则报天。
 String _fmtDaysToFull(NaiUsage u) {
-  if (u.batteryPct >= u.fullPct) return '已充满';
+  if (u.batteryPct >= u.fullPct) return l10nNow.quotaFull;
   final d = u.daysToFull;
   if (d == null) return '—';
-  if (d < 1) return '约 ${(d * 24).round()} 小时';
-  return '约 ${_fmtPct(d)} 天';
+  if (d < 1) return l10nNow.aboutHours((d * 24).round());
+  return l10nNow.aboutDays(_fmtPct(d));
 }

@@ -117,12 +117,12 @@ class _AdvancedSheetState extends ConsumerState<_AdvancedSheet> {
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
             children: [
               // 预设选择即时生效(全局偏好,不随「恢复默认/确认」走草稿)。
-              _SectionLabel('提示词预设'),
+              _SectionLabel(context.l10n.promptPresets),
               const SizedBox(height: 10),
               _PresetRow(model: draft.model),
               const SizedBox(height: 4),
               Text(
-                '生成时自动拼进正/负提示词,不占用输入框。V5 与 4.5 各有一套档。',
+                context.l10n.promptPresetsHelp,
                 style: context.texts.labelSmall!.copyWith(
                   color: scheme.outline,
                 ),
@@ -133,7 +133,7 @@ class _AdvancedSheetState extends ConsumerState<_AdvancedSheet> {
                 height: 1,
               ),
               const SizedBox(height: 14),
-              _SectionLabel('采样'),
+              _SectionLabel(context.l10n.sectionSampling),
               const SizedBox(height: 10),
               if (isAnima) ...[
                 // Anima:与 NAI 两套独立采样参数,范围对齐 web animaOptions
@@ -306,7 +306,9 @@ class _AdvancedSheetState extends ConsumerState<_AdvancedSheet> {
                 ],
               ] else ...[
                 LockedParam(
-                  hint: isMedium ? '$name 步数固定为 $kNai5MediumSteps' : null,
+                  hint: isMedium
+                      ? context.l10n.stepsFixed(name, kNai5MediumSteps)
+                      : null,
                   child: ParamSlider(
                     label: context.l10n.paramSteps,
                     help: Help.steps,
@@ -319,7 +321,7 @@ class _AdvancedSheetState extends ConsumerState<_AdvancedSheet> {
                     trailing: AnimatedOpacity(
                       duration: Motion.fast,
                       opacity: draft.naiSteps <= 28 ? 1 : 0,
-                      child: const CountBadge('≤28 免费'),
+                      child: CountBadge(context.l10n.freeUpTo28),
                     ),
                     onChanged: (v) {
                       final steps = v.round();
@@ -358,7 +360,9 @@ class _AdvancedSheetState extends ConsumerState<_AdvancedSheet> {
                 ),
                 const SizedBox(height: 12),
                 LockedParam(
-                  hint: isMedium ? '$name 采样器固定为 $kNai5MediumSampler' : null,
+                  hint: isMedium
+                      ? context.l10n.samplerFixed(name, kNai5MediumSampler)
+                      : null,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -391,7 +395,7 @@ class _AdvancedSheetState extends ConsumerState<_AdvancedSheet> {
                 ),
                 const SizedBox(height: 14),
                 LockedParam(
-                  hint: isV5 ? '$name 噪声调度固定为 karras' : null,
+                  hint: isV5 ? context.l10n.noiseScheduleFixed(name) : null,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -430,7 +434,7 @@ class _AdvancedSheetState extends ConsumerState<_AdvancedSheet> {
                 height: 1,
               ),
               const SizedBox(height: 14),
-              _SectionLabel('修正'),
+              _SectionLabel(context.l10n.sectionAdjust),
               const SizedBox(height: 10),
               // 「随机」是开关不是动作:开着 = 每次随机,输入框一并锁死(灰掉、
               // 点不进去),要手填种子先关掉它。骰子原先挂在输入框的 suffixIcon
@@ -466,7 +470,9 @@ class _AdvancedSheetState extends ConsumerState<_AdvancedSheet> {
                     height: 48,
                     child: IconButton(
                       padding: EdgeInsets.zero,
-                      tooltip: randomSeed ? '每次随机 · 点击手填种子' : '手填种子 · 点击改为每次随机',
+                      tooltip: randomSeed
+                          ? context.l10n.seedRandomTooltip
+                          : context.l10n.seedManualTooltip,
                       onPressed: () => _setRandomSeed(!randomSeed),
                       // 图标字体只有一档笔画,选中态靠外面这圈主色底托 + 描边撑。
                       // 方角:挨着输入框,圆角对齐它的 12
@@ -501,7 +507,9 @@ class _AdvancedSheetState extends ConsumerState<_AdvancedSheet> {
               if (!isAnima && !isKrea) ...[
                 const SizedBox(height: 14),
                 LockedParam(
-                  hint: isMedium ? '$name 不支持「CFG Rescale」' : null,
+                  hint: isMedium
+                      ? context.l10n.paramUnsupported(name, 'CFG Rescale')
+                      : null,
                   child: ParamSlider(
                     label: context.l10n.cfgRescale,
                     help: Help.cfgRescale,
@@ -802,7 +810,7 @@ class _PresetRow extends ConsumerWidget {
         ),
         const SizedBox(width: 6),
         IconButton(
-          tooltip: '管理预设',
+          tooltip: context.l10n.managePresets,
           visualDensity: VisualDensity.compact,
           onPressed: () => Navigator.of(
             context,

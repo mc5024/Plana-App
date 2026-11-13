@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../save_settings.dart';
+import '../../../l10n/l10n.dart';
 
 /// 选/建自定义相册名。确定返回清洗后的名字,取消返回 null。
 ///
@@ -66,7 +67,7 @@ class _AlbumNameSheetState extends State<_AlbumNameSheet> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
                 child: Text(
-                  '保存到手机相册',
+                  context.l10n.saveToPhoneAlbum,
                   style: context.texts.titleMedium!.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -75,8 +76,12 @@ class _AlbumNameSheetState extends State<_AlbumNameSheet> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                 child: Text(
-                  '${widget.count} 张将存入系统相册的「${sanitizeAlbumName(_ctrl.text).isEmpty ? "…" : sanitizeAlbumName(_ctrl.text)}」;'
-                  '相册不存在会自动创建。',
+                  context.l10n.saveToPhoneAlbumBody(
+                    widget.count,
+                    sanitizeAlbumName(_ctrl.text).isEmpty
+                        ? '…'
+                        : sanitizeAlbumName(_ctrl.text),
+                  ),
                   style: context.texts.bodySmall!.copyWith(
                     color: scheme.onSurfaceVariant,
                     height: 1.5,
@@ -93,8 +98,8 @@ class _AlbumNameSheetState extends State<_AlbumNameSheet> {
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _submit(),
                   decoration: InputDecoration(
-                    labelText: '相册名称',
-                    hintText: '如 Plana 精选',
+                    labelText: context.l10n.albumName,
+                    hintText: context.l10n.albumNameExample,
                     filled: true,
                     fillColor: scheme.surfaceContainerHigh,
                     border: OutlineInputBorder(
@@ -134,7 +139,7 @@ class _AlbumNameSheetState extends State<_AlbumNameSheet> {
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size.fromHeight(46),
                         ),
-                        child: const Text('取消'),
+                        child: Text(context.l10n.cancel),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -144,7 +149,7 @@ class _AlbumNameSheetState extends State<_AlbumNameSheet> {
                         style: FilledButton.styleFrom(
                           minimumSize: const Size.fromHeight(46),
                         ),
-                        child: const Text('保存'),
+                        child: Text(context.l10n.save),
                       ),
                     ),
                   ],

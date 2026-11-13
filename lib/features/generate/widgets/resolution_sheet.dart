@@ -24,6 +24,7 @@ String _sizeLabel(AppLocalizations l, String name) => switch (name) {
   '方形' => l.sizeSquare,
   '竖屏' => l.sizePortraitScreen,
   '横屏' => l.sizeLandscapeScreen,
+  '手机' => l.sizePhone,
   _ => name,
 };
 
@@ -182,17 +183,21 @@ class _ResolutionSheetState extends ConsumerState<_ResolutionSheet> {
           ),
           const SizedBox(height: 6),
           SegmentedButton<String>(
+            // 英文段名长,五段时窄屏挤不下的那段缩字号
             segments: [
               for (final t in sizeTabs.keys)
                 ButtonSegment(
                   value: t,
-                  label: Text(_sizeLabel(context.l10n, t)),
+                  label: _SegLabel(_sizeLabel(context.l10n, t)),
                 ),
               if (mine.isNotEmpty)
-                const ButtonSegment(value: _mineTab, label: Text(_mineTab)),
+                ButtonSegment(
+                  value: _mineTab,
+                  label: _SegLabel(context.l10n.sizeMine),
+                ),
               ButtonSegment(
                 value: _customTab,
-                label: Text(context.l10n.sizeCustom),
+                label: _SegLabel(context.l10n.sizeCustom),
               ),
             ],
             selected: {tab},
@@ -257,10 +262,15 @@ class _ResolutionSheetState extends ConsumerState<_ResolutionSheet> {
                                 Icons.bookmark_add_outlined,
                                 size: 18,
                               ),
-                              label: const Text(
-                                '存为预设',
-                                maxLines: 1,
-                                style: TextStyle(fontWeight: FontWeight.w700),
+                              label: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  context.l10n.savePreset,
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                               ),
                               style: OutlinedButton.styleFrom(
                                 minimumSize: const Size(0, 48),
@@ -294,10 +304,15 @@ class _ResolutionSheetState extends ConsumerState<_ResolutionSheet> {
                           borderRadius: BorderRadius.circular(24),
                         ),
                       ),
-                      child: Text(
-                        over ? '超出像素上限' : '确认 · $_effW×$_effH',
-                        maxLines: 1,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          over
+                              ? context.l10n.overPixelLimit
+                              : context.l10n.confirmSize(_effW, _effH),
+                          maxLines: 1,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
                       ),
                     ),
                   ),
@@ -372,9 +387,9 @@ class _StatusStrip extends StatelessWidget {
     final scheme = context.scheme;
     final tier = classifyPixels(width, height);
     final (label, color) = switch (tier) {
-      PixelTier.free => ('免费', scheme.tertiary),
-      PixelTier.paid => ('消耗点数', scheme.primary),
-      PixelTier.over => ('超出上限', scheme.error),
+      PixelTier.free => (context.l10n.free, scheme.tertiary),
+      PixelTier.paid => (context.l10n.tierCostsAnlas, scheme.primary),
+      PixelTier.over => (context.l10n.tierOverLimit, scheme.error),
     };
     return Row(
       children: [
@@ -553,7 +568,9 @@ class _CanvasEditorState extends State<_CanvasEditor> {
               child: IgnorePointer(
                 ignoring: tier == PixelTier.free,
                 child: _QuickChip(
-                  tier == PixelTier.over ? '缩到上限' : '缩到免费',
+                  tier == PixelTier.over
+                      ? context.l10n.shrinkToLimit
+                      : context.l10n.shrinkToFree,
                   onTap: () {
                     final r = tier == PixelTier.over
                         ? clampToMaxPixels(width, height)
@@ -743,6 +760,17 @@ class _SwapBtn extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 分段按钮的段名:放不下时缩字号,不折行。
+class _SegLabel extends StatelessWidget {
+  const _SegLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) =>
+      FittedBox(fit: BoxFit.scaleDown, child: Text(text, maxLines: 1));
 }
 
 class _QuickChip extends StatelessWidget {

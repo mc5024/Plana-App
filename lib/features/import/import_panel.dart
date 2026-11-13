@@ -476,7 +476,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     });
     hintSnack(
       context,
-      '已切换到 ${categoryLabel(target)} 模型',
+      context.l10n.switchedToModel(categoryLabel(target)),
       icon: Icons.swap_horiz,
     );
   }
@@ -503,12 +503,18 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     // 头一条照实说「归谁」而不是「你没有」—— Krea 有自己的风格参考卡,说成
     // 「Krea 2 没有风格」会对不上他在创作页看到的东西。
     if (def.provider != p) {
-      return '「${def.label}」是 ${providerLabel(def.provider)} 的功能';
+      return context.l10n.moduleOfProvider(
+        genModuleLabel(context.l10n, def),
+        providerLabel(def.provider),
+      );
     }
     if (!def.supportsModel(model)) {
-      return '${modelName(model)} 不支持「${def.label}」';
+      return context.l10n.paramUnsupported(
+        modelName(model),
+        genModuleLabel(context.l10n, def),
+      );
     }
-    return '「${def.label}」已在创作页模块里隐藏';
+    return context.l10n.moduleHidden(genModuleLabel(context.l10n, def));
   }
 
   // ---- Vibe 可导入性 ----
@@ -600,7 +606,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     if (_hasVariety)
       _SettingSpec(
         'Variety+',
-        m.varietyPlus! ? '开' : '关',
+        m.varietyPlus! ? context.l10n.on : context.l10n.off,
         _useVariety,
         (v) => _useVariety = v,
       ),
@@ -913,7 +919,11 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
                   ),
             );
           }
-          msgs.add('预设 ${hit.preset.name}');
+          msgs.add(
+            context.l10n.importedPreset(
+              presetDisplayName(context.l10n, hit.preset),
+            ),
+          );
         }
       }
     }
@@ -1067,12 +1077,16 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
         if (b == null) encOnly++;
       }
       if (encOnly > 0) {
-        msgs.add('$encOnly 个 Vibe 仅编码,只在 ${modelName(_importModel!)} 下可用');
+        msgs.add(
+          context.l10n.vibesEncodingOnly(encOnly, modelName(_importModel!)),
+        );
       }
     }
 
     _finish(
-      msgs.isEmpty ? '已导入到创作页' : '已导入 · ${msgs.join(' · ')}',
+      msgs.isEmpty
+          ? context.l10n.importedToCreate
+          : context.l10n.importedWith(msgs.join(' · ')),
       Icons.download_done,
       before,
     );
@@ -1097,7 +1111,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
       context,
       text,
       icon: icon,
-      actionLabel: '撤销',
+      actionLabel: context.l10n.undo,
       onAction: () => canvases.undoWrite(before.state, before.canvasId),
     );
     ref.read(shellIndexProvider.notifier).select(kTabCreate);
@@ -1117,7 +1131,9 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     final p = before.state.params;
     final changed = p.width != res.w || p.height != res.h;
     _finish(
-      changed ? '已设为图生图底图 · 分辨率 ${res.w}×${res.h}' : '已设为图生图底图',
+      changed
+          ? context.l10n.setAsBaseImageRes(res.w, res.h)
+          : context.l10n.setAsBaseImage,
       Icons.image_outlined,
       before,
     );
@@ -1139,7 +1155,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
         .read(generateProvider.notifier)
         .addVibe(image: bytes, name: widget.displayName, imageHash: hash);
     _finish(
-      hadCharRefs ? '已加入 Vibe · 与角色参考互斥,已暂停角色参考' : '已加入 Vibe 参考',
+      hadCharRefs ? context.l10n.addedVibeMutex : context.l10n.addedVibe,
       hadCharRefs ? Icons.swap_horiz : Icons.palette_outlined,
       before,
     );
@@ -1161,7 +1177,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
         .read(generateProvider.notifier)
         .addCharRef(image: bytes, name: widget.displayName, imageHash: hash);
     _finish(
-      hadVibes ? '已加入角色参考 · 与 Vibe 互斥,已暂停 Vibe' : '已加入角色参考',
+      hadVibes ? context.l10n.addedCharRefMutex : context.l10n.addedCharRef,
       hadVibes ? Icons.swap_horiz : Icons.face_retouching_natural,
       before,
     );
@@ -1269,7 +1285,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     scheme,
     _promptAppend,
     (v) => setState(() => _promptAppend = v),
-    options: const ['完全覆盖', '新建分区'],
+    options: [context.l10n.importReplace, context.l10n.importNewSection],
   );
 
   // ---- 无元数据:顶部信息 + 提示,四个「用作」按钮居中(不再吊在底部留大空档) ----
@@ -1287,7 +1303,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '未在这张图里找到生成参数,仍可把它用作参考。',
+                  context.l10n.noParamsUseAsRef,
                   style: context.texts.bodySmall!.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
@@ -1302,7 +1318,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    '把这张图用作',
+                    context.l10n.useImageAs,
                     textAlign: TextAlign.center,
                     style: context.texts.bodyMedium!.copyWith(
                       color: scheme.onSurfaceVariant,
@@ -1340,7 +1356,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
           const SizedBox(height: 14),
         ],
         Text(
-          '导入到生成页',
+          context.l10n.importToCreate,
           style: context.texts.titleMedium!.copyWith(
             fontWeight: FontWeight.w600,
           ),
@@ -1410,8 +1426,11 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
   Widget _crossCategoryBanner(ColorScheme scheme, ImageMetadata m) {
     final imageCat = _imageCategory;
     final text = imageCat != null
-        ? '这是 ${categoryLabel(imageCat)} 模型的图片,当前为 ${categoryLabel(_targetCategory)} 模型,只能导入提示词。'
-        : '${_sourceLabel(m.sourceType)} 图片在本机没有对应的模型,只能导入提示词。';
+        ? context.l10n.promptOnlyCrossModel(
+            categoryLabel(imageCat),
+            categoryLabel(_targetCategory),
+          )
+        : context.l10n.promptOnlyUnknown(_sourceLabel(m.sourceType));
     return Container(
       padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
       decoration: BoxDecoration(
@@ -1488,9 +1507,11 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
               children: [
                 Text(
                   other != null
-                      ? '这张图用的是 ${categoryLabel(other)} 的模型,'
-                            '当前为 ${categoryLabel(_targetCategory)},仅能导入部分参数'
-                      : '这张图用的模型本机没有,仅能导入部分参数',
+                      ? context.l10n.partialCrossModel(
+                          categoryLabel(other),
+                          categoryLabel(_targetCategory),
+                        )
+                      : context.l10n.partialUnknown,
                   style: context.texts.bodySmall!.copyWith(height: 1.5),
                 ),
                 if (imageCat != null && _canSwitchCategory) ...[
@@ -1548,7 +1569,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
                   ),
                   const SizedBox(width: 11),
                   Text(
-                    '提示词预设',
+                    context.l10n.promptPresets,
                     style: context.texts.bodyLarge!.copyWith(
                       fontWeight: FontWeight.w600,
                       color: fg,
@@ -1598,7 +1619,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (needPrompt)
-                    _presetNote(scheme, '需要先勾选正向或负向提示词')
+                    _presetNote(scheme, context.l10n.presetNeedPrompt)
                   else if (hit != null) ...[
                     // 直接把会被删掉的那段文本摊开 ——
                     // 「识别到 Heavy」看不出要删什么词
@@ -1607,8 +1628,10 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
                     _presetNote(
                       scheme,
                       _presetImport
-                          ? '以上文本会从提示词里删掉,档位切成「${hit.preset.name}」。'
-                          : '以上文本会从提示词里删掉,档位不变。',
+                          ? context.l10n.presetStripSwitch(
+                              presetDisplayName(context.l10n, hit.preset),
+                            )
+                          : context.l10n.presetStripKeep,
                     ),
                   ],
                 ],
@@ -1646,7 +1669,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
         ),
         const SizedBox(height: 3),
         Text(
-          p.positive.isEmpty ? '(这一档不加正向文本)' : p.positive,
+          p.positive.isEmpty ? context.l10n.presetNoPositive : p.positive,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
@@ -1689,14 +1712,14 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '自动转换提示词格式',
+                      context.l10n.autoConvertPrompt,
                       style: context.texts.bodyLarge!.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '把 (tag:1.2) 转成 NovelAI 的 1.2::tag::',
+                      context.l10n.autoConvertPromptHint,
                       style: TextStyle(
                         fontSize: 11.5,
                         color: scheme.onSurfaceVariant,
@@ -1918,7 +1941,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     if (hasDims) {
       subtitle = '${m.width}×${m.height} · $_sizeText';
     } else if (noMeta && !reverse) {
-      subtitle = '未找到生成参数 · $_sizeText';
+      subtitle = context.l10n.noParamsSize(_sizeText);
     } else {
       subtitle = _sizeText;
     }
@@ -1972,7 +1995,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
                       if (m.characters.isNotEmpty)
                         _badge(
                           scheme,
-                          '${m.characters.length} 角色',
+                          context.l10n.charactersBadge(m.characters.length),
                           scheme.tertiary,
                         ),
                       if (m.vibes.isNotEmpty)
@@ -2184,7 +2207,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
                 rows.where((r) => r.isMain).firstOrNull?.positive ?? '',
                 positive: true,
               ),
-        what: '正向提示词',
+        what: context.l10n.positivePrompt,
         size: 28,
       ),
       child: Column(
@@ -2197,7 +2220,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
               tag: rows[i].name,
               tagColor: scheme.primary,
               text: rows[i].positive,
-              copyWhat: '正向提示词',
+              copyWhat: context.l10n.positivePrompt,
               checked: !_secOff.contains(i),
               onTap: () => setState(() {
                 _secOff.contains(i) ? _secOff.remove(i) : _secOff.add(i);
@@ -2255,7 +2278,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
               tag: autoPos ? 'AUTO' : positionChipLabel(positions[i]),
               tagColor: scheme.tertiary,
               text: m.characters[i].prompt,
-              copyWhat: '角色提示词',
+              copyWhat: context.l10n.characterPrompts,
               checked: _charChecked.contains(i),
               onTap: () => setState(() {
                 _charChecked.contains(i)
@@ -2322,8 +2345,10 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     final thumb = _vibeBytes[i];
     final importable = _vibeImportable(m, i);
     final checked = _vibeChecked.contains(i);
-    final params =
-        '强度 ${v.strength.toStringAsFixed(2)} · IE ${(v.informationExtracted ?? 1.0).toStringAsFixed(1)}';
+    final params = context.l10n.vibeParams(
+      v.strength.toStringAsFixed(2),
+      (v.informationExtracted ?? 1.0).toStringAsFixed(1),
+    );
     final String sub;
     final moduleBlocked = _vibeModuleBlocked;
     if (moduleBlocked != null) {
@@ -2333,12 +2358,12 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     } else if (thumb != null) {
       sub = params;
     } else if (importable) {
-      sub = '仅编码 · $params';
+      sub = context.l10n.encodingOnlyParams(params);
     } else if (v.encoding != null) {
-      sub = '仅编码 · 来源模型未知,无法导入';
+      sub = context.l10n.encodingOnlyUnknown;
     } else {
       // needsLocalMatch:元数据里只有强度参数,既无原图也无编码
-      sub = '仅有参数,无法导入';
+      sub = context.l10n.paramsOnlyCantImport;
     }
     return Opacity(
       opacity: importable ? 1 : .5,
@@ -2407,7 +2432,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
       scheme,
       icon: Icons.tune,
       iconColor: scheme.primary,
-      title: '生成设置',
+      title: context.l10n.genSettings,
       count: '$checkedCount/${selectable.length}',
       allOn: allOn,
       onToggleAll: unsupported != null || selectable.isEmpty
@@ -2423,7 +2448,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
           setState(() => _settingsExpanded = !_settingsExpanded),
       child: unsupported != null
           ? InfoNote(
-              '含当前版本不支持的参数($unsupported),无法导入生成设置。',
+              context.l10n.unsupportedParams(unsupported),
               icon: Icons.warning_amber_rounded,
             )
           : LayoutBuilder(
@@ -2505,8 +2530,8 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
                 _copyButton(
                   scheme,
                   text: e.value,
-                  what: '种子',
-                  done: '已复制种子 ${e.value}',
+                  what: context.l10n.seed,
+                  done: context.l10n.copiedSeed(e.value),
                   size: 28,
                 ),
                 const SizedBox(width: 4),
@@ -2541,11 +2566,15 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     String? done,
     double size = 34,
   }) => IconButton(
-    tooltip: '复制$what',
+    tooltip: context.l10n.copyWhat(what),
     onPressed: () async {
       await Clipboard.setData(ClipboardData(text: text));
       if (!mounted) return;
-      hintSnack(context, done ?? '已复制$what', icon: Icons.check);
+      hintSnack(
+        context,
+        done ?? context.l10n.copiedWhat(what),
+        icon: Icons.check,
+      );
     },
     style: IconButton.styleFrom(
       fixedSize: Size.square(size),
@@ -2579,12 +2608,13 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     ColorScheme scheme,
     bool append,
     ValueChanged<bool> onChanged, {
-    List<String> options = const ['完全覆盖', '额外添加'],
+    List<String>? options,
   }) {
+    options ??= [context.l10n.importReplace, context.l10n.importAppend];
     return Row(
       children: [
         Text(
-          '导入方式',
+          context.l10n.importMode,
           style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
         ),
         const Spacer(),
@@ -2726,7 +2756,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                text.isEmpty ? '(空)' : text,
+                text.isEmpty ? context.l10n.emptyParen : text,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
@@ -2770,9 +2800,9 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
                           ? (_useReverse ? _importReverse : null)
                           : (_hasAnySelection ? _import : null),
                       icon: const Icon(Icons.download, size: 22),
-                      label: const Text(
-                        '导入所选内容',
-                        style: TextStyle(
+                      label: Text(
+                        context.l10n.importSelected,
+                        style: const TextStyle(
                           fontSize: 15.5,
                           fontWeight: FontWeight.w700,
                         ),
@@ -2818,7 +2848,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
         _useAsBtn(
           scheme,
           Icons.face_retouching_natural,
-          '参考',
+          context.l10n.useAsReference,
           _useAsCharRef,
           blocked: _moduleBlocked(GenModule.charRef),
           onPage: onPage,
@@ -2890,7 +2920,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
     ImageSourceType.novelai => 'NovelAI',
     ImageSourceType.stableDiffusion => 'Stable Diffusion',
     ImageSourceType.comfyui => 'ComfyUI',
-    ImageSourceType.unknown => '未知来源',
+    ImageSourceType.unknown => context.l10n.unknownSource,
   };
 }
 
@@ -2917,7 +2947,7 @@ class _RawEntry extends StatelessWidget {
             Icon(Icons.data_object, size: 24, color: scheme.primary),
             const SizedBox(height: 4),
             Text(
-              '完整\n元数据',
+              context.l10n.fullMetadataTwoLine,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 10,
@@ -3037,7 +3067,13 @@ class _SlideSeg extends StatelessWidget {
                                 ? scheme.onPrimary
                                 : scheme.onSurfaceVariant,
                           ),
-                          child: Text(options[i]),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(options[i], maxLines: 1),
+                            ),
+                          ),
                         ),
                       ),
                     ),

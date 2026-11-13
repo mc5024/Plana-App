@@ -10,6 +10,7 @@ import '../store/app_stores.dart';
 import '../theme/app_theme.dart';
 import '../util/log.dart';
 import 'selection_bar.dart';
+import '../../l10n/l10n.dart';
 
 /// 上次选过的相册 id,存 `settings.json`。
 ///
@@ -285,8 +286,9 @@ class _GalleryPickerPageState extends ConsumerState<GalleryPickerPage>
     _selIds.clear();
   });
 
-  String _albumLabel(AssetPathEntity a) =>
-      a.isAll ? '全部图片' : (a.name.isEmpty ? '图库' : a.name);
+  String _albumLabel(AssetPathEntity a) => a.isAll
+      ? context.l10n.allImages
+      : (a.name.isEmpty ? context.l10n.gallery : a.name);
 
   /// 一行相册要额外查的两样:封面(相册里最新的一张)与张数。
   ///
@@ -317,7 +319,7 @@ class _GalleryPickerPageState extends ConsumerState<GalleryPickerPage>
               child: Row(
                 children: [
                   Text(
-                    '相册',
+                    context.l10n.albums,
                     style: context.texts.titleMedium!.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -340,7 +342,10 @@ class _GalleryPickerPageState extends ConsumerState<GalleryPickerPage>
                     return ListTile(
                       dense: true,
                       enabled: false,
-                      title: Text('没有相册', style: context.texts.bodyMedium),
+                      title: Text(
+                        context.l10n.noAlbums,
+                        style: context.texts.bodyMedium,
+                      ),
                     );
                   }
                   // 逐条懒建:每行的封面与张数都是一次媒体库查询,一次性
@@ -392,7 +397,9 @@ class _GalleryPickerPageState extends ConsumerState<GalleryPickerPage>
               children: [
                 Flexible(
                   child: Text(
-                    _album == null ? '选择图片' : _albumLabel(_album!),
+                    _album == null
+                        ? context.l10n.selectImage
+                        : _albumLabel(_album!),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: context.texts.titleMedium,
@@ -405,7 +412,7 @@ class _GalleryPickerPageState extends ConsumerState<GalleryPickerPage>
         ),
         actions: [
           IconButton(
-            tooltip: '从文件选',
+            tooltip: context.l10n.pickFromFiles,
             icon: const Icon(Icons.folder_open_outlined),
             onPressed: () => Navigator.of(
               context,
@@ -436,7 +443,7 @@ class _GalleryPickerPageState extends ConsumerState<GalleryPickerPage>
                       ? (_exhausted
                             ? Center(
                                 child: Text(
-                                  '没有图片',
+                                  context.l10n.noImages,
                                   style: context.texts.bodyMedium!.copyWith(
                                     color: scheme.outline,
                                   ),
@@ -488,7 +495,7 @@ class _GalleryPickerPageState extends ConsumerState<GalleryPickerPage>
                       ).pop(GalleryPickOutcome.assets(List.of(_sel))),
                 style: selectionPrimaryStyle(),
                 icon: const Icon(Icons.check, size: 18),
-                label: Text('确定 (${_sel.length})'),
+                label: Text(context.l10n.okCount(_sel.length)),
               ),
             )
           : null,
@@ -704,11 +711,11 @@ class _LimitedBar extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              '仅可访问部分图片',
+              context.l10n.limitedPhotoAccess,
               style: context.texts.labelSmall!.copyWith(color: scheme.outline),
             ),
           ),
-          TextButton(onPressed: onManage, child: const Text('调整')),
+          TextButton(onPressed: onManage, child: Text(context.l10n.adjust)),
         ],
       ),
     );
@@ -731,7 +738,7 @@ class _NoAccessView extends StatelessWidget {
           Icon(Icons.photo_library_outlined, size: 40, color: scheme.outline),
           const SizedBox(height: 12),
           Text(
-            '需要相册访问权限',
+            context.l10n.needPhotoPermission,
             style: context.texts.bodyMedium!.copyWith(
               color: scheme.onSurfaceVariant,
             ),
@@ -739,9 +746,9 @@ class _NoAccessView extends StatelessWidget {
           const SizedBox(height: 18),
           FilledButton(
             onPressed: PhotoManager.openSetting,
-            child: const Text('去设置'),
+            child: Text(context.l10n.goToSettings),
           ),
-          TextButton(onPressed: onRetry, child: const Text('重新检查')),
+          TextButton(onPressed: onRetry, child: Text(context.l10n.recheck)),
         ],
       ),
     );

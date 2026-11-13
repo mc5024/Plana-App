@@ -29,6 +29,8 @@ import 'vibe_detail_sheet.dart';
 import 'vibe_import.dart' show ingestVibeFiles;
 import 'vibe_library.dart';
 import '../../core/util/haptics.dart';
+import '../../l10n/l10n.dart';
+import '../generate/display_names.dart';
 
 // 状态圆点:压在缩略图上,不能跟种子色走 —— 单一来源见 [FixedSemantic]
 const _dotOk = FixedSemantic.ok; // 当前模型可用
@@ -173,7 +175,11 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
       return;
     }
     if (!_compatible(e)) {
-      hintSnack(context, '该 Vibe 无当前模型的编码,无法使用', icon: Icons.info_outline);
+      hintSnack(
+        context,
+        context.l10n.vibeNoEncodingForModel,
+        icon: Icons.info_outline,
+      );
       return;
     }
     await _addEntryToGenerate(e);
@@ -184,7 +190,7 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
     final data = await _lib.loadForGenerate(e);
     if (!mounted) return;
     if (data == null) {
-      hintSnack(context, '无法读取该 Vibe 文件', icon: Icons.error_outline);
+      hintSnack(context, context.l10n.cantReadVibe, icon: Icons.error_outline);
       return;
     }
     Haptics.selection();
@@ -203,7 +209,11 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
           sourceId: e.id,
         );
     if (hadCharRefs) {
-      hintSnack(context, '与角色参考互斥,已暂停角色参考', icon: Icons.swap_horiz);
+      hintSnack(
+        context,
+        context.l10n.refMutexCharRefPaused,
+        icon: Icons.swap_horiz,
+      );
     }
     setState(() {});
   }
@@ -317,7 +327,11 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
     }
     if (!mounted) return;
     setState(() => _busy = false);
-    hintSnack(context, '已入库 $n 张参考图', icon: Icons.check_circle_outline);
+    hintSnack(
+      context,
+      context.l10n.refsAdded(n),
+      icon: Icons.check_circle_outline,
+    );
   }
 
   Future<void> _importFiles() async {
@@ -339,13 +353,15 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
     if (!mounted) return;
     setState(() => _busy = false);
     final parts = [
-      if (got.vibes > 0) '${got.vibes} 条 Vibe',
-      if (got.images > 0) '${got.images} 张图',
-      if (got.failed > 0) '${got.failed} 个失败',
+      if (got.vibes > 0) context.l10n.ingestVibes(got.vibes),
+      if (got.images > 0) context.l10n.ingestImages(got.images),
+      if (got.failed > 0) context.l10n.ingestFailed(got.failed),
     ];
     hintSnack(
       context,
-      parts.isEmpty ? '没有可导入的内容' : '导入完成:${parts.join(' · ')}',
+      parts.isEmpty
+          ? context.l10n.nothingToImport
+          : context.l10n.importDone(parts.join(' · ')),
       icon: got.failed > 0 ? Icons.error_outline : Icons.check_circle_outline,
     );
   }
@@ -360,9 +376,9 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
   Future<void> _deleteChecked(List<VibeEntry> checked) async {
     final ok = await confirmDialog(
       context,
-      title: '删除 Vibe',
-      message: '将从库中删除选中的 ${checked.length} 条 Vibe(文件与缩略图一并移除),不可恢复。',
-      confirmLabel: '删除',
+      title: context.l10n.deleteVibe,
+      message: context.l10n.deleteVibesBody(checked.length),
+      confirmLabel: context.l10n.delete,
     );
     if (!ok || !mounted) return;
     for (final e in checked) {
@@ -395,12 +411,18 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
       if (path != null && mounted) {
         hintSnack(
           context,
-          '已导出 ${checked.length} 条 Vibe',
+          context.l10n.vibesExported(checked.length),
           icon: Icons.check_circle_outline,
         );
       }
     } catch (e) {
-      if (mounted) hintSnack(context, '导出失败:$e', icon: Icons.error_outline);
+      if (mounted) {
+        hintSnack(
+          context,
+          context.l10n.exportFailed('$e'),
+          icon: Icons.error_outline,
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -446,24 +468,24 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
     final tag = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('批量添加标签'),
+        title: Text(context.l10n.batchAddTag),
         content: TextField(
           controller: ctl,
           autofocus: true,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             isDense: true,
-            hintText: '标签名,如 风景',
+            hintText: context.l10n.tagNameHint,
           ),
           onSubmitted: (v) => Navigator.pop(context, v.trim()),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, ctl.text.trim()),
-            child: const Text('添加'),
+            child: Text(context.l10n.add),
           ),
         ],
       ),
@@ -474,7 +496,10 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
       setState(() {});
       hintSnack(
         context,
-        '已为 ${checked.length} 条添加标签「$tag」',
+        context.l10n.tagAddedToN(
+          checked.length,
+          vibeTagDisplayName(context.l10n, tag),
+        ),
         icon: Icons.check_circle_outline,
       );
     }
@@ -510,7 +535,11 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
     if (!mounted) return;
     setState(() {}); // 详情里可能改了参数/删除/加入
     if (added == true) {
-      hintSnack(context, '已添加到生成', icon: Icons.check_circle_outline);
+      hintSnack(
+        context,
+        context.l10n.addedToGenerate,
+        icon: Icons.check_circle_outline,
+      );
     }
   }
 
@@ -526,21 +555,29 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
       if (path != null && mounted) {
         hintSnack(
           context,
-          '已导出 $safe.naiv4vibe',
+          context.l10n.exportedName('$safe.naiv4vibe'),
           icon: Icons.check_circle_outline,
         );
       }
     } catch (err) {
-      if (mounted) hintSnack(context, '导出失败:$err', icon: Icons.error_outline);
+      if (mounted) {
+        hintSnack(
+          context,
+          context.l10n.exportFailed('$err'),
+          icon: Icons.error_outline,
+        );
+      }
     }
   }
 
   Future<void> _deleteOne(VibeEntry e) async {
     final ok = await confirmDialog(
       context,
-      title: '删除 Vibe',
-      message: '「${e.name}」将从库中删除(文件与缩略图一并移除),不可恢复。',
-      confirmLabel: '删除',
+      title: context.l10n.deleteVibe,
+      message: context.l10n.deleteVibeBody(
+        vibeDisplayName(context.l10n, e.name),
+      ),
+      confirmLabel: context.l10n.delete,
     );
     if (!ok || !mounted) return;
     final activeId = _activeItemId(e);
@@ -558,7 +595,11 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
     final session = await ref.read(botSessionProvider.future);
     if (!mounted) return;
     if (session == null) {
-      hintSnack(context, '暂未开放', icon: Icons.info_outline);
+      hintSnack(
+        context,
+        context.l10n.notAvailableYet,
+        icon: Icons.info_outline,
+      );
       return;
     }
     final res =
@@ -879,7 +920,7 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
   ) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Vibe 管理器'),
+        title: Text(context.l10n.vibeManager),
         actions: [
           if (_busy)
             const Padding(
@@ -894,17 +935,17 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
             )
           else
             PopupMenuButton<String>(
-              tooltip: '导入',
+              tooltip: context.l10n.importLabel,
               icon: const Icon(Icons.add),
               onSelected: (v) => v == 'img' ? _importImages() : _importFiles(),
-              itemBuilder: (_) => const [
+              itemBuilder: (_) => [
                 PopupMenuItem(
                   value: 'img',
                   child: ListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(Icons.image_outlined),
-                    title: Text('导入图片'),
+                    title: Text(context.l10n.importImage),
                   ),
                 ),
                 PopupMenuItem(
@@ -913,7 +954,7 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
                     dense: true,
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(Icons.file_open_outlined),
-                    title: Text('导入 Vibe 文件'),
+                    title: Text(context.l10n.importVibeFile),
                   ),
                 ),
               ],
@@ -929,7 +970,7 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
               onChanged: (v) => setState(() => _search = v),
               decoration: InputDecoration(
                 isDense: true,
-                hintText: '搜索名称或标签…',
+                hintText: context.l10n.searchNameOrTag,
                 prefixIcon: const Icon(Icons.search, size: 20),
                 filled: true,
                 fillColor: context.pageControlFill,
@@ -1019,10 +1060,15 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
                               _segLabel(
                                 0,
                                 Icons.smartphone,
-                                '本地 · $localCount',
+                                context.l10n.localCount(localCount),
                                 t,
                               ),
-                              _segLabel(1, Icons.public, '公共库', t),
+                              _segLabel(
+                                1,
+                                Icons.public,
+                                context.l10n.publicLibrary,
+                                t,
+                              ),
                             ],
                           ),
                         ],
@@ -1143,13 +1189,13 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
               padding: const EdgeInsets.fromLTRB(_kEdge, 4, 4, 4),
               children: [
                 chip(
-                  '全部',
+                  context.l10n.all,
                   _tagFilter == null,
                   () => setState(() => _tagFilter = null),
                 ),
                 // 固定「收藏」保留标签(全部右侧,不可删除)
                 chip(
-                  '收藏',
+                  context.l10n.favorites,
                   _tagFilter == _kFavTag,
                   () => setState(() => _tagFilter = _kFavTag),
                   icon: Icons.star_rounded,
@@ -1166,7 +1212,7 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
           ),
           // 管理标签(重命名 / 删除)
           IconButton(
-            tooltip: '管理标签',
+            tooltip: context.l10n.manageTags,
             icon: Icon(
               Icons.settings_outlined,
               size: 20,
@@ -1215,8 +1261,8 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
             const SizedBox(height: 10),
             Text(
               _search.isEmpty && _tagFilter == null
-                  ? '暂无本地 Vibe'
-                  : '没有匹配的 Vibe',
+                  ? context.l10n.noLocalVibes
+                  : context.l10n.noMatchingVibes,
               style: context.texts.bodySmall!.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
@@ -1224,7 +1270,7 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
             if (_search.isEmpty && _tagFilter == null) ...[
               const SizedBox(height: 4),
               Text(
-                '点击右上角 + 导入',
+                context.l10n.tapPlusToImport,
                 style: context.texts.labelSmall!.copyWith(
                   color: scheme.outline,
                 ),
@@ -1303,13 +1349,13 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
     // 公共库是纯后端功能:只要授权过 Bot 就能用,不要求把生成也切到 Bot。
     final session = ref.watch(botSessionProvider).value;
     if (session == null) {
-      return _publicHint(Icons.cloud_off, '公共 Vibe 库暂未开放');
+      return _publicHint(Icons.cloud_off, context.l10n.publicVibeUnavailable);
     }
     final async = ref.watch(publicVibesProvider);
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => e is StateError
-          ? _publicHint(Icons.cloud_off, '公共 Vibe 库暂未开放')
+          ? _publicHint(Icons.cloud_off, context.l10n.publicVibeUnavailable)
           : _publicHint(
               Icons.error_outline,
               '加载公共库失败',
@@ -1460,12 +1506,12 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
         if (local) ...[
           SelectionPill(
             icon: Icons.archive_outlined,
-            label: '打包',
+            label: context.l10n.bundle,
             onTap: _busy ? null : () => _exportChecked(checked),
           ),
           SelectionPill(
             icon: Icons.sell_outlined,
-            label: '标签',
+            label: context.l10n.kindTag,
             onTap: () => _batchTag(checked),
           ),
         ],
@@ -1473,7 +1519,7 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
       destructive: local
           ? SelectionPill(
               icon: Icons.delete_outline,
-              label: '删除',
+              label: context.l10n.delete,
               color: scheme.error,
               onTap: () => _deleteChecked(checked),
             )
@@ -1495,7 +1541,9 @@ class _VibeLibraryPageState extends ConsumerState<VibeLibraryPage>
         label: Text(
           downloading
               ? '下载中 ${_downloading!.$1}/${_downloading!.$2}'
-              : (selCount > 0 ? '确认选择 ($selCount)' : '确认选择'),
+              : (selCount > 0
+                    ? context.l10n.confirmSelectionN(selCount)
+                    : context.l10n.confirmSelection),
         ),
       ),
     );
@@ -1697,11 +1745,11 @@ class _VibeCardShell extends StatelessWidget {
     if (supportedModels.isEmpty) {
       color = scheme.outline;
       icon = Icons.remove_circle_outline;
-      text = '未编码';
+      text = context.l10n.notEncoded;
     } else if (!compatible) {
       color = _dotWarn;
       icon = Icons.error_outline;
-      text = '需 ${_encModelsShort(supportedModels)}';
+      text = context.l10n.needsModels(_encModelsShort(supportedModels));
     } else {
       color = _dotOk;
       icon = Icons.check_circle;
@@ -1760,7 +1808,7 @@ class _CardMenuButton extends StatelessWidget {
       width: 30,
       height: 22,
       child: PopupMenuButton<String>(
-        tooltip: '更多',
+        tooltip: context.l10n.more,
         icon: Icon(
           Icons.more_vert,
           size: 20,
@@ -1814,7 +1862,7 @@ class _VibeCard extends StatelessWidget {
     return _VibeCardShell(
       checked: checked,
       compatible: compatible,
-      name: entry.name,
+      name: vibeDisplayName(context.l10n, entry.name),
       supportedModels: encodedModels,
       busy: false,
       onTap: onTap,
@@ -1842,41 +1890,41 @@ class _VibeCard extends StatelessWidget {
           }
         },
         items: [
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'detail',
             child: ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.tune, size: 19),
-              title: Text('详情与参数'),
+              title: Text(context.l10n.detailsAndParams),
             ),
           ),
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'tags',
             child: ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.sell_outlined, size: 19),
-              title: Text('编辑标签'),
+              title: Text(context.l10n.editTags),
             ),
           ),
           if (onPublish != null)
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'publish',
               child: ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(Icons.public, size: 19),
-                title: Text('发布到公共'),
+                title: Text(context.l10n.publishToPublic),
               ),
             ),
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'export',
             child: ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.ios_share, size: 19),
-              title: Text('导出'),
+              title: Text(context.l10n.export),
             ),
           ),
           PopupMenuItem(
@@ -1889,7 +1937,10 @@ class _VibeCard extends StatelessWidget {
                 size: 19,
                 color: scheme.error,
               ),
-              title: Text('删除', style: TextStyle(color: scheme.error)),
+              title: Text(
+                context.l10n.delete,
+                style: TextStyle(color: scheme.error),
+              ),
             ),
           ),
         ],
@@ -2179,7 +2230,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('取消'),
+                    child: Text(context.l10n.cancel),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -2261,7 +2312,7 @@ class _TagEditorSheetState extends State<_TagEditorSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '编辑标签',
+            context.l10n.editTags,
             style: context.texts.titleMedium!.copyWith(
               fontWeight: FontWeight.w700,
             ),
@@ -2278,7 +2329,7 @@ class _TagEditorSheetState extends State<_TagEditorSheet> {
           const SizedBox(height: 14),
           if (_pool.isEmpty)
             Text(
-              '还没有标签,在下方输入新建。',
+              context.l10n.noTagsYetBelow,
               style: context.texts.bodySmall!.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
@@ -2313,11 +2364,11 @@ class _TagEditorSheetState extends State<_TagEditorSheet> {
               Expanded(
                 child: TextField(
                   controller: _ctl,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     isDense: true,
-                    hintText: '新建标签,如 风景',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(
+                    hintText: context.l10n.newTagHint,
+                    border: const OutlineInputBorder(),
+                    contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 10,
                     ),
@@ -2338,12 +2389,12 @@ class _TagEditorSheetState extends State<_TagEditorSheet> {
             children: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('取消'),
+                child: Text(context.l10n.cancel),
               ),
               const SizedBox(width: 8),
               FilledButton(
                 onPressed: () => Navigator.pop(context, _sel.toList()..sort()),
-                child: const Text('保存'),
+                child: Text(context.l10n.save),
               ),
             ],
           ),
@@ -2379,7 +2430,11 @@ class _TagManagerSheetState extends ConsumerState<_TagManagerSheet> {
       _newCtl.clear();
       setState(() {});
     } else {
-      hintSnack(context, '标签「$name」已存在', icon: Icons.info_outline);
+      hintSnack(
+        context,
+        context.l10n.tagExists(name),
+        icon: Icons.info_outline,
+      );
     }
   }
 
@@ -2405,7 +2460,7 @@ class _TagManagerSheetState extends ConsumerState<_TagManagerSheet> {
       final neu = await showDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('重命名标签'),
+          title: Text(context.l10n.renameTag),
           content: TextField(
             controller: ctl,
             autofocus: true,
@@ -2415,11 +2470,11 @@ class _TagManagerSheetState extends ConsumerState<_TagManagerSheet> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
+              child: Text(context.l10n.cancel),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, ctl.text.trim()),
-              child: const Text('保存'),
+              child: Text(context.l10n.save),
             ),
           ],
         ),
@@ -2432,9 +2487,9 @@ class _TagManagerSheetState extends ConsumerState<_TagManagerSheet> {
     Future<void> remove(String tag) async {
       final ok = await confirmDialog(
         context,
-        title: '删除标签',
-        message: '标签「$tag」将从所有 Vibe 上移除(不删除 Vibe 本身)。',
-        confirmLabel: '删除',
+        title: context.l10n.deleteTag,
+        message: context.l10n.deleteTagBody(tag),
+        confirmLabel: context.l10n.delete,
       );
       if (ok) await lib.removeTag(tag);
     }
@@ -2450,7 +2505,7 @@ class _TagManagerSheetState extends ConsumerState<_TagManagerSheet> {
             child: Row(
               children: [
                 Text(
-                  '管理标签',
+                  context.l10n.manageTags,
                   style: context.texts.titleMedium!.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -2475,7 +2530,7 @@ class _TagManagerSheetState extends ConsumerState<_TagManagerSheet> {
                     textInputAction: TextInputAction.done,
                     decoration: InputDecoration(
                       isDense: true,
-                      hintText: '新建标签,如 风景',
+                      hintText: context.l10n.newTagHint,
                       prefixIcon: const Icon(Icons.sell_outlined, size: 18),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
@@ -2490,7 +2545,7 @@ class _TagManagerSheetState extends ConsumerState<_TagManagerSheet> {
                 ),
                 const SizedBox(width: 8),
                 IconButton.filledTonal(
-                  tooltip: '新建',
+                  tooltip: context.l10n.newLabel,
                   onPressed: _create,
                   icon: const Icon(Icons.add),
                 ),
@@ -2502,7 +2557,7 @@ class _TagManagerSheetState extends ConsumerState<_TagManagerSheet> {
               padding: const EdgeInsets.symmetric(vertical: 28),
               child: Center(
                 child: Text(
-                  '还没有标签\n在上方输入框新建,或在某条 Vibe 的「编辑标签」里新建',
+                  context.l10n.noTagsYetHint,
                   textAlign: TextAlign.center,
                   style: context.texts.bodySmall!.copyWith(
                     color: scheme.onSurfaceVariant,
@@ -2528,12 +2583,12 @@ class _TagManagerSheetState extends ConsumerState<_TagManagerSheet> {
                       t,
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                    subtitle: Text('${counts[t] ?? 0} 项'),
+                    subtitle: Text(context.l10n.itemsCount(counts[t] ?? 0)),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          tooltip: '重命名',
+                          tooltip: context.l10n.rename,
                           visualDensity: VisualDensity.compact,
                           icon: Icon(
                             Icons.edit_outlined,
@@ -2543,7 +2598,7 @@ class _TagManagerSheetState extends ConsumerState<_TagManagerSheet> {
                           onPressed: () => rename(t),
                         ),
                         IconButton(
-                          tooltip: '删除',
+                          tooltip: context.l10n.delete,
                           visualDensity: VisualDensity.compact,
                           icon: Icon(
                             Icons.delete_outline,

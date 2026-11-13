@@ -7,6 +7,7 @@ import '../../../core/net/nai_client.dart';
 import '../../../core/net/nai_proxy.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/util/haptics.dart';
+import '../../../l10n/l10n.dart';
 
 /// 邮箱密码登录弹层:本机派生 access key → 换 30 天 JWT → 存 token +
 /// 续期凭证。成功 pop 出 JWT(调用方回填令牌输入框,顺带触发档位查询);
@@ -89,7 +90,7 @@ class _CredentialLoginSheetState extends ConsumerState<_CredentialLoginSheet> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = '登录失败:$e';
+        _error = context.l10n.loginFailed('$e');
       });
     }
   }
@@ -126,15 +127,14 @@ class _CredentialLoginSheetState extends ConsumerState<_CredentialLoginSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'NovelAI 账号登录',
+            context.l10n.naiAccountLogin,
             style: context.texts.titleMedium!.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 6),
           Text(
-            '密码只在本机参与密钥计算,不上传也不保存;'
-            '登录得到 30 天有效的令牌,到期前 App 会自动换新。',
+            context.l10n.passwordLocalHint,
             style: context.texts.labelSmall!.copyWith(color: scheme.outline),
           ),
           const SizedBox(height: 16),
@@ -146,7 +146,7 @@ class _CredentialLoginSheetState extends ConsumerState<_CredentialLoginSheet> {
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
             autofillHints: const [AutofillHints.email],
-            decoration: _dec('邮箱'),
+            decoration: _dec(context.l10n.email),
           ),
           const SizedBox(height: 10),
           TextField(
@@ -160,7 +160,7 @@ class _CredentialLoginSheetState extends ConsumerState<_CredentialLoginSheet> {
             autofillHints: const [AutofillHints.password],
             onSubmitted: (_) => _login(),
             decoration: _dec(
-              '密码',
+              context.l10n.password,
               suffix: IconButton(
                 onPressed: () => setState(() => _obscure = !_obscure),
                 icon: Icon(
@@ -196,7 +196,7 @@ class _CredentialLoginSheetState extends ConsumerState<_CredentialLoginSheet> {
                       color: scheme.onPrimary,
                     ),
                   )
-                : const Text('登录'),
+                : Text(context.l10n.login),
           ),
         ],
       ),

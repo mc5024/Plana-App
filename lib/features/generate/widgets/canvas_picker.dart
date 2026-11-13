@@ -10,6 +10,8 @@ import '../style_recipes.dart' show recipeDetail, recipeOf;
 import 'bottom_action_bar.dart';
 import 'canvas_history_sheet.dart';
 import 'common.dart';
+import '../display_names.dart';
+import '../../../l10n/l10n.dart';
 
 /// 只显示当前画布，与模型选择共用顶栏。点名称展开全部画布。
 class CanvasPicker extends ConsumerWidget {
@@ -21,10 +23,13 @@ class CanvasPicker extends ConsumerWidget {
     final canvas = workspace.active;
     final scheme = context.scheme;
     return Tooltip(
-      message: '切换画布',
+      message: context.l10n.switchCanvas,
       child: Semantics(
         button: true,
-        label: '当前画布：${canvas.name}，共 ${workspace.canvases.length} 张',
+        label: context.l10n.currentCanvasSemantics(
+          canvasDisplayName(context.l10n, canvas.name),
+          workspace.canvases.length,
+        ),
         child: Material(
           color: Colors.transparent,
           borderRadius: BorderRadius.circular(12),
@@ -53,7 +58,7 @@ class CanvasPicker extends ConsumerWidget {
                   const SizedBox(width: 4),
                   Flexible(
                     child: Text(
-                      canvas.name,
+                      canvasDisplayName(context.l10n, canvas.name),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: context.texts.bodyMedium!.copyWith(
@@ -92,11 +97,12 @@ Future<void> _renameCanvas(
   WidgetRef ref,
   CanvasDraft canvas,
 ) async {
+  final shown = canvasDisplayName(context.l10n, canvas.name);
   final result = await showDialog<String>(
     context: context,
-    builder: (_) => _CanvasNameDialog(name: canvas.name),
+    builder: (_) => _CanvasNameDialog(name: shown),
   );
-  if (result != null && context.mounted) {
+  if (result != null && result.trim() != shown && context.mounted) {
     ref.read(canvasWorkspaceProvider.notifier).rename(canvas.id, result);
   }
 }
@@ -126,23 +132,23 @@ class _CanvasNameDialogState extends State<_CanvasNameDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('重命名画布'),
+    title: Text(context.l10n.renameCanvas),
     content: TextField(
       controller: _controller,
       autofocus: true,
       maxLength: kCanvasNameMax,
-      decoration: const InputDecoration(labelText: '画布名称'),
+      decoration: InputDecoration(labelText: context.l10n.canvasName),
       onChanged: (_) => setState(() {}),
       onSubmitted: (_) => _submit(),
     ),
     actions: [
       TextButton(
         onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
+        child: Text(context.l10n.cancel),
       ),
       TextButton(
         onPressed: _controller.text.trim().isEmpty ? null : _submit,
-        child: const Text('保存'),
+        child: Text(context.l10n.save),
       ),
     ],
   );
@@ -211,8 +217,8 @@ class _CanvasManagerState extends ConsumerState<_CanvasManager> {
     if (removed == null) return;
     hintSnack(
       context,
-      '已删除「${canvas.name}」',
-      actionLabel: '撤销',
+      context.l10n.deletedNamed(canvasDisplayName(context.l10n, canvas.name)),
+      actionLabel: context.l10n.undo,
       onAction: () => notifier.restore(
         removed.canvas,
         removed.index,
@@ -260,7 +266,7 @@ class _CanvasManagerState extends ConsumerState<_CanvasManager> {
               child: Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: HelpLabel(
-                  text: '画布',
+                  text: context.l10n.canvases,
                   help: Help.canvas,
                   style: context.texts.titleMedium!.copyWith(
                     fontWeight: FontWeight.w700,
@@ -304,7 +310,7 @@ class _CanvasManagerState extends ConsumerState<_CanvasManager> {
                   Expanded(
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.add),
-                      label: const Text('新建画布'),
+                      label: Text(context.l10n.newCanvas),
                       onPressed: () {
                         _prepareUiSwitch(ref);
                         ref.read(canvasWorkspaceProvider.notifier).create();
@@ -316,7 +322,7 @@ class _CanvasManagerState extends ConsumerState<_CanvasManager> {
                   Expanded(
                     child: FilledButton.tonalIcon(
                       icon: const Icon(Icons.copy_outlined),
-                      label: const Text('复制当前'),
+                      label: Text(context.l10n.duplicateCurrent),
                       onPressed: () {
                         _prepareUiSwitch(ref);
                         ref
@@ -404,7 +410,7 @@ class _CanvasTile extends StatelessWidget {
                     const SizedBox(width: 11),
                     Expanded(
                       child: Text(
-                        canvas.name,
+                        canvasDisplayName(context.l10n, canvas.name),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: context.texts.bodyLarge!.copyWith(
@@ -414,7 +420,7 @@ class _CanvasTile extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     IconButton(
-                      tooltip: '历史',
+                      tooltip: context.l10n.history,
                       visualDensity: VisualDensity.compact,
                       onPressed: onHistory,
                       icon: Icon(
@@ -425,7 +431,7 @@ class _CanvasTile extends StatelessWidget {
                     ),
                     if (onRename != null)
                       IconButton(
-                        tooltip: '重命名',
+                        tooltip: context.l10n.rename,
                         visualDensity: VisualDensity.compact,
                         onPressed: onRename,
                         icon: Icon(
@@ -436,7 +442,7 @@ class _CanvasTile extends StatelessWidget {
                       ),
                     if (onDelete != null)
                       IconButton(
-                        tooltip: '删除',
+                        tooltip: context.l10n.delete,
                         visualDensity: VisualDensity.compact,
                         onPressed: onDelete,
                         icon: Icon(
@@ -448,7 +454,7 @@ class _CanvasTile extends StatelessWidget {
                     else
                       // 和删除键同样大小的格子,行里的按钮不会因此错位
                       Tooltip(
-                        message: '默认画布，固定在最上面，不能删除或改名',
+                        message: context.l10n.defaultCanvasLocked,
                         child: SizedBox.square(
                           dimension: 40,
                           child: Icon(
@@ -463,7 +469,9 @@ class _CanvasTile extends StatelessWidget {
                 _PreviewLine(
                   icon: Icons.subject,
                   child: Text(
-                    prompt.isEmpty ? '尚未填写提示词' : prompt.replaceAll('\n', ' '),
+                    prompt.isEmpty
+                        ? context.l10n.noPromptYet
+                        : prompt.replaceAll('\n', ' '),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: preview.copyWith(
@@ -478,7 +486,7 @@ class _CanvasTile extends StatelessWidget {
                   icon: Icons.group_outlined,
                   child: characters.isEmpty
                       ? Text(
-                          '无角色',
+                          context.l10n.noCharacters,
                           style: preview.copyWith(color: scheme.outline),
                         )
                       : _CharacterSummary(characters),
@@ -584,7 +592,7 @@ class _CharacterSummary extends StatelessWidget {
           if (i > 0) Text(' · ', style: dim),
           Flexible(
             child: Text(
-              c.name,
+              characterDisplayName(context.l10n, c.name),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: c.enabled ? style : dim,

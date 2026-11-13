@@ -51,6 +51,7 @@ import 'custom_endpoint.dart' show CustomEndpoint;
 import 'direct_agent.dart';
 import 'preset_rules.dart';
 import 'session_store.dart';
+import '../../l10n/l10n.dart';
 
 /// 正在跑时发的那几句:排着,上一轮跑完依次发出去。不落盘。
 ///
@@ -579,10 +580,7 @@ class AssistantNotifier extends Notifier<AssistantState> {
     // 界面已经挡了(见 _ModelGate),这儿再挡一道:自动生成、重试这些不经过界面。
     final model = ref.read(generateProvider).params.model;
     if (!assistantSupportsModel(model)) {
-      _pushError(
-        'AI 助手暂不支持 Anima / Krea,去创作页换成 NAI 再来',
-        AssistErrorKind.unknown,
-      );
+      _pushError(l10nNow.assistantNoModal, AssistErrorKind.unknown);
       return;
     }
 
@@ -596,7 +594,7 @@ class AssistantNotifier extends Notifier<AssistantState> {
         await ref.read(agentModelsProvider.future);
       } catch (_) {}
       if (ref.read(assistantModelKeyProvider).isEmpty) {
-        _pushError('内置模型暂未开放,先在顶部选一个自定义接口', AssistErrorKind.auth);
+        _pushError(l10nNow.builtinModelUnavailable, AssistErrorKind.auth);
         return;
       }
     }
@@ -645,7 +643,7 @@ class AssistantNotifier extends Notifier<AssistantState> {
         liveReasoning: '',
         // 一开始是模型在想,不是在查资料:大多数轮次根本不调工具,开场就报「查资料」
         // 是在说一件还没发生、多半也不会发生的事。真调了工具再切过去(见下面的事件)。
-        stage: '思考中',
+        stage: l10nNow.thinking,
       ),
     );
     // 跟出图共用那条前台服务:退到后台等回复时进程不被冻结 / 回收
@@ -808,7 +806,10 @@ class AssistantNotifier extends Notifier<AssistantState> {
             // 就再也拿不到「查的是普拉娜」这件事了。
             tools.add(ToolTrace(name: name, subject: toolSubject(args)));
             _set(
-              state.copyWith(liveTools: List.of(tools), stage: '查资料中'),
+              state.copyWith(
+                liveTools: List.of(tools),
+                stage: l10nNow.lookingUp,
+              ),
               persist: false,
             );
           case AgentToolResult(:final name, :final summary):
@@ -821,7 +822,10 @@ class AssistantNotifier extends Notifier<AssistantState> {
             _set(
               // 结果回来之后模型接着想:可能再查一轮,可能出图,也可能只是回答个问题
               // (「芙兰是谁」查完就答,没有提示词可写)—— 所以不报「写提示词」
-              state.copyWith(liveTools: List.of(tools), stage: '思考中'),
+              state.copyWith(
+                liveTools: List.of(tools),
+                stage: l10nNow.thinking,
+              ),
               persist: false,
             );
           case AgentDelta(:final text, :final reasoning):
@@ -833,7 +837,7 @@ class AssistantNotifier extends Notifier<AssistantState> {
             );
           case AgentDegraded():
             tools.add(
-              const ToolTrace(name: kDegradedTool, summary: '已降级到安全模式'),
+              ToolTrace(name: kDegradedTool, summary: l10nNow.degradedToSafe),
             );
             _set(state.copyWith(liveTools: List.of(tools)), persist: false);
           case AgentDone(:final result):
@@ -864,7 +868,7 @@ class AssistantNotifier extends Notifier<AssistantState> {
         if (seq != _seq) return;
         // final 已经把 running 收掉了;还开着说明流是空落地的。
         if (state.running) {
-          _pushError('AI 这轮没跑完就断了,再试一次', AssistErrorKind.network);
+          _pushError(l10nNow.turnInterrupted, AssistErrorKind.network);
         }
       },
       cancelOnError: true,
@@ -1016,7 +1020,9 @@ class AssistantNotifier extends Notifier<AssistantState> {
           );
     final text = r.replyText.trim().isNotEmpty
         ? r.replyText.trim()
-        : (draw != null ? '改好了喵~' : '这轮没什么可说的喵…');
+        : (draw != null
+              ? l10nNow.replyDoneFallback
+              : l10nNow.replyEmptyFallback);
     final id = _newId();
     _set(
       state.copyWith(

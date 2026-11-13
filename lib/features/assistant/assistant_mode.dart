@@ -17,14 +17,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/auth/bot_session_store.dart';
 import '../../core/net/backend_config.dart';
 import 'preset_rules.dart';
+import '../../l10n/l10n.dart';
 
 /// 顺序就是弹层里的顺序。`normal` 就是「无」:什么都不加。
 enum AssistantMode { normal, comic, natural }
 
 String assistantModeLabel(AssistantMode m) => switch (m) {
-  AssistantMode.normal => '无',
-  AssistantMode.comic => '漫画模式',
-  AssistantMode.natural => '仅自然语言',
+  AssistantMode.normal => l10nNow.modeNone,
+  AssistantMode.comic => l10nNow.modeComic,
+  AssistantMode.natural => l10nNow.modeNatural,
 };
 
 /// 预设里对应那一段的 when。「无」没有段。

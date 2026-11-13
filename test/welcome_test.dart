@@ -25,6 +25,19 @@ class _TokenMode extends AuthModeNotifier {
 }
 
 void main() {
+  // 文案按中文断言:系统语言固定成中文
+  setUp(() {
+    TestWidgetsFlutterBinding.ensureInitialized()
+        .platformDispatcher
+        .localesTestValue = [
+      const Locale('zh'),
+    ];
+  });
+  tearDown(
+    () => TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher
+        .clearLocalesTestValue(),
+  );
+
   Widget app({required AuthModeNotifier Function() mode}) => ProviderScope(
     overrides: [
       appStoresProvider.overrideWithValue(AppStores.ephemeral()),

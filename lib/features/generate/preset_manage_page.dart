@@ -54,9 +54,11 @@ class PromptPresetManagePage extends ConsumerWidget {
   ) async {
     final ok = await confirmDialog(
       context,
-      title: '删除预设',
-      message: '「${p.name}」将被删除;若正在激活,回落到「无」。',
-      confirmLabel: '删除',
+      title: context.l10n.deletePreset,
+      message: context.l10n.deletePresetBody(
+        presetDisplayName(context.l10n, p),
+      ),
+      confirmLabel: context.l10n.delete,
     );
     if (!ok) return;
     await ref.read(promptPresetsProvider.notifier).remove(p.id);
@@ -69,10 +71,10 @@ class PromptPresetManagePage extends ConsumerWidget {
     final activeId = ref.watch(activePromptPresetIdProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('提示词预设'),
+        title: Text(context.l10n.promptPresets),
         actions: [
           IconButton(
-            tooltip: '新建预设',
+            tooltip: context.l10n.newPreset,
             onPressed: () => _edit(context, ref),
             icon: const Icon(Icons.add),
           ),
@@ -93,8 +95,7 @@ class PromptPresetManagePage extends ConsumerWidget {
               header: Padding(
                 padding: const EdgeInsets.fromLTRB(6, 2, 6, 12),
                 child: Text(
-                  '激活的预设在生成时自动作为前缀拼进正/负提示词,不占用输入框。'
-                  '默认预设不可修改;右上角可新建自定义预设。',
+                  context.l10n.presetPageIntro,
                   style: context.texts.bodySmall!.copyWith(
                     color: scheme.onSurfaceVariant,
                     height: 1.5,
@@ -203,8 +204,8 @@ class _PresetTile extends StatelessWidget {
                               child: Text(
                                 switch (preset.scope) {
                                   'v5' => 'V5',
-                                  'legacy' => '4.5 及更早',
-                                  _ => '默认',
+                                  'legacy' => context.l10n.presetGroupLegacy,
+                                  _ => context.l10n.presetGroupDefault,
                                 },
                                 style: context.texts.labelSmall!.copyWith(
                                   color: scheme.onSurfaceVariant,
@@ -217,7 +218,7 @@ class _PresetTile extends StatelessWidget {
                       const SizedBox(height: 3),
                       if (preset.positive.isEmpty && preset.negative.isEmpty)
                         Text(
-                          '无前缀',
+                          context.l10n.noPrefix,
                           style: context.texts.labelSmall!.copyWith(
                             color: scheme.outline,
                           ),
@@ -247,7 +248,9 @@ class _PresetTile extends StatelessWidget {
                 ),
                 const SizedBox(width: 4),
                 IconButton(
-                  tooltip: preset.isDefault ? '查看' : '编辑',
+                  tooltip: preset.isDefault
+                      ? context.l10n.view
+                      : context.l10n.edit,
                   visualDensity: VisualDensity.compact,
                   onPressed: onEdit,
                   icon: Icon(
@@ -260,7 +263,7 @@ class _PresetTile extends StatelessWidget {
                 ),
                 if (onDelete != null)
                   IconButton(
-                    tooltip: '删除',
+                    tooltip: context.l10n.delete,
                     visualDensity: VisualDensity.compact,
                     onPressed: onDelete,
                     icon: Icon(
@@ -291,7 +294,10 @@ class _PresetEditSheet extends StatefulWidget {
 
 class _PresetEditSheetState extends State<_PresetEditSheet> {
   late final TextEditingController nameCtl = TextEditingController(
-    text: widget.preset?.name ?? '',
+    text: switch (widget.preset) {
+      final p? => presetDisplayName(context.l10n, p),
+      null => '',
+    },
   );
   late final TextEditingController posCtl = TextEditingController(
     text: widget.preset?.positive ?? '',
@@ -348,7 +354,7 @@ class _PresetEditSheetState extends State<_PresetEditSheet> {
       children: [
         Expanded(
           child: Text(
-            '拼接位置',
+            context.l10n.placement,
             style: context.texts.labelMedium!.copyWith(
               color: scheme.onSurfaceVariant,
             ),
@@ -364,8 +370,16 @@ class _PresetEditSheetState extends State<_PresetEditSheet> {
             ),
             child: Row(
               children: [
-                seg('开头', !_suffix, () => setState(() => _suffix = false)),
-                seg('末尾', _suffix, () => setState(() => _suffix = true)),
+                seg(
+                  context.l10n.placementStart,
+                  !_suffix,
+                  () => setState(() => _suffix = false),
+                ),
+                seg(
+                  context.l10n.placementEnd,
+                  _suffix,
+                  () => setState(() => _suffix = true),
+                ),
               ],
             ),
           ),
@@ -398,7 +412,9 @@ class _PresetEditSheetState extends State<_PresetEditSheet> {
           style: multiline ? mono(context, size: 13) : null,
           decoration: InputDecoration(
             isDense: true,
-            hintText: multiline ? '空…' : '预设名称',
+            hintText: multiline
+                ? context.l10n.emptyHint
+                : context.l10n.presetName,
             border: const OutlineInputBorder(),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 12,
@@ -414,10 +430,10 @@ class _PresetEditSheetState extends State<_PresetEditSheet> {
   Widget build(BuildContext context) {
     final scheme = context.scheme;
     final title = _readOnly
-        ? '查看预设'
+        ? context.l10n.viewPreset
         : widget.preset == null
-        ? '新建预设'
-        : '编辑预设';
+        ? context.l10n.newPreset
+        : context.l10n.editPreset;
     return Padding(
       padding: EdgeInsets.only(
         left: 20,
@@ -437,26 +453,32 @@ class _PresetEditSheetState extends State<_PresetEditSheet> {
           if (_readOnly) ...[
             const SizedBox(height: 4),
             Text(
-              '默认预设不可修改,可新建自定义预设替代。',
+              context.l10n.defaultPresetReadOnly,
               style: context.texts.labelSmall!.copyWith(color: scheme.outline),
             ),
           ],
           const SizedBox(height: 14),
-          _field('名称', nameCtl),
+          _field(context.l10n.name, nameCtl),
           const SizedBox(height: 12),
-          _field(_suffix ? '正向后缀' : '正向前缀', posCtl, multiline: true),
+          _field(
+            _suffix ? context.l10n.positiveSuffix : context.l10n.positivePrefix,
+            posCtl,
+            multiline: true,
+          ),
           const SizedBox(height: 8),
           _placementRow(scheme),
           const SizedBox(height: 12),
           // 负向没有这个选择:官方一律前缀,我们也从没变过
-          _field('负向前缀', negCtl, multiline: true),
+          _field(context.l10n.negativePrefix, negCtl, multiline: true),
           const SizedBox(height: 18),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: Text(_readOnly ? '关闭' : '取消'),
+                child: Text(
+                  _readOnly ? context.l10n.close : context.l10n.cancel,
+                ),
               ),
               if (!_readOnly) ...[
                 const SizedBox(width: 8),
@@ -470,7 +492,7 @@ class _PresetEditSheetState extends State<_PresetEditSheet> {
                       suffix: _suffix,
                     ));
                   },
-                  child: const Text('保存'),
+                  child: Text(context.l10n.save),
                 ),
               ],
             ],

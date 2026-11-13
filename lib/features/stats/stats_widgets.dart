@@ -5,6 +5,7 @@ import '../../core/net/backend_client.dart';
 import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import 'stats_providers.dart';
+import '../../l10n/l10n.dart';
 
 /// 统计三页共用的小件:范围 chips、指标格、卡容器、流水行、热力图卡。
 
@@ -177,7 +178,7 @@ class TrendChart extends StatelessWidget {
         child: Align(
           alignment: Alignment.bottomLeft,
           child: Text(
-            '暂无数据',
+            context.l10n.noData,
             style: context.texts.labelSmall!.copyWith(color: scheme.outline),
           ),
         ),

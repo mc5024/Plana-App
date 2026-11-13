@@ -29,6 +29,7 @@ import '../prompt_diff.dart';
 import 'proposal_actions.dart';
 import 'proposal_sheet.dart';
 import 'tag_diff.dart';
+import '../../../l10n/l10n.dart';
 
 class ResultStrip extends ConsumerWidget {
   const ResultStrip({super.key, required this.msg, this.prev});
@@ -69,7 +70,7 @@ class ResultStrip extends ConsumerWidget {
       positive: p.positive,
       characters: chars,
       tokens: totalPromptTokens(tok, main: p.positive, parts: parts),
-      emptyNote: '和上一轮的提示词一样',
+      emptyNote: context.l10n.sameAsLastTurn,
       msg: msg,
     );
 
@@ -87,7 +88,7 @@ class ResultStrip extends ConsumerWidget {
                 Icon(Icons.auto_awesome, size: 14, color: scheme.outline),
                 const SizedBox(width: 6),
                 Text(
-                  '生成了 $tags tag',
+                  context.l10n.generatedNTags(tags),
                   style: context.texts.labelMedium!.copyWith(
                     color: scheme.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
@@ -125,17 +126,19 @@ class ResultStrip extends ConsumerWidget {
   String _title(PromptDiff diff, List<ProposalChar> chars) {
     final charsChanged = chars.isNotEmpty && _charsChanged(chars);
     if (!_live) {
-      return charsChanged ? '已写入 · ${chars.length} 个角色' : '已写入创作页';
+      return charsChanged
+          ? l10nNow.writtenNChars(chars.length)
+          : l10nNow.writtenToCreate;
     }
-    if (charsChanged) return 'AI 给了 ${chars.length} 个角色';
+    if (charsChanged) return l10nNow.aiGaveNChars(chars.length);
     // 从空白开始写的那一轮:说「新增 42」不如说清楚它是一整份。
     if (diff.removed.isEmpty &&
         diff.added.isNotEmpty &&
         (prev?.positive ?? '').trim().isEmpty) {
-      return 'AI 写了一整份提示词';
+      return l10nNow.aiWroteFull;
     }
-    if (diff.isEmpty) return '和你现在的提示词一样';
-    return 'AI 的改动';
+    if (diff.isEmpty) return l10nNow.sameAsYours;
+    return l10nNow.aiChanges;
   }
 
   /// 展开钮。做成实心小胶囊而不是图标 —— 它是这一条**唯一**的展开入口,
@@ -162,7 +165,7 @@ class ResultStrip extends ConsumerWidget {
             ),
             const SizedBox(width: 5),
             Text(
-              '展开',
+              context.l10n.expand,
               style: context.texts.labelSmall!.copyWith(
                 color: scheme.onSecondaryContainer,
                 fontWeight: FontWeight.w700,

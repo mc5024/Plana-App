@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../store/app_stores.dart';
+import '../../l10n/l10n.dart';
 
 /// 官方接口走不走代理(`kNaiProxyBase`)。本机设置,默认关。
 ///
@@ -16,7 +17,7 @@ final naiProxyProvider = NotifierProvider<NaiProxyNotifier, bool>(
 );
 
 /// 开关底下那行小字。账号页与引导页共用,两处说法不会各写各的。
-const kNaiProxyHint = '经 Cloudflare 转发,无法访问官网时开启';
+String get kNaiProxyHint => l10nNow.naiProxyHint;
 
 const _key = 'nai_proxy';
 

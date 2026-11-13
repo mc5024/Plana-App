@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../../l10n/l10n.dart';
 
 /// 一条可自选的导入内容。
 class ImportOption {
@@ -39,7 +40,7 @@ Future<Set<String>?> showImportPicker(
   required String title,
   String? notice,
   required List<ImportOption> options,
-  String confirmLabel = '导入',
+  String? confirmLabel,
   bool mergeHint = true,
 }) {
   return showModalBottomSheet<Set<String>>(
@@ -52,7 +53,7 @@ Future<Set<String>?> showImportPicker(
       title: title,
       notice: notice,
       options: options,
-      confirmLabel: confirmLabel,
+      confirmLabel: confirmLabel ?? context.l10n.importLabel,
       mergeHint: mergeHint,
     ),
   );
@@ -167,7 +168,8 @@ class _ImportPickerState extends State<_ImportPicker> {
                       (0, null) => null,
                       _ => Text(
                         [
-                          if (o.conflict > 0) '其中 ${o.conflict} 条覆盖本地同 id',
+                          if (o.conflict > 0)
+                            context.l10n.overwriteConflicts(o.conflict),
                           ?o.note,
                         ].join(' · '),
                         maxLines: 2,
@@ -198,8 +200,8 @@ class _ImportPickerState extends State<_ImportPicker> {
                 if (widget.mergeHint) ...[
                   Text(
                     totalConflict > 0
-                        ? '按 id 合并:同 id 覆盖($totalConflict 条),其余新增;本地独有的条目保留。'
-                        : '按 id 合并:本地已有的条目一个都不会丢。',
+                        ? context.l10n.mergeWithConflicts(totalConflict)
+                        : context.l10n.mergeNoLoss,
                     style: context.texts.bodySmall!.copyWith(
                       color: totalConflict > 0 ? scheme.error : scheme.outline,
                       height: 1.4,
@@ -215,7 +217,7 @@ class _ImportPickerState extends State<_ImportPicker> {
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size.fromHeight(46),
                         ),
-                        child: const Text('取消'),
+                        child: Text(context.l10n.cancel),
                       ),
                     ),
                     const SizedBox(width: 10),

@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/store/app_stores.dart';
 import '../generate/prompt_sections.dart' show SectionImport;
+import '../../l10n/l10n.dart';
 
 const _key = 'assistant_settings';
 
@@ -36,12 +37,12 @@ enum ThinkLevel {
 }
 
 String thinkLevelLabel(ThinkLevel l) => switch (l) {
-  ThinkLevel.off => '关闭',
-  ThinkLevel.auto => '自动',
-  ThinkLevel.low => '低',
-  ThinkLevel.medium => '中等',
-  ThinkLevel.high => '高',
-  ThinkLevel.ultra => '超高',
+  ThinkLevel.off => l10nNow.thinkOff,
+  ThinkLevel.auto => l10nNow.thinkAuto,
+  ThinkLevel.low => l10nNow.thinkLow,
+  ThinkLevel.medium => l10nNow.thinkMedium,
+  ThinkLevel.high => l10nNow.thinkHigh,
+  ThinkLevel.ultra => l10nNow.thinkUltra,
 };
 
 /// AI 查画师串 / 角色时认哪些库。**由窄到宽声明**(菜单顺序即此)。
@@ -60,16 +61,16 @@ enum LibraryScope {
 }
 
 String libraryScopeLabel(LibraryScope s) => switch (s) {
-  LibraryScope.none => '不使用',
-  LibraryScope.local => '本地库',
-  LibraryScope.all => '本地库 + 公共库',
+  LibraryScope.none => l10nNow.scopeNone,
+  LibraryScope.local => l10nNow.localLibrary,
+  LibraryScope.all => l10nNow.scopeLocalPublic,
 };
 
 /// 选项下面那行说明。首次引导和助手设置里的选择框共用。
 String libraryScopeDesc(LibraryScope s) => switch (s) {
-  LibraryScope.none => '完全不使用你的灵感库内容',
-  LibraryScope.local => '使用你在灵感库中创建和收藏的内容',
-  LibraryScope.all => '使用本地和公共库的所有内容',
+  LibraryScope.none => l10nNow.scopeNoneDesc,
+  LibraryScope.local => l10nNow.scopeLocalDesc,
+  LibraryScope.all => l10nNow.scopeAllDesc,
 };
 
 /// 公共库要 Bot 授权:没授权时「本地库 + 公共库」选不了,已经选着的按本地库算
@@ -89,9 +90,9 @@ LibraryScope effectiveLibraryScope(
 String libraryScopeWire(LibraryScope s) => s.name;
 
 String sectionImportLabel(SectionImport m) => switch (m) {
-  SectionImport.main => '替换主体',
-  SectionImport.newSection => '新建分区',
-  SectionImport.clear => '清空分区',
+  SectionImport.main => l10nNow.importReplaceMain,
+  SectionImport.newSection => l10nNow.importNewSection,
+  SectionImport.clear => l10nNow.importClearSections,
 };
 
 /// 首次引导的版本。引导内容改版时加一:走过旧版的人进 AI 页会再看到一次。

@@ -15,6 +15,7 @@ import 'platform_page.dart';
 import 'stats_providers.dart';
 import 'stats_widgets.dart';
 import 'wallet_page.dart';
+import '../../l10n/l10n.dart';
 
 /// 统计主页:右上角下拉切数据源(Bot 服务端 / 直连 Key 本机),
 /// 主体是纯数据——时间范围 + hero 大数字 + 随范围变化的可点趋势图
@@ -63,7 +64,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('统计'),
+        title: Text(context.l10n.stats),
         actions: [
           _ModePill(
             bot: _bot,
@@ -84,7 +85,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
           ];
 
           if (_bot && session == null) {
-            children.add(const StatsCard(child: Text('暂未开放')));
+            children.add(StatsCard(child: Text(context.l10n.notAvailableYet)));
           } else {
             children.addAll(_dataSection(context));
           }
@@ -169,7 +170,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '张 · $scope生图',
+              context.l10n.imagesScopeSuffix(scope),
               style: context.texts.bodyMedium!.copyWith(
                 color: picked != null
                     ? scheme.primary
@@ -183,12 +184,12 @@ class _StatsPageState extends ConsumerState<StatsPage> {
         padding: const EdgeInsets.only(top: 2),
         child: loading && pts == null
             ? SkeletonText(
-                sample: '消耗 0,000 点',
+                sample: context.l10n.costPts('0,000'),
                 style: context.texts.labelSmall!,
                 width: 76,
               )
             : Text(
-                '消耗 ${pts == null ? '—' : fmtInt(pts)} 点',
+                context.l10n.costPts(pts == null ? '—' : fmtInt(pts)),
                 style: context.texts.labelSmall!.copyWith(
                   color: scheme.outline,
                 ),
@@ -226,7 +227,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
       Padding(
         padding: const EdgeInsets.only(top: 2),
         child: Text(
-          picked == null ? '' : '已选 ${picked.full}',
+          picked == null ? '' : context.l10n.selectedLabel(picked.full),
           style: context.texts.labelSmall!.copyWith(color: scheme.primary),
         ),
       ),
@@ -248,7 +249,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
   ) {
     final scheme = context.scheme;
     final today = _range == 'today';
-    final unit = today ? '时段' : '单日';
+    final peakLabel = today ? context.l10n.peakSlot : context.l10n.peakDay;
 
     // 选中某柱:第一行两个读数,第二行两个当日明细入口
     if (picked != null) {
@@ -284,7 +285,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                         ? DayDetailMode.points.botTitle
                         : DayDetailMode.points.title,
                     value: n == null ? null : fmtInt(n),
-                    unit: '笔',
+                    unit: context.l10n.unitTxns,
                     loading: loading,
                     onTap: () => _openDay(picked, DayDetailMode.points),
                   );
@@ -293,9 +294,9 @@ class _StatsPageState extends ConsumerState<StatsPage> {
               Expanded(
                 child: _DetailEntry(
                   icon: Icons.photo_library_outlined,
-                  label: '生成详情',
+                  label: context.l10n.genDetails,
                   value: fmtInt(picked.images),
-                  unit: '张',
+                  unit: context.l10n.unitImages,
                   onTap: () => _openDay(picked, DayDetailMode.gens),
                 ),
               ),
@@ -332,21 +333,21 @@ class _StatsPageState extends ConsumerState<StatsPage> {
           ),
           StatTile(
             icon: Icons.calendar_today_outlined,
-            label: today ? '活跃时段' : '活跃天数',
+            label: today ? context.l10n.activeSlots : context.l10n.activeDays,
             value: series.isEmpty ? null : '$active',
             suffix: series.isEmpty ? null : '/ ${series.length}',
             loading: seriesLoading,
           ),
           StatTile(
             icon: Icons.trending_up,
-            label: '最高$unit',
+            label: peakLabel,
             value: peakOk ? fmtInt(peak.images) : null,
             suffix: peakOk ? peak.full : null,
             loading: seriesLoading,
           ),
           StatTile(
             icon: Icons.equalizer,
-            label: today ? '段均生图' : '日均生图',
+            label: today ? context.l10n.avgPerSlot : context.l10n.avgPerDay,
             value: avg ?? (seriesLoading ? null : '0'),
             loading: seriesLoading,
           ),
@@ -354,13 +355,13 @@ class _StatsPageState extends ConsumerState<StatsPage> {
           // 看不出真实消耗。没用过 V5 就是两个 0 —— 指标格本来就该摆满。
           StatTile(
             icon: Icons.auto_awesome_outlined,
-            label: 'V5 生图',
+            label: context.l10n.v5Gens,
             value: st == null ? null : fmtInt(st.v5Calls),
             loading: stAsync.isLoading,
           ),
           StatTile(
             icon: Icons.toll,
-            label: 'V5 点数',
+            label: context.l10n.v5Anlas,
             value: st == null ? null : fmtInt(st.v5Points),
             loading: stAsync.isLoading,
           ),
@@ -371,33 +372,37 @@ class _StatsPageState extends ConsumerState<StatsPage> {
         tiles = [
           StatTile(
             icon: Icons.toll_outlined,
-            label: '估算消耗',
+            label: context.l10n.estimatedSpend,
             value: fmtInt(sum.genPts + sum.vibePts + sum.upsPts),
           ),
           StatTile(
             icon: Icons.calendar_today_outlined,
-            label: today ? '活跃时段' : '活跃天数',
+            label: today ? context.l10n.activeSlots : context.l10n.activeDays,
             value: '$active',
             suffix: '/ ${series.length}',
           ),
           StatTile(
             icon: Icons.trending_up,
-            label: '最高$unit',
+            label: peakLabel,
             value: peakOk ? fmtInt(peak.images) : null,
             suffix: peakOk ? peak.full : null,
           ),
           StatTile(
             icon: Icons.equalizer,
-            label: today ? '段均生图' : '日均生图',
+            label: today ? context.l10n.avgPerSlot : context.l10n.avgPerDay,
             value: avg ?? '0',
           ),
           // 与 Bot 同口径,数据源换成本机账本(见 KeyDayAgg.v5)
           StatTile(
             icon: Icons.auto_awesome_outlined,
-            label: 'V5 生图',
+            label: context.l10n.v5Gens,
             value: fmtInt(sum.v5),
           ),
-          StatTile(icon: Icons.toll, label: 'V5 点数', value: fmtInt(sum.v5Pts)),
+          StatTile(
+            icon: Icons.toll,
+            label: context.l10n.v5Anlas,
+            value: fmtInt(sum.v5Pts),
+          ),
         ];
       }
     }
@@ -442,11 +447,15 @@ class _StatsPageState extends ConsumerState<StatsPage> {
         icon: delta == null || delta == 0
             ? Icons.remove
             : (delta > 0 ? Icons.north_east : Icons.south_east),
-        label: _range == 'today' ? '较上一时段' : '较上一日',
+        label: _range == 'today'
+            ? context.l10n.vsPrevSlot
+            : context.l10n.vsPrevDay,
         value: delta == null
             ? '—'
-            : (delta == 0 ? '持平' : '${delta > 0 ? '+' : ''}${fmtInt(delta)}'),
-        suffix: delta == null || delta == 0 ? null : '张',
+            : (delta == 0
+                  ? context.l10n.unchanged
+                  : '${delta > 0 ? '+' : ''}${fmtInt(delta)}'),
+        suffix: delta == null || delta == 0 ? null : context.l10n.unitImages,
       ),
     ];
   }
@@ -485,7 +494,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
       DayDetailPage(
         bot: _bot,
         day: _dayOf(picked),
-        label: _range == 'today' ? '今天' : picked.full,
+        label: _range == 'today' ? context.l10n.today : picked.full,
         mode: mode,
       ),
     );
@@ -515,7 +524,10 @@ class _StatsPageState extends ConsumerState<StatsPage> {
             final end = (h + 3) % 24;
             return TrendPoint(
               label: '$h',
-              full: '今天 $k–${end.toString().padLeft(2, '0')}:00',
+              full: l10nNow.todayRange(
+                k,
+                '${end.toString().padLeft(2, '0')}:00',
+              ),
               images: d?.imageCalls ?? 0,
               pts: d?.pointsSpent ?? 0,
             );
@@ -746,12 +758,12 @@ class _ModePill extends StatelessWidget {
         );
 
     return PopupMenuButton<bool>(
-      tooltip: '数据源',
+      tooltip: context.l10n.dataSource,
       position: PopupMenuPosition.under,
       onSelected: onChanged,
       itemBuilder: (_) => [
-        item(true, Icons.smart_toy_outlined, 'Bot 授权'),
-        item(false, Icons.key, '直连 Key'),
+        item(true, Icons.smart_toy_outlined, context.l10n.botAuth),
+        item(false, Icons.key, context.l10n.directKey),
       ],
       child: Container(
         padding: const EdgeInsets.fromLTRB(11, 6, 7, 6),

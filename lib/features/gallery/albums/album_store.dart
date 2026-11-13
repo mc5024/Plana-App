@@ -4,6 +4,7 @@ import 'dart:math';
 
 import '../../../core/store/atomic_file.dart';
 import 'album_models.dart';
+import '../../../l10n/l10n.dart';
 
 /// 相册归属不能从 PNG 重建：原子提交，保留有效备份，坏档只读。
 class AlbumStore {
@@ -36,12 +37,12 @@ class AlbumStore {
           final missing = referenced.difference(liveImages);
           if (missing.isNotEmpty) data = data.removeImages(missing);
         }
-        if (f.path == _backup.path) warning = '相册数据已从最近一次备份恢复';
+        if (f.path == _backup.path) warning = l10nNow.albumsRestored;
         return;
       } catch (_) {}
     }
     readOnly = true;
-    warning = '相册归属数据暂时无法读取，原文件已保留；全部相册仍可查看';
+    warning = l10nNow.albumsUnreadable;
   }
 
   Future<AlbumsData> update(
@@ -49,7 +50,7 @@ class AlbumStore {
     bool reset = false,
   }) {
     final work = _tail.then((_) async {
-      if (readOnly && !reset) throw StateError('相册数据需要恢复，暂时不能修改');
+      if (readOnly && !reset) throw StateError(l10nNow.albumsReadOnly);
       final next = change(data);
       if (identical(next, data)) return data;
       // 备份只来自已校验的内存状态，不把磁盘上的坏档抄成有效备份。

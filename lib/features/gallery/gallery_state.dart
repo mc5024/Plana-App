@@ -13,6 +13,7 @@ import 'albums/album_state.dart';
 import 'gallery_dates.dart';
 import 'gallery_search.dart';
 import 'models.dart';
+import '../../l10n/l10n.dart';
 
 final galleryProvider = NotifierProvider<GalleryNotifier, GalleryState>(
   GalleryNotifier.new,
@@ -283,7 +284,7 @@ class GalleryNotifier extends Notifier<GalleryState> {
             .organize({r.id}, {target.albumId!});
       } catch (_) {
         actual = const GallerySaveTarget.all();
-        ref.read(genNoticeProvider.notifier).show('图片已保存在全部作品，目标图库不可用或归类失败');
+        ref.read(genNoticeProvider.notifier).show(l10nNow.savedAllAlbumFailed);
       }
     }
     if (!ref.mounted || !state.results.any((e) => e.id == r.id)) return r;
@@ -322,7 +323,9 @@ class GalleryNotifier extends Notifier<GalleryState> {
         Object _,
       ) {
         if (ref.mounted) {
-          ref.read(genNoticeProvider.notifier).show('图片已删除，图库归属清理失败');
+          ref
+              .read(genNoticeProvider.notifier)
+              .show(l10nNow.deletedAlbumCleanupFailed);
         }
       }),
     );

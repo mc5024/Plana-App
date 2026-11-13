@@ -20,6 +20,7 @@ import '../net/nai_client.dart';
 import '../net/nai_endpoint.dart';
 import '../net/nai_proxy.dart';
 import 'nai_keys.dart';
+import '../../l10n/l10n.dart';
 
 /// 派生 access key(纯计算,Argon2id 约几百毫秒,UI 侧用 [deriveNaiAccessKeyOffMain])。
 ///
@@ -73,22 +74,22 @@ Future<String> naiLoginWithKey(
         )
         .timeout(const Duration(seconds: 30));
   } catch (e) {
-    throw NaiException('网络错误:$e');
+    throw NaiException(l10nNow.networkError('$e'));
   }
   if (resp.statusCode == 401) {
-    throw NaiException('邮箱或密码错误', status: 401);
+    throw NaiException(l10nNow.wrongCredentials, status: 401);
   }
   // 成功是 201 Created(创建会话),判 2xx 而不是 ==200(实测踩过)。
   if (resp.statusCode < 200 || resp.statusCode >= 300) {
     throw NaiException(
-      '登录失败(HTTP ${resp.statusCode})',
+      l10nNow.loginHttpFailed(resp.statusCode),
       status: resp.statusCode,
     );
   }
   final data = jsonDecode(resp.body);
   final token = data is Map ? data['accessToken'] : null;
   if (token is! String || token.isEmpty) {
-    throw NaiException('登录响应缺少 accessToken');
+    throw NaiException(l10nNow.loginNoToken);
   }
   return token;
 }
@@ -130,7 +131,7 @@ Future<(String, String)> naiCredentialLoginFlow(
       denied = e;
     }
   }
-  throw denied ?? NaiException('邮箱或密码错误', status: 401);
+  throw denied ?? NaiException(l10nNow.wrongCredentials, status: 401);
 }
 
 /// JWT 过期时刻(UTC);不是三段式 / 解不出 exp(如 pst- 令牌)返回 null。

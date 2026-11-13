@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_skin.dart';
 import '../theme/app_theme.dart';
 import 'expand_body.dart';
+import '../../l10n/l10n.dart';
 
 /// 多选底栏(Vibe 管理器 / 角色参考图库 / 灵感页共用)。
 ///
@@ -62,7 +63,7 @@ class SelectionBar extends StatelessWidget {
               children: [
                 SelectionIconButton(
                   icon: Icons.close,
-                  tooltip: '取消选择',
+                  tooltip: context.l10n.clearSelection,
                   onTap: onClear,
                 ),
                 for (final a in [...actions, ?destructive]) ...[
@@ -105,7 +106,7 @@ class SelectionBar extends StatelessWidget {
                           ),
                         ),
                       ),
-                      child: const Text('取消选择'),
+                      child: Text(context.l10n.clearSelection),
                     ),
                     const SizedBox(width: 10),
                     Expanded(child: primary),

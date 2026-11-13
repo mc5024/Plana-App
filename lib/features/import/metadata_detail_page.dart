@@ -8,6 +8,7 @@ import '../../core/theme/app_theme.dart';
 import '../generate/widgets/common.dart' show hintSnack, sharedAxisRoute;
 import 'image_metadata.dart';
 import 'import_panel.dart';
+import '../../l10n/l10n.dart';
 
 /// 3b 完整元数据页:顶卡「完整元数据」入口的落地页,对齐桌面 MetadataDetailPanel。
 /// 图片 + 大小/尺寸/格式/来源、正/负向(可复制)、角色提示词、生成参数网格、
@@ -33,12 +34,12 @@ class MetadataDetailPage extends StatelessWidget {
     final scheme = context.scheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('完整元数据'),
+        title: Text(context.l10n.fullMetadata),
         actions: [
           if (!standalone)
             IconButton(
               icon: const Icon(Icons.close),
-              tooltip: '关闭导入',
+              tooltip: context.l10n.closeImport,
               onPressed: () {
                 final nav = Navigator.of(context);
                 nav.pop();
@@ -69,7 +70,7 @@ class MetadataDetailPage extends StatelessWidget {
                         ),
                       ),
                       icon: const Icon(Icons.download, size: 18),
-                      label: const Text('去导入面板(导入参数 / 用作参考)'),
+                      label: Text(context.l10n.goToImportPanel),
                       style: FilledButton.styleFrom(
                         minimumSize: const Size.fromHeight(46),
                       ),
@@ -85,13 +86,18 @@ class MetadataDetailPage extends StatelessWidget {
           _header(context, scheme),
           const SizedBox(height: 18),
           if (meta.prompt.isNotEmpty)
-            _textBlock(context, scheme, '正向提示词', meta.prompt),
+            _textBlock(
+              context,
+              scheme,
+              context.l10n.positivePrompt,
+              meta.prompt,
+            ),
           if (meta.negativePrompt.isNotEmpty) ...[
             const SizedBox(height: 16),
             _textBlock(
               context,
               scheme,
-              '负向提示词',
+              context.l10n.negativePrompt,
               meta.negativePrompt,
               danger: true,
             ),
@@ -100,7 +106,7 @@ class MetadataDetailPage extends StatelessWidget {
             const SizedBox(height: 16),
             _charBlock(context, scheme),
           ],
-          if (_paramItems.isNotEmpty) ...[
+          if (_paramItems(context).isNotEmpty) ...[
             const SizedBox(height: 16),
             _paramsBlock(context, scheme),
           ],
@@ -143,16 +149,26 @@ class MetadataDetailPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 7),
-              _kv(context, scheme, '大小', _fmtSize(bytes.length)),
               _kv(
                 context,
                 scheme,
-                '尺寸',
+                context.l10n.fileSize,
+                _fmtSize(bytes.length),
+              ),
+              _kv(
+                context,
+                scheme,
+                context.l10n.size,
                 '${meta.width}×${meta.height}',
                 mono: true,
               ),
-              _kv(context, scheme, '格式', _sourceLabel(meta.sourceType)),
-              _kv(context, scheme, '来源', meta.source),
+              _kv(
+                context,
+                scheme,
+                context.l10n.format,
+                _sourceLabel(meta.sourceType),
+              ),
+              _kv(context, scheme, context.l10n.source, meta.source),
             ],
           ),
         ),
@@ -228,7 +244,7 @@ class MetadataDetailPage extends StatelessWidget {
                   ),
                   const SizedBox(width: 3),
                   Text(
-                    '复制',
+                    context.l10n.copy,
                     style: TextStyle(
                       fontSize: 10,
                       color: scheme.onSurfaceVariant,
@@ -280,7 +296,7 @@ class MetadataDetailPage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionLabel(context, scheme, '角色提示词'),
+        _sectionLabel(context, scheme, context.l10n.characterPrompts),
         const SizedBox(height: 8),
         for (var i = 0; i < meta.characters.length; i++) ...[
           _charCard(context, scheme, i),
@@ -307,7 +323,7 @@ class MetadataDetailPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '角色 ${i + 1}$coord',
+            '${context.l10n.characterN(i + 1)}$coord',
             style: TextStyle(
               fontSize: 10.5,
               fontWeight: FontWeight.w500,
@@ -316,7 +332,7 @@ class MetadataDetailPage extends StatelessWidget {
           ),
           const SizedBox(height: 5),
           SelectableText(
-            c.prompt.isEmpty ? '(空)' : c.prompt,
+            c.prompt.isEmpty ? context.l10n.emptyParen : c.prompt,
             style: TextStyle(
               fontSize: 11.5,
               height: 1.55,
@@ -339,7 +355,7 @@ class MetadataDetailPage extends StatelessWidget {
     );
   }
 
-  List<(String, String)> get _paramItems {
+  List<(String, String)> _paramItems(BuildContext context) {
     final m = meta;
     return [
       if (m.seed.isNotEmpty) ('Seed', m.seed),
@@ -350,18 +366,26 @@ class MetadataDetailPage extends StatelessWidget {
       if (m.cfgRescale != null) ('CFG Rescale', m.cfgRescale!),
       // 透明背景(V5)。只报,不参与导入 —— 触发它的 tag 本来就在提示词里。
       if (m.transparentBackground != null)
-        ('透明背景', m.transparentBackground! ? '是' : '否'),
+        (
+          context.l10n.transparentBg,
+          m.transparentBackground! ? context.l10n.yes : context.l10n.no,
+        ),
       if (m.straightAlpha != null)
-        ('Alpha', m.straightAlpha! ? '直通 Straight' : '预乘 Premultiplied'),
+        (
+          'Alpha',
+          m.straightAlpha!
+              ? context.l10n.alphaStraight
+              : context.l10n.alphaPremultiplied,
+        ),
     ];
   }
 
   Widget _paramsBlock(BuildContext context, ColorScheme scheme) {
-    final items = _paramItems;
+    final items = _paramItems(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionLabel(context, scheme, '生成参数'),
+        _sectionLabel(context, scheme, context.l10n.genParams),
         const SizedBox(height: 8),
         LayoutBuilder(
           builder: (context, c) {
@@ -488,14 +512,19 @@ class MetadataDetailPage extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '强度: ${meta.vibes[i].strength.toStringAsFixed(2)}',
+                            context.l10n.vibeStrengthLabel(
+                              meta.vibes[i].strength.toStringAsFixed(2),
+                            ),
                             style: TextStyle(
                               fontSize: 11.5,
                               color: scheme.onSurface,
                             ),
                           ),
                           Text(
-                            '提取: ${(meta.vibes[i].informationExtracted ?? 1.0).toStringAsFixed(1)}',
+                            context.l10n.vibeExtractedLabel(
+                              (meta.vibes[i].informationExtracted ?? 1.0)
+                                  .toStringAsFixed(1),
+                            ),
                             style: TextStyle(
                               fontSize: 11,
                               color: scheme.onSurfaceVariant,
@@ -518,7 +547,7 @@ class MetadataDetailPage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionLabel(context, scheme, '原始数据', copyText: text),
+        _sectionLabel(context, scheme, context.l10n.rawData, copyText: text),
         const SizedBox(height: 8),
         Container(
           width: double.infinity,
@@ -550,7 +579,7 @@ class MetadataDetailPage extends StatelessWidget {
 
   void _copy(BuildContext context, String text) {
     Clipboard.setData(ClipboardData(text: text));
-    hintSnack(context, '已复制', icon: Icons.check);
+    hintSnack(context, context.l10n.copied, icon: Icons.check);
   }
 
   String _sourceLabel(ImageSourceType t) => switch (t) {

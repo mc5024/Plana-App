@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../l10n/l10n.dart';
 
 /// 顶栏右侧的裸状态入口：点数与百分比共用单行点击区域。
 ///
@@ -93,9 +94,10 @@ class TopBarStatus extends StatelessWidget {
       child: Semantics(
         button: true,
         label:
-            '$tooltip，${value ?? (loading ? '加载中' : '未获取')}'
+            '$tooltip${context.l10n.commaSep}'
+            '${value ?? (loading ? context.l10n.loading : context.l10n.notFetched)}'
             '${switch (detail ?? meter?.label) {
-              final d? => '，$d',
+              final d? => '${context.l10n.commaSep}$d',
               null => '',
             }}',
         // 不裁切内容:进度条贴着这块的左右边和下半截,按圆角一裁两头就成了斜边。

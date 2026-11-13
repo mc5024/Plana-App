@@ -13,6 +13,8 @@ import '../canvas_state.dart';
 import '../models.dart' show GenParams, modelName;
 import '../prompt_sections.dart' show joinSections;
 import 'common.dart';
+import '../../../l10n/l10n.dart';
+import '../display_names.dart';
 
 /// 一张画布的历史:最近几十次出图时的内容,点一条可以恢复或复制成新画布。
 Future<void> showCanvasHistory(BuildContext context, CanvasDraft canvas) =>
@@ -51,7 +53,11 @@ class _HistorySheet extends ConsumerWidget {
               child: Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: Text(
-                  '${canvas?.name ?? '画布'} · 历史',
+                  context.l10n.canvasHistoryTitle(
+                    canvas == null
+                        ? context.l10n.canvasSingular
+                        : canvasDisplayName(context.l10n, canvas.name),
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: context.texts.titleMedium!.copyWith(
@@ -70,7 +76,7 @@ class _HistorySheet extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
               child: Text(
-                '这张画布还没有出过图',
+                context.l10n.noHistoryYet,
                 textAlign: TextAlign.center,
                 style: context.texts.bodyMedium!.copyWith(
                   color: context.scheme.outline,
@@ -119,12 +125,12 @@ class _HistorySheet extends ConsumerWidget {
           children: [
             ListTile(
               leading: const Icon(Icons.restore),
-              title: const Text('恢复到这版'),
+              title: Text(context.l10n.restoreThisVersion),
               onTap: () => Navigator.pop(sheet, 'restore'),
             ),
             ListTile(
               leading: const Icon(Icons.copy_outlined),
-              title: const Text('复制为新画布'),
+              title: Text(context.l10n.duplicateAsNewCanvas),
               onTap: () => Navigator.pop(sheet, 'copy'),
             ),
           ],
@@ -142,16 +148,20 @@ class _HistorySheet extends ConsumerWidget {
     final canvases = ref.read(canvasWorkspaceProvider.notifier);
     if (action == 'copy') {
       canvases.createFrom(prompts, from: canvas.name);
-      hintSnack(context, '已复制为新画布', icon: Icons.copy_outlined);
+      hintSnack(
+        context,
+        context.l10n.duplicatedAsNewCanvas,
+        icon: Icons.copy_outlined,
+      );
     } else {
       final before = canvases.replace(canvas.id, prompts);
       if (before == null) return;
       canvases.select(canvas.id);
       hintSnack(
         context,
-        '已恢复到 ${historyTimeLabel(entry.at)} 的版本',
+        context.l10n.restoredTo(historyTimeLabel(entry.at)),
         icon: Icons.restore,
-        actionLabel: '撤销',
+        actionLabel: context.l10n.undo,
         onAction: () => canvases.replace(canvas.id, before),
       );
     }
@@ -198,7 +208,7 @@ class _EntryTile extends StatelessWidget {
                       [
                         historyTimeLabel(entry.at),
                         if (entry.resultIds.length > 1)
-                          '${entry.resultIds.length} 张',
+                          context.l10n.imagesN(entry.resultIds.length),
                       ].join(' · '),
                       style: context.texts.bodyLarge!.copyWith(
                         fontWeight: FontWeight.w700,
@@ -206,7 +216,9 @@ class _EntryTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      prompt.isEmpty ? '没有提示词' : prompt.replaceAll('\n', ' '),
+                      prompt.isEmpty
+                          ? context.l10n.noPrompt
+                          : prompt.replaceAll('\n', ' '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: small.copyWith(color: scheme.onSurfaceVariant),
@@ -277,9 +289,12 @@ String historyTimeLabel(int ms, {DateTime? now}) {
   final today = DateTime(n.year, n.month, n.day);
   final diff = today.difference(day).inDays;
   if (diff == 0) return hm;
-  if (diff == 1) return '昨天 $hm';
-  if (t.year != n.year) return '${t.year}年${t.month}月${t.day}日 $hm';
-  return '${t.month}月${t.day}日 $hm';
+  final l = l10nNow;
+  if (diff == 1) return l.dateYesterday(hm);
+  if (t.year != n.year) {
+    return l.dateYearMonthDay(t.year, '${t.month}', t.day, hm);
+  }
+  return l.dateMonthDay('${t.month}', t.day, hm);
 }
 
 /// [after] 相对 [before] 改了什么,一行写完:「+3 −1 · 角色 2→3 · 28→23 步」。
@@ -303,23 +318,32 @@ String historyChanges(CanvasHistoryEntry before, CanvasHistoryEntry after) {
     joinSections(a.sections, a.negativePrompt, positive: false),
     joinSections(b.sections, b.negativePrompt, positive: false),
   );
-  if (!neg.isEmpty) out.add('负面有改动');
+  final l = l10nNow;
+  if (!neg.isEmpty) out.add(l.negChanged);
   if (a.characters.length != b.characters.length) {
-    out.add('角色 ${a.characters.length}→${b.characters.length}');
+    out.add(l.charsChange(a.characters.length, b.characters.length));
   }
   void count(String label, int x, int y) {
     if (x != y) out.add('$label $x→$y');
   }
 
   count('Vibe', before.countOf('vibes'), after.countOf('vibes'));
-  count('角色参考', before.countOf('charRefs'), after.countOf('charRefs'));
-  count('风格参考', before.countOf('kreaStyleRefs'), after.countOf('kreaStyleRefs'));
+  count(
+    l.preciseReference,
+    before.countOf('charRefs'),
+    after.countOf('charRefs'),
+  );
+  count(
+    '风格参考',
+    before.countOf('kreaStyleRefs'),
+    after.countOf('kreaStyleRefs'),
+  );
   count('LoRA', a.loras.length, b.loras.length);
   if (before.has('img2img') != after.has('img2img')) {
-    out.add(after.has('img2img') ? '加了底图' : '去掉底图');
+    out.add(after.has('img2img') ? l.addedBaseImage : l.removedBaseImage);
   }
   if (before.has('inpaint') != after.has('inpaint')) {
-    out.add(after.has('inpaint') ? '加了重绘' : '去掉重绘');
+    out.add(after.has('inpaint') ? l.addedInpaint : l.removedInpaint);
   }
   final sa = a.sampling, sb = b.sampling;
   if (sa != null && sb != null) {
@@ -330,8 +354,8 @@ String historyChanges(CanvasHistoryEntry before, CanvasHistoryEntry after) {
     final stepsA = sa.writeInto(const GenParams()).activeSteps;
     final stepsB = sb.writeInto(const GenParams()).activeSteps;
     if (sa.model == sb.model && stepsA != stepsB) {
-      out.add('$stepsA→$stepsB 步');
+      out.add(l.stepsChange(stepsA, stepsB));
     }
   }
-  return out.isEmpty ? '参数有改动' : out.join(' · ');
+  return out.isEmpty ? l.paramsChanged : out.join(' · ');
 }

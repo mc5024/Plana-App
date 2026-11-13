@@ -153,7 +153,7 @@ const kDefaultPromptPresets = <PromptPreset>[
 
 /// 显示名:内置档按界面语言,自定义档原样。
 String presetDisplayName(AppLocalizations l, PromptPreset p) {
-  if (!p.isDefault) return p.name;
+  if (!p.isDefault) return p.name == '未命名' ? l.untitled : p.name;
   return switch (p.id) {
     'heavy' => l.presetHeavy,
     'light' || 'v5-light' => l.presetLight,

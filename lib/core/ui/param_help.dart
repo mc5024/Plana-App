@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../../l10n/l10n.dart';
 
 /// 参数说明 —— 文案取自 web 桌面端 `LeftSidebar.tsx` 的 `<HelpTip>`,**连行前缀
 /// 一起原样保留**:web 改文案时对着 diff 覆盖即可,不用在这边重新排版。
@@ -10,10 +11,24 @@ import '../theme/app_theme.dart';
 ///   `💡` → 使用提示(单独一块高亮区展示)
 ///   其余 → 普通说明行
 class ParamHelp {
-  const ParamHelp(this.title, this.body);
+  const ParamHelp(this._title, this._body) : _id = null;
 
-  final String title;
-  final String body;
+  /// 文案在 ARB 里,按界面语言取(见 [_helpTitle] / [_helpBody])。
+  const ParamHelp.l10n(String id) : _id = id, _title = '', _body = '';
+
+  final String? _id;
+  final String _title;
+  final String _body;
+
+  String get title => switch (_id) {
+    final id? => _helpTitle(l10nNow, id),
+    null => _title,
+  };
+
+  String get body => switch (_id) {
+    final id? => _helpBody(l10nNow, id),
+    null => _body,
+  };
 
   /// 说明区:`(是否列表项, 文本)`。
   List<(bool, String)> get points => [
@@ -47,89 +62,32 @@ abstract final class Help {
   // ---- 画布 ----
   // app 独有的功能,web 没有对应的 HelpTip。
 
-  static const canvas = ParamHelp(
-    '画布',
-    '每张画布各存一套提示词和出图参数，随时切换。\n'
-        '· 只有张数和循环档位是所有画布共用的\n'
-        '💡 切换画布不影响进行中的出图\n'
-        '💡「历史」保留最近 50 次出图，可恢复',
-  );
+  static const canvas = ParamHelp.l10n('canvas');
 
   // ---- 分辨率 ----
   // web 没有对应的 HelpTip,这条是 app 自写的。
 
-  static const resolution = ParamHelp(
-    '分辨率',
-    '按总像素(宽 × 高)分档:\n'
-        '· 免费 → ≤ 1024×1024,即绿线以内;需 Opus 订阅、步数 ≤28\n'
-        '· 消耗点数 → 超出绿线,尺寸越大越贵\n'
-        '· 超出上限 → 超过 1024×3072(红线),无法生成',
-  );
+  static const resolution = ParamHelp.l10n('resolution');
 
   // ---- 图生图 ----
 
-  static const img2imgStrength = ParamHelp(
-    '图生图强度 (Strength)',
-    '控制原图对最终画面的影响程度。\n'
-        '· 值越低 → 越接近原图，改动越少\n'
-        '· 值越高 → 越自由发挥，重绘越多\n'
-        '💡 0.01 时几乎不重绘；与 Noise 同时调到最低 → 完美复制原图\n'
-        '💡 AI 过度忽略提示词时，可尝试提高 Prompt Guidance',
-  );
+  static const img2imgStrength = ParamHelp.l10n('img2imgStrength');
 
-  static const img2imgNoise = ParamHelp(
-    '噪声 (Noise)',
-    '在原图基础上额外注入随机扰动。\n'
-        '· 0 → 完全基于原图，结果更稳定\n'
-        '· 值越高 → 增加创作自由度，更多新元素\n'
-        '💡 原图大面积空白时，调高可让 AI 主动补充细节\n'
-        '💡 高 Noise 反复重生成可能产生视觉瑕疵',
-  );
+  static const img2imgNoise = ParamHelp.l10n('img2imgNoise');
 
   // ---- Vibe ----
 
-  static const vibeStrength = ParamHelp(
-    '风格强度 (Reference Strength)',
-    '控制 Vibe 风格对画面的影响力度。\n'
-        '· 值越高 → 越接近参考图的风格、配色等视觉线索\n'
-        '· 值越低 → 仅作轻微风格指引\n'
-        '💡 多个 Vibe 同时使用时，强度总和建议 ≤ 1\n'
-        '💡 过高时 AI 会开始忽略文字 prompt',
-  );
+  static const vibeStrength = ParamHelp.l10n('vibeStrength');
 
-  static const normalizeVibe = ParamHelp(
-    '均衡强度 (Normalize)',
-    '开启 → 所有 Vibe 的强度按比例缩小，合计强度 ≤ 1\n'
-        '关闭 → 每个 Vibe 的强度独立相加',
-  );
+  static const normalizeVibe = ParamHelp.l10n('normalizeVibe');
 
-  static const infoExtracted = ParamHelp(
-    '信息提取 (Information Extracted)',
-    '从原图中提取的信息量。\n'
-        '· 值越低 → 先丢失高频细节（纹理、风格），优先保留构图\n'
-        '· 值越高 → 同时保留构图与纹理 / 风格细节\n'
-        '💡 设置为新值时扣 2 点数，使用历史值时免费\n'
-        '💡 无原图时无法重设该值',
-  );
+  static const infoExtracted = ParamHelp.l10n('infoExtracted');
 
   // ---- 角色参考 ----
 
-  static const charRefStrength = ParamHelp(
-    '参考强度 (Strength)',
-    '控制角色 / 风格参考对画面的整体影响力。\n'
-        '· 值越高 → 越严格还原参考图特征\n'
-        '· 值越低 → 参考图仅作弱引导\n'
-        '💡 每张图额外消耗 5 Anlas，多个 PR 累加\n'
-        '💡 过高时面部表情 / 角度 / 姿势会过度贴近参考图',
-  );
+  static const charRefStrength = ParamHelp.l10n('charRefStrength');
 
-  static const fidelity = ParamHelp(
-    '还原度 (Fidelity)',
-    '控制 prompt 能否压过参考图。\n'
-        '· 值越高 → 参考图占主导，prompt 难以改变它\n'
-        '· 值越低 → prompt 占主导，更易调整画面\n'
-        '💡 实际效果可能因图而异，建议多尝试',
-  );
+  static const fidelity = ParamHelp.l10n('fidelity');
 
   // ---- 采样(anima)----
   // 与 NAI 那套(steps / cfg / sampler / noiseSchedule)是两份独立文案:
@@ -290,72 +248,21 @@ abstract final class Help {
 
   // ---- 采样 ----
 
-  static const steps = ParamHelp(
-    '采样步数 (Steps)',
-    '采样步数，控制去噪迭代次数。\n'
-        '步数越高画面越精细，但生成越慢。\n'
-        '步数过多反而收益递减，甚至适得其反。\n'
-        '💡 步数 ≤28 时不额外消耗 Anlas',
-  );
+  static const steps = ParamHelp.l10n('steps');
 
-  static const cfg = ParamHelp(
-    '提示词引导强度 (CFG Scale)',
-    '控制 AI 对提示词的遵循程度。\n'
-        '· 值越低 → AI 越自由发挥，画面更绘画感、柔和、梦幻\n'
-        '· 值越高 → 越严格遵循描述，细节更精细锐利\n'
-        '💡 V3 及以上模型官方推荐 5~6\n'
-        '💡 过高反而会反作用，色彩过饱和、画面崩坏',
-  );
+  static const cfg = ParamHelp.l10n('cfg');
 
-  static const varietyPlus = ParamHelp(
-    '多样性增强模式 (Variety+)',
-    '轻微调整采样过程，提升构图与姿势的多样性。\n'
-        '开启 → 增加构图和姿势的变化\n'
-        '关闭 → 出图更稳定一致\n'
-        '💡 在低 Prompt Guidance 下效果更明显',
-  );
+  static const varietyPlus = ParamHelp.l10n('varietyPlus');
 
-  static const sampler = ParamHelp(
-    '采样算法 (Sampler)',
-    '决定去噪路径，影响画面风格与稳定性。\n'
-        '· Euler Ancestral — 经典万能，随机性高\n'
-        '· Euler — 确定性版本，构图更稳定\n'
-        '· DPM++ 2S Ancestral — 细节丰富\n'
-        '· DPM++ 2M SDE — 高质量 + 随机性\n'
-        '· DPM++ 2M — 高质量确定性采样\n'
-        '· DPM++ SDE — 兼具细节与多样性\n'
-        '💡 建议保持默认或推荐 DPM++ 2M / Euler Ancestral\n'
-        '💡 不同 sampler 的差异在低 Steps 时更明显',
-  );
+  static const sampler = ParamHelp.l10n('sampler');
 
-  static const noiseSchedule = ParamHelp(
-    '噪声衰减曲线 (Noise Schedule)',
-    '决定 Sampler 在每一步的噪声衰减节奏，影响画面质感。\n'
-        '· karras — 最常用，出图稳定细节好\n'
-        '· exponential — 指数衰减，对比度更强\n'
-        '· polyexponential — 多项式衰减，过渡平滑\n'
-        '💡建议保持默认 karras',
-  );
+  static const noiseSchedule = ParamHelp.l10n('noiseSchedule');
 
   // ---- 修正 ----
 
-  static const seed = ParamHelp(
-    '随机种子 (Seed)',
-    '随机种子，决定初始噪声。\n'
-        '相同种子 + 相同参数 → 基本一致的画面\n'
-        '适合微调时锁定构图。\n'
-        '留空 → 每次随机生成不同结果\n'
-        '💡 sampler 本身有微小随机性，相同种子也可能存在细微差别\n'
-        '💡 NAI / Anima / Krea 三者的 seed 互不通用，与外部 Stable Diffusion 也不通用',
-  );
+  static const seed = ParamHelp.l10n('seed');
 
-  static const cfgRescale = ParamHelp(
-    'CFG 引导修正系数 (Rescale)',
-    '抑制高引导值带来的过饱和与色彩溢出。\n'
-        '0 = 不修正，值越高 → 修正越强\n'
-        '通常保持 0；Guidance >7 时可尝试 0.1~0.3\n'
-        '💡 画面出现「边缘色彩过强 / 油炸感 (deepfried)」时调高',
-  );
+  static const cfgRescale = ParamHelp.l10n('cfgRescale');
 }
 
 /// 弹出参数说明。桌面端靠 hover 浮气泡,手机上没有 hover,也没地方稳稳浮一张
@@ -557,3 +464,43 @@ class HelpDot extends StatelessWidget {
     );
   }
 }
+
+String _helpTitle(AppLocalizations l, String id) => switch (id) {
+  'canvas' => l.helpCanvasTitle,
+  'resolution' => l.helpResolutionTitle,
+  'img2imgStrength' => l.helpImg2imgStrengthTitle,
+  'img2imgNoise' => l.helpImg2imgNoiseTitle,
+  'vibeStrength' => l.helpVibeStrengthTitle,
+  'normalizeVibe' => l.helpNormalizeVibeTitle,
+  'infoExtracted' => l.helpInfoExtractedTitle,
+  'charRefStrength' => l.helpCharRefStrengthTitle,
+  'fidelity' => l.helpFidelityTitle,
+  'steps' => l.helpStepsTitle,
+  'cfg' => l.helpCfgTitle,
+  'varietyPlus' => l.helpVarietyPlusTitle,
+  'sampler' => l.helpSamplerTitle,
+  'noiseSchedule' => l.helpNoiseScheduleTitle,
+  'seed' => l.helpSeedTitle,
+  'cfgRescale' => l.helpCfgRescaleTitle,
+  _ => id,
+};
+
+String _helpBody(AppLocalizations l, String id) => switch (id) {
+  'canvas' => l.helpCanvasBody,
+  'resolution' => l.helpResolutionBody,
+  'img2imgStrength' => l.helpImg2imgStrengthBody,
+  'img2imgNoise' => l.helpImg2imgNoiseBody,
+  'vibeStrength' => l.helpVibeStrengthBody,
+  'normalizeVibe' => l.helpNormalizeVibeBody,
+  'infoExtracted' => l.helpInfoExtractedBody,
+  'charRefStrength' => l.helpCharRefStrengthBody,
+  'fidelity' => l.helpFidelityBody,
+  'steps' => l.helpStepsBody,
+  'cfg' => l.helpCfgBody,
+  'varietyPlus' => l.helpVarietyPlusBody,
+  'sampler' => l.helpSamplerBody,
+  'noiseSchedule' => l.helpNoiseScheduleBody,
+  'seed' => l.helpSeedBody,
+  'cfgRescale' => l.helpCfgRescaleBody,
+  _ => '',
+};

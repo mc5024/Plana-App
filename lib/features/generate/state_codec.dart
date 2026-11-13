@@ -91,6 +91,7 @@ Future<EncodedState> encodeGenerateState(
       'negativePromptRaw': s.negativePromptRaw,
     // 主提示词分区:没分区就不写(生成快照里已拼进 prompt,也不会带这个键)
     if (s.sections.isNotEmpty) 'sections': encodeSections(s.sections),
+    if (s.usedEntries.isNotEmpty) 'usedEntries': s.usedEntries,
     'characters': [
       for (final c in s.characters)
         {
@@ -104,6 +105,7 @@ Future<EncodedState> encodeGenerateState(
           if (c.position != null) 'position': c.position,
           'activeTab': c.activeTab.name,
           if (c.avatar != null) 'avatar': c.avatar,
+          if (c.source != null) 'source': c.source,
         },
     ],
     'vibes': vibes,
@@ -288,6 +290,7 @@ Future<GenerateState> decodeGenerateState(
           activeTab:
               _enumByName(CharTab.values, e['activeTab']) ?? CharTab.positive,
           avatar: e['avatar'] is String ? e['avatar'] as String : null,
+          source: e['source'] is String ? e['source'] as String : null,
         ),
       );
     }
@@ -544,6 +547,7 @@ Future<GenerateState> decodeGenerateState(
         ? j['negativePromptRaw'] as String
         : '',
     sections: decodeSections(j['sections']),
+    usedEntries: _strings(j['usedEntries']),
     characters: characters,
     vibes: vibes,
     charRefs: charRefs,
@@ -620,6 +624,7 @@ List<Map<String, dynamic>> encodeSections(List<PromptSection> sections) => [
             if (x.negativeRaw.isNotEmpty) 'negativeRaw': x.negativeRaw,
             if (!x.enabled) 'enabled': false,
             if (x.artist) 'artist': true,
+            if (x.sources.isNotEmpty) 'sources': x.sources,
           },
 ];
 
@@ -648,8 +653,16 @@ List<PromptSection> decodeSections(Object? raw) {
               negativeRaw: str(e['negativeRaw']),
               enabled: e['enabled'] != false,
               artist: e['artist'] == true,
+              sources: _strings(e['sources']),
             ),
     );
   }
   return normalizeSections(out);
 }
+
+List<String> _strings(Object? raw) => raw is List
+    ? [
+        for (final x in raw)
+          if (x is String && x.isNotEmpty) x,
+      ]
+    : const [];

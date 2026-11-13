@@ -25,6 +25,18 @@ class MainActivity : FlutterActivity() {
                             call.argument("title"),
                             call.argument("text"),
                             call.argument<Int>("total") ?: 0,
+                            call.argument("short"),
+                        )
+                        result.success(null)
+                    }
+
+                    "channels" -> {
+                        LiveProgressService.setChannelNames(
+                            this,
+                            call.argument<String>("progress") ?: "",
+                            call.argument<String>("progressDesc") ?: "",
+                            call.argument<String>("done") ?: "",
+                            call.argument<String>("doneDesc") ?: "",
                         )
                         result.success(null)
                     }

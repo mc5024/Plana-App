@@ -48,6 +48,7 @@ import 'result_thumb.dart';
 import 'stack_card.dart';
 import 'zip_pack_sheet.dart';
 import '../../../core/util/haptics.dart';
+import '../../../l10n/l10n.dart';
 
 /// 「›」展开:先显示相册封面墙。首个固定相册「全部相册」收纳所有作品；点开后
 /// 按时间分段浏览，仍可切成按角色 / 按画风堆叠(归属见 gallery_groups)。
@@ -304,7 +305,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
       if (mounted) {
         hintSnack(
           context,
-          '点开「全部相册」后，长按图片可预览并导入 / 保存 / 删除',
+          context.l10n.hintLongPressPreview,
           icon: Icons.touch_app_outlined,
         );
       }
@@ -459,13 +460,19 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     try {
       if (action == 'restore') {
         final n = gallery.restoreTrash(trash);
-        hintSnack(context, '已恢复 $n 张', icon: Icons.restore);
+        hintSnack(context, context.l10n.restoredN(n), icon: Icons.restore);
       } else if (action == 'empty') {
-        if (!await _confirmPurge('清空回收站?', '清空') || !mounted) return;
+        if (!await _confirmPurge(
+              context.l10n.emptyTrashQ,
+              context.l10n.clear,
+            ) ||
+            !mounted) {
+          return;
+        }
         gallery.purgeTrash(trash);
         hintSnack(
           context,
-          '已彻底删除 ${trash.length} 张',
+          context.l10n.deletedForeverN(trash.length),
           icon: Icons.delete_forever_outlined,
         );
       } else if (action == 'save') {
@@ -477,16 +484,16 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text('删除「$name」？'),
-            content: const Text('只删除相册，图片仍保留在全部相册。'),
+            title: Text(context.l10n.deleteAlbumQ(name)),
+            content: Text(context.l10n.deleteAlbumBody),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('取消'),
+                child: Text(context.l10n.cancel),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('删除相册'),
+                child: Text(context.l10n.deleteAlbum),
               ),
             ],
           ),
@@ -502,7 +509,10 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     try {
       ref.read(albumsProvider.notifier).setSave(id);
       if (mounted) {
-        hintSnack(context, '新图将保存到「${ref.read(albumsProvider).name(id)}」');
+        hintSnack(
+          context,
+          context.l10n.newImagesSaveTo(ref.read(albumsProvider).name(id)),
+        );
       }
     } catch (e) {
       if (mounted) albumError(context, e);
@@ -611,7 +621,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                     key: const ValueKey(true),
                     onPressed: _scrollToTop,
                     visualDensity: VisualDensity.compact,
-                    tooltip: '回到顶部',
+                    tooltip: context.l10n.backToTop,
                     icon: Icon(
                       Icons.vertical_align_top,
                       size: 21,
@@ -772,12 +782,12 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
         if (k.isNotEmpty) k,
     ]..sort((a, b) => counts[b]!.compareTo(counts[a]!));
     _pickFilter<String?>(
-      title: '按模型筛选',
+      title: context.l10n.filterByModel,
       current: _modelFilter,
       options: [
-        ('全部', null, null),
+        (context.l10n.all, null, null),
         for (final m in models) (modelName(m), m, counts[m]),
-        if ((counts[''] ?? 0) > 0) ('未知', '', counts['']),
+        if ((counts[''] ?? 0) > 0) (context.l10n.unknown, '', counts['']),
       ],
       onPick: (v) => setState(() => _modelFilter = v),
     );
@@ -797,7 +807,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     // 不带计数:算另外两个维度的归属要把它们的 provider 都拉起来,而用户只是
     // 想换个分组。归不了的有多少,封面墙上那堆「未归类」自己会说。
     _pickFilter<GalleryGroupBy>(
-      title: '分组方式',
+      title: context.l10n.groupMode,
       current: _groupBy,
       options: [for (final v in GalleryGroupBy.values) (v.label, v, null)],
       onPick: (v) {
@@ -1027,8 +1037,8 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
               const SizedBox(width: 7),
               Text(
                 note == null
-                    ? '${g.items.length} 张'
-                    : '${g.items.length} 张 · $note',
+                    ? context.l10n.imagesN(g.items.length)
+                    : '${context.l10n.imagesN(g.items.length)} · $note',
                 style: context.texts.bodySmall!.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
@@ -1053,7 +1063,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                       () =>
                           allOn ? _picked.removeAll(ids) : _picked.addAll(ids),
                     ),
-              child: Text(allOn ? '取消' : '全选'),
+              child: Text(allOn ? context.l10n.cancel : context.l10n.selectAll),
             ),
           ),
       ],
@@ -1492,7 +1502,11 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
               style: _mainActBtn,
               onPressed: canAct ? _saveAlbums : null,
               icon: const Icon(Icons.download, size: 19),
-              label: _fitLabel(_saving ? '保存中 $_saveDone/$_saveTotal' : '保存'),
+              label: _fitLabel(
+                _saving
+                    ? context.l10n.savingProgress(_saveDone, _saveTotal)
+                    : context.l10n.save,
+              ),
             ),
           ),
           const SizedBox(width: _actGap),
@@ -1507,7 +1521,9 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.folder_zip_outlined, size: 19),
-              label: _fitLabel(_zipping ? '打包中' : '打包 ZIP'),
+              label: _fitLabel(
+                _zipping ? context.l10n.zipping : context.l10n.packZip,
+              ),
             ),
           ),
           const SizedBox(width: _actGap),
@@ -1521,7 +1537,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
               ),
               onPressed: canAct ? _deleteAlbums : null,
               icon: const Icon(Icons.delete_outline, size: 19),
-              label: _fitLabel('删除'),
+              label: _fitLabel(context.l10n.delete),
             ),
           ),
         ],
@@ -1541,7 +1557,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
               style: _mainActBtn,
               onPressed: canAct ? _restorePicked : null,
               icon: const Icon(Icons.restore, size: 19),
-              label: _fitLabel('恢复 (${_picked.length})'),
+              label: _fitLabel(context.l10n.restoreN(_picked.length)),
             ),
           ),
           const SizedBox(width: _actGap),
@@ -1555,7 +1571,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
               ),
               onPressed: canAct ? _purgePicked : null,
               icon: const Icon(Icons.delete_forever_outlined, size: 19),
-              label: _fitLabel('彻底删除 (${_picked.length})'),
+              label: _fitLabel(context.l10n.deleteForeverN(_picked.length)),
             ),
           ),
         ],
@@ -1589,12 +1605,13 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     ]);
     final done = await _saveToPhone([(album: album, items: items)]);
     if (done == null || !mounted) return;
-    final where = album == null ? '相册' : '「$album」';
+    final l = context.l10n;
+    final where = album == null ? l.photosAlbum : l.quotedName(album);
     hintSnack(
       context,
       done.failed == 0
-          ? '已保存 ${done.saved} 张到$where'
-          : '保存 ${done.saved} 张到$where,失败 ${done.failed} 张',
+          ? l.savedNTo(done.saved, where)
+          : l.savedNToFailed(done.saved, where, done.failed),
       icon: done.failed == 0 ? Icons.check_circle_outline : Icons.error_outline,
     );
   }
@@ -1614,7 +1631,11 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
         await Gal.requestAccess(toAlbum: toAlbum);
     if (!mounted) return null;
     if (!ok) {
-      hintSnack(context, '未获相册权限', icon: Icons.error_outline);
+      hintSnack(
+        context,
+        context.l10n.noPhotoPermission,
+        icon: Icons.error_outline,
+      );
       return null;
     }
     final settings = await ref.read(saveSettingsProvider.future);
@@ -1683,7 +1704,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     ];
     final albums = jobs.where((j) => j.items.isNotEmpty).length;
     if (albums == 0) {
-      hintSnack(context, '所选相册里还没有图片', icon: Icons.info_outline);
+      hintSnack(context, context.l10n.albumsNoImages, icon: Icons.info_outline);
       return;
     }
     final done = await _saveToPhone(jobs);
@@ -1692,8 +1713,8 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     hintSnack(
       context,
       done.failed == 0
-          ? '已保存 $albums 个相册,共 ${done.saved} 张'
-          : '保存 ${done.saved} 张,失败 ${done.failed} 张',
+          ? context.l10n.savedAlbumsN(albums, done.saved)
+          : context.l10n.savedNFailed(done.saved, done.failed),
       icon: done.failed == 0 ? Icons.check_circle_outline : Icons.error_outline,
     );
   }
@@ -1720,7 +1741,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
         if (_pickedAlbums.any((id) => data.contains(id, r.id))) r.id,
     };
     if (images.isEmpty) {
-      hintSnack(context, '所选相册里还没有图片', icon: Icons.info_outline);
+      hintSnack(context, context.l10n.albumsNoImages, icon: Icons.info_outline);
       return;
     }
     await _zipPicked(
@@ -1738,16 +1759,16 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('删除 ${ids.length} 个相册？'),
-        content: const Text('只删除相册，图片仍保留在全部相册。'),
+        title: Text(context.l10n.deleteNAlbumsQ(ids.length)),
+        content: Text(context.l10n.deleteAlbumBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            child: Text(context.l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除相册'),
+            child: Text(context.l10n.deleteAlbum),
           ),
         ],
       ),
@@ -1764,7 +1785,11 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     }
     if (!mounted) return;
     _exitSelect();
-    hintSnack(context, '已删除 ${ids.length} 个相册', icon: Icons.delete_outline);
+    hintSnack(
+      context,
+      context.l10n.deletedNAlbums(ids.length),
+      icon: Icons.delete_outline,
+    );
   }
 
   /// 打包 ZIP:弹层里定包名、按需设密码,就地打包(进度条也在那张弹层里),
@@ -1798,7 +1823,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
       if (packed == null || !mounted) return; // 取消:不报也不留
       final zip = packed.file;
       if (zip == null) {
-        hintSnack(context, '打包失败', icon: Icons.error_outline);
+        hintSnack(context, context.l10n.packFailed, icon: Icons.error_outline);
         return;
       }
       // 只交路径,由原生侧边读边写(见 saveFileAs)—— 包再大也不整份进内存。
@@ -1819,8 +1844,8 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
       hintSnack(
         context,
         packed.failed == 0
-            ? '已打包 ${packed.packed} 张'
-            : '已打包 ${packed.packed} 张,失败 ${packed.failed} 张',
+            ? context.l10n.packedN(packed.packed)
+            : context.l10n.packedNFailed(packed.packed, packed.failed),
         icon: packed.failed == 0
             ? Icons.check_circle_outline
             : Icons.error_outline,
@@ -1830,12 +1855,18 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
       if (mounted) {
         hintSnack(
           context,
-          '保存失败:${e.message ?? e.code}',
+          context.l10n.saveFailedWith(e.message ?? e.code),
           icon: Icons.error_outline,
         );
       }
     } catch (e) {
-      if (mounted) hintSnack(context, '保存失败:$e', icon: Icons.error_outline);
+      if (mounted) {
+        hintSnack(
+          context,
+          context.l10n.saveFailedWith('$e'),
+          icon: Icons.error_outline,
+        );
+      }
     } finally {
       if (mounted) setState(() => _zipping = false);
     }
@@ -1933,11 +1964,21 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
         _deleteOne(id);
       case 'restore':
         ref.read(galleryProvider.notifier).restoreTrash([id]);
-        hintSnack(context, '已恢复', icon: Icons.restore);
+        hintSnack(context, context.l10n.restored, icon: Icons.restore);
       case 'purge':
-        if (!await _confirmPurge('彻底删除这张作品?', '彻底删除') || !mounted) return;
+        if (!await _confirmPurge(
+              context.l10n.deleteForeverQ,
+              context.l10n.deleteForever,
+            ) ||
+            !mounted) {
+          return;
+        }
         ref.read(galleryProvider.notifier).purgeTrash([id]);
-        hintSnack(context, '已彻底删除', icon: Icons.delete_forever_outlined);
+        hintSnack(
+          context,
+          context.l10n.deletedForever,
+          icon: Icons.delete_forever_outlined,
+        );
     }
   }
 
@@ -1948,7 +1989,12 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     try {
       await ref.read(albumsProvider.notifier).setCover(album, imageId);
       if (mounted) {
-        hintSnack(context, imageId == null ? '已取消「$name」的封面' : '已设为「$name」的封面');
+        hintSnack(
+          context,
+          imageId == null
+              ? context.l10n.coverRemoved(name)
+              : context.l10n.coverSet(name),
+        );
       }
     } catch (e) {
       if (mounted) albumError(context, e);
@@ -1988,7 +2034,11 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
         r.bytes ?? await ref.read(appStoresProvider).gallery.readImage(id);
     if (!mounted) return;
     if (bytes == null) {
-      hintSnack(context, '图片尚未就绪', icon: Icons.hourglass_empty);
+      hintSnack(
+        context,
+        context.l10n.imageNotReady,
+        icon: Icons.hourglass_empty,
+      );
       return;
     }
     final nav = Navigator.of(context);
@@ -2036,12 +2086,20 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     if (!mounted) return;
     setState(() => _sharing = false);
     if (prep.files.isEmpty) {
-      hintSnack(context, '没有可分享的图片', icon: Icons.error_outline);
+      hintSnack(
+        context,
+        context.l10n.nothingToShare,
+        icon: Icons.error_outline,
+      );
       return;
     }
     await SharePlus.instance.share(ShareParams(files: prep.files));
     if (prep.failed > 0 && mounted) {
-      hintSnack(context, '${prep.failed} 张读不出来,已跳过', icon: Icons.error_outline);
+      hintSnack(
+        context,
+        context.l10n.unreadableSkipped(prep.failed),
+        icon: Icons.error_outline,
+      );
     }
   }
 
@@ -2063,9 +2121,11 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     final gallery = ref.read(galleryProvider.notifier);
     hintSnack(
       context,
-      ids.length == 1 ? '已移到回收站' : '已将 ${ids.length} 张移到回收站',
+      ids.length == 1
+          ? context.l10n.movedToTrash
+          : context.l10n.movedNToTrash(ids.length),
       icon: Icons.delete_outline,
-      actionLabel: '撤销',
+      actionLabel: context.l10n.undo,
       onAction: () {
         if (gallery.restoreTrash(ids) > 0 && reselect != null) {
           gallery.select(reselect);
@@ -2077,20 +2137,24 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
   void _restorePicked() {
     final n = ref.read(galleryProvider.notifier).restoreTrash(_picked);
     _exitSelect();
-    hintSnack(context, '已恢复 $n 张', icon: Icons.restore);
+    hintSnack(context, context.l10n.restoredN(n), icon: Icons.restore);
   }
 
   Future<void> _purgePicked() async {
     final ids = _picked.toList();
     if (ids.isEmpty) return;
-    if (!await _confirmPurge('彻底删除 ${ids.length} 张作品?', '彻底删除') || !mounted) {
+    if (!await _confirmPurge(
+          context.l10n.deleteNForeverQ(ids.length),
+          context.l10n.deleteForever,
+        ) ||
+        !mounted) {
       return;
     }
     ref.read(galleryProvider.notifier).purgeTrash(ids);
     _exitSelect();
     hintSnack(
       context,
-      '已彻底删除 ${ids.length} 张',
+      context.l10n.deletedForeverN(ids.length),
       icon: Icons.delete_forever_outlined,
     );
   }
@@ -2102,11 +2166,11 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
       context: context,
       builder: (dctx) => AlertDialog(
         title: Text(title),
-        content: const Text('删除后无法恢复。'),
+        content: Text(context.l10n.cantUndo),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dctx).pop(false),
-            child: const Text('取消'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -2129,11 +2193,11 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     final yes = await showDialog<bool>(
       context: context,
       builder: (dctx) => AlertDialog(
-        title: Text('删除 ${ids.length} 张作品?'),
+        title: Text(context.l10n.deleteNImagesQ(ids.length)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dctx).pop(false),
-            child: const Text('取消'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -2141,7 +2205,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
               foregroundColor: scheme.onError,
             ),
             onPressed: () => Navigator.of(dctx).pop(true),
-            child: const Text('删除'),
+            child: Text(context.l10n.delete),
           ),
         ],
       ),
@@ -2176,9 +2240,11 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
       final albums = ref.read(albumsProvider.notifier);
       hintSnack(
         context,
-        change.count == 0 ? '图片已在「$name」' : '已移动 ${change.count} 张到「$name」',
+        change.count == 0
+            ? context.l10n.alreadyInAlbum(name)
+            : context.l10n.movedNTo(change.count, name),
         icon: Icons.drive_file_move_outline,
-        actionLabel: change.count == 0 ? null : '撤销',
+        actionLabel: change.count == 0 ? null : context.l10n.undo,
         onAction: change.count == 0
             ? null
             : () => unawaited(albums.undo(change).catchError((Object _) {})),
@@ -2260,11 +2326,11 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
       final at = deletedAt[g.items.first.id];
       if (at == null) return null;
       final left = kTrashKeepDays - galleryDaysSince(at, now);
-      return '${math.max(left, 1)} 天后删除';
+      return context.l10n.deletesInDays(math.max(left, 1));
     }
 
     final albums = <GalleryGroup>[
-      (key: _allAlbumKey, label: '全部相册', items: results),
+      (key: _allAlbumKey, label: allPhotosName, items: results),
       (
         key: favoritesId,
         label: favoritesName,
@@ -2357,8 +2423,12 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                           children: [
                             Text(
                               _albumHome
-                                  ? '已选 ${_pickedAlbums.length} 个相册'
-                                  : '已选 ${_picked.length} 张',
+                                  ? context.l10n.selectedNAlbums(
+                                      _pickedAlbums.length,
+                                    )
+                                  : context.l10n.selectedNImages(
+                                      _picked.length,
+                                    ),
                               style: context.texts.titleMedium!.copyWith(
                                 fontWeight: FontWeight.w700,
                               ),
@@ -2379,8 +2449,8 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                                   albumData.albums.length
                                         : _picked.length == filtered.length &&
                                               filtered.isNotEmpty)
-                                    ? '全不选'
-                                    : '全选',
+                                    ? context.l10n.selectNone
+                                    : context.l10n.selectAll,
                               ),
                             ),
                             TextButton(
@@ -2388,7 +2458,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                               onPressed: _saving || _zipping
                                   ? null
                                   : _exitSelect,
-                              child: const Text('完成'),
+                              child: Text(context.l10n.done),
                             ),
                           ],
                         )
@@ -2409,7 +2479,9 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                   tapTargetSize:
                                       MaterialTapTargetSize.shrinkWrap,
                                 ),
-                                tooltip: open != null ? '回到全部' : '回到相册',
+                                tooltip: open != null
+                                    ? context.l10n.backToAll
+                                    : context.l10n.backToAlbums,
                                 icon: const Icon(Icons.arrow_back, size: 21),
                               ),
                             if (!_albumHome) const SizedBox(width: 4),
@@ -2426,7 +2498,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                   Flexible(
                                     child: Text(
                                       _albumHome
-                                          ? '相册'
+                                          ? context.l10n.albums
                                           : open?.label ??
                                                 albumData.name(_activeAlbumId),
                                       maxLines: 1,
@@ -2443,12 +2515,21 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                     // 所以封面墙上报的仍是**去重后**的总数。
                                     // 回收站不算一本相册
                                     _albumHome
-                                        ? '${albums.length - 1} 个相册'
+                                        ? context.l10n.nAlbums(
+                                            albums.length - 1,
+                                          )
                                         : open != null
-                                        ? '${open.items.length} 张'
+                                        ? context.l10n.imagesN(
+                                            open.items.length,
+                                          )
                                         : filtering
-                                        ? '${filtered.length}/${results.length} 张'
-                                        : '${albumResults.length} 张',
+                                        ? context.l10n.filteredOfTotal(
+                                            filtered.length,
+                                            results.length,
+                                          )
+                                        : context.l10n.imagesN(
+                                            albumResults.length,
+                                          ),
                                     style: context.texts.bodySmall!.copyWith(
                                       color: scheme.onSurfaceVariant,
                                     ),
@@ -2464,7 +2545,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                     ? null
                                     : _createAlbum,
                                 icon: const Icon(Icons.add, size: 18),
-                                label: const Text('新建'),
+                                label: Text(context.l10n.newLabel),
                               ),
                             if (_albumHome)
                               TextButton(
@@ -2472,7 +2553,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                 onPressed: albumData.albums.isEmpty
                                     ? null
                                     : () => _enterSelect(),
-                                child: const Text('多选'),
+                                child: Text(context.l10n.multiSelect),
                               ),
                             if (!_albumHome) ...[
                               _topButton(scheme, hasList: filtered.isNotEmpty),
@@ -2480,7 +2561,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                 IconButton(
                                   onPressed: _toggleSearch,
                                   visualDensity: VisualDensity.compact,
-                                  tooltip: '搜索提示词标签',
+                                  tooltip: context.l10n.searchPromptTags,
                                   icon: Icon(
                                     Icons.search,
                                     size: 21,
@@ -2492,7 +2573,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                               TextButton(
                                 style: _headerBtn,
                                 onPressed: () => _enterSelect(),
-                                child: const Text('多选'),
+                                child: Text(context.l10n.multiSelect),
                               ),
                             ],
                           ],
@@ -2512,7 +2593,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                     style: context.texts.bodyMedium,
                     decoration: InputDecoration(
                       isDense: true,
-                      hintText: '搜索提示词标签…',
+                      hintText: context.l10n.searchPromptTagsHint,
                       prefixIcon: const Icon(Icons.search, size: 19),
                       suffixIcon: _searchCtrl.text.isEmpty
                           ? null
@@ -2555,9 +2636,9 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                           _chip(
                             scheme,
                             label: _modelFilter == null
-                                ? '模型'
+                                ? context.l10n.model
                                 : (_modelFilter!.isEmpty
-                                      ? '未知'
+                                      ? context.l10n.unknown
                                       : modelName(_modelFilter!)),
                             active: _modelFilter != null,
                             onTap: () => _pickModelFilter(results, search.byId),
@@ -2582,8 +2663,11 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                             const SizedBox(width: 6),
                             Text(
                               search.building
-                                  ? '索引 ${search.done}/${search.total}'
-                                  : '分组中',
+                                  ? context.l10n.indexingProgress(
+                                      search.done,
+                                      search.total,
+                                    )
+                                  : context.l10n.grouping,
                               style: context.texts.bodySmall!.copyWith(
                                 color: scheme.outline,
                               ),
@@ -2625,12 +2709,12 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                     const SizedBox(height: 10),
                                     Text(
                                       filtering
-                                          ? '没有符合条件的作品'
+                                          ? context.l10n.noMatchingWorks
                                           : inTrash
-                                          ? '回收站是空的'
+                                          ? context.l10n.trashEmpty
                                           : _activeAlbumId == null
-                                          ? '图库是空的'
-                                          : '这个相册还没有图片',
+                                          ? context.l10n.galleryEmpty
+                                          : context.l10n.albumNoImages,
                                       style: context.texts.bodyMedium!.copyWith(
                                         color: scheme.onSurfaceVariant,
                                       ),
@@ -2766,8 +2850,14 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                               ),
                                               label: _fitLabel(
                                                 _saving
-                                                    ? '保存中 $_saveDone/$_saveTotal'
-                                                    : '保存 (${_picked.length})',
+                                                    ? context.l10n
+                                                          .savingProgress(
+                                                            _saveDone,
+                                                            _saveTotal,
+                                                          )
+                                                    : context.l10n.saveN(
+                                                        _picked.length,
+                                                      ),
                                               ),
                                             ),
                                           ),
@@ -2782,7 +2872,9 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                                 Icons.drive_file_move_outline,
                                                 size: 19,
                                               ),
-                                              label: _fitLabel('移动'),
+                                              label: _fitLabel(
+                                                context.l10n.move,
+                                              ),
                                             ),
                                           ),
                                           const SizedBox(width: _actGap),
@@ -2804,7 +2896,9 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                                 size: 19,
                                               ),
                                               label: _fitLabel(
-                                                '删除 (${_picked.length})',
+                                                context.l10n.deleteN(
+                                                  _picked.length,
+                                                ),
                                               ),
                                             ),
                                           ),
@@ -2842,8 +2936,12 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                                     ),
                                               label: _fitLabel(
                                                 _sharing
-                                                    ? '准备 $_saveDone/$_saveTotal'
-                                                    : '分享',
+                                                    ? context.l10n
+                                                          .preparingProgress(
+                                                            _saveDone,
+                                                            _saveTotal,
+                                                          )
+                                                    : context.l10n.share,
                                               ),
                                             ),
                                           ),
@@ -2858,7 +2956,9 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                                 Icons.photo_album_outlined,
                                                 size: 17,
                                               ),
-                                              label: _fitLabel('自定义相册'),
+                                              label: _fitLabel(
+                                                context.l10n.customAlbum,
+                                              ),
                                             ),
                                           ),
                                           const SizedBox(width: _actGap),
@@ -2883,7 +2983,9 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                                     ),
                                               // 进度在打包弹层里,这儿只表示「在忙」
                                               label: _fitLabel(
-                                                _zipping ? '打包中' : '打包 ZIP',
+                                                _zipping
+                                                    ? context.l10n.zipping
+                                                    : context.l10n.packZip,
                                               ),
                                             ),
                                           ),
@@ -3203,7 +3305,7 @@ class _ThumbMenuRoute extends PopupRoute<String> {
   bool get barrierDismissible => true;
 
   @override
-  String? get barrierLabel => '关闭菜单';
+  String? get barrierLabel => l10nNow.closeMenu;
 
   @override
   Duration get transitionDuration => const Duration(milliseconds: 230);
@@ -3437,7 +3539,7 @@ class _LiftedThumb extends ConsumerWidget {
             ),
             const SizedBox(width: 12),
             Text(
-              action.label,
+              _liftLabel(context.l10n, action.label),
               style: context.texts.bodyLarge!.copyWith(
                 color: danger ? scheme.error : scheme.onSurface,
                 fontWeight: FontWeight.w600,
@@ -3449,3 +3551,23 @@ class _LiftedThumb extends ConsumerWidget {
     );
   }
 }
+
+/// 浮起菜单的项名按界面语言显示(菜单表是 const,存的是中文原文)。
+String _liftLabel(AppLocalizations l, String label) => switch (label) {
+  '全部恢复' => l.restoreAll,
+  '设为保存相册' => l.setAsSaveAlbum,
+  '重命名' => l.rename,
+  '清空回收站' => l.emptyTrash,
+  '删除相册' => l.deleteAlbum,
+  '恢复' => l.restore,
+  '彻底删除' => l.deleteForever,
+  '取消收藏' => l.unfavorite,
+  '收藏' => l.favoriteAction,
+  '取消封面' => l.removeCover,
+  '设为封面' => l.setAsCover,
+  '删除' => l.delete,
+  '导入' => l.importLabel,
+  '保存' => l.save,
+  '分享' => l.share,
+  _ => label,
+};

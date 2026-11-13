@@ -3,6 +3,8 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/services.dart';
 
+import '../../l10n/l10n.dart';
+
 /// 该设备/权限下的上岛能力(供 UI 决定是否提示"仅新系统可上岛")。
 class LiveCaps {
   const LiveCaps({this.sdkInt = 0, this.canPromote = false});
@@ -27,8 +29,8 @@ class LiveProgress {
 
   static const MethodChannel _ch = MethodChannel('plana/live_progress');
 
-  static const _assistantTitle = 'AI 助手思考中…';
-  static const _assistantShort = '思考中';
+  static String get _assistantTitle => l10nNow.lpAssistantThinking;
+  static String get _assistantShort => l10nNow.lpAssistantThinkingShort;
 
   bool get _on => Platform.isAndroid;
   bool _permAsked = false;
@@ -68,11 +70,8 @@ class LiveProgress {
   ///
   /// [title] 是通知的主行,**要带状态**:通知头已经写着应用名了,主行再写一遍
   /// 「Plana」等于白占一行。[text] 是副行,没有可留空(留空则不渲染那一行)。
-  Future<void> start({
-    String title = '准备生成…',
-    String text = '',
-    int total = 0,
-  }) {
+  Future<void> start({String? title, String text = '', int total = 0}) {
+    title ??= l10nNow.lpPreparing;
     final running = _gen || _assistant;
     _gen = true;
     // 服务已被 AI 助手拉起:就地换成出图的样子
@@ -82,10 +81,15 @@ class LiveProgress {
         indeterminate: total <= 0,
         title: title,
         text: text,
-        short: total > 0 ? '0/$total' : '准备',
+        short: total > 0 ? '0/$total' : l10nNow.shortPreparing,
       );
     }
-    return _quiet('start', {'title': title, 'text': text, 'total': total});
+    return _quiet('start', {
+      'title': title,
+      'text': text,
+      'total': total,
+      'short': total > 0 ? '0/$total' : l10nNow.shortPreparing,
+    });
   }
 
   /// 刷新进度。[step]<=0 或 [indeterminate] 走不确定态;否则 step/total 进度条。
@@ -117,16 +121,16 @@ class LiveProgress {
   ///
   /// AI 助手还在跑时,完成态停留完服务不停,常驻那条换回助手的状态。
   Future<void> finish({
-    String title = '生成完成',
+    String? title,
     String text = '',
-    String short = '完成',
+    String? short,
     bool keep = true,
   }) {
     _gen = false;
     return _quiet('finish', {
-      'title': title,
+      'title': title ?? l10nNow.lpGenDone,
       'text': text,
-      'short': short,
+      'short': short ?? l10nNow.shortDone,
       'keep': keep,
       if (_assistant) 'next': _assistantTitle,
       if (_assistant) 'nextShort': _assistantShort,
@@ -154,6 +158,22 @@ class LiveProgress {
     unawaited(_showAssistant());
   }
 
+  String? _channelLang;
+
+  /// 系统设置里两条通知渠道的名字跟界面语言走。同一语言只发一次。
+  void syncChannelNames(AppLocalizations l) {
+    if (!_on || _channelLang == l.localeName) return;
+    _channelLang = l.localeName;
+    unawaited(
+      _quiet('channels', {
+        'progress': l.channelProgress,
+        'progressDesc': l.channelProgressDesc,
+        'done': l.channelDone,
+        'doneDesc': l.channelDoneDesc,
+      }),
+    );
+  }
+
   /// AI 助手一轮结束。出图占着时不动通知;否则同出图的 [finish]。
   void endAssistant({required bool success, required bool keep}) {
     if (!_assistant) return;
@@ -161,9 +181,11 @@ class LiveProgress {
     if (_gen) return;
     unawaited(
       _quiet('finish', {
-        'title': success ? 'AI 助手已回复' : 'AI 助手回复失败',
-        'text': keep ? (success ? '点按查看' : '点按回到应用') : '',
-        'short': success ? '完成' : '失败',
+        'title': success
+            ? l10nNow.lpAssistantReplied
+            : l10nNow.lpAssistantFailed,
+        'text': keep ? (success ? l10nNow.tapToView : l10nNow.tapToReturn) : '',
+        'short': success ? l10nNow.shortDone : l10nNow.shortFailed,
         'keep': keep,
       }),
     );

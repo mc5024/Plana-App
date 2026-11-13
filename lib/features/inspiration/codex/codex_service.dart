@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../../core/store/atomic_file.dart';
 import 'codex_models.dart';
 import 'codex_tag_zh.dart';
+import '../../../l10n/l10n.dart';
 
 /// 法典数据源接入:官网 CDN 取 index / media / 每部 JSON,以及原站的 tag 中文对照。
 /// 每部 JSON 大(最大 ~11MB),按 `id@版本` 落盘缓存(版本不变即命中不重拉),
@@ -61,7 +62,7 @@ class CodexService {
       return await _fetchWithCopy('media.json', (raw) {
         final j = jsonDecode(raw);
         if (j is! Map<String, dynamic>) {
-          throw const CodexException('图床配置格式异常');
+          throw CodexException(l10nNow.codexBadImageHost);
         }
         return CodexMedia.fromJson(j);
       });
@@ -73,7 +74,7 @@ class CodexService {
   /// 法典索引(codexes.json;拉不到读副本)。
   Future<List<CodexMeta>> fetchIndex() => _fetchWithCopy('codexes.json', (raw) {
     final j = jsonDecode(raw);
-    if (j is! List) throw const CodexException('法典索引格式异常');
+    if (j is! List) throw CodexException(l10nNow.codexBadIndex);
     return [
       for (final e in j)
         if (e is Map<String, dynamic>) CodexMeta.fromJson(e),
@@ -250,7 +251,7 @@ CodexData codexParsePayload(List<Object?> args) {
   final indexRaw = args[1] as Map<String, dynamic>?;
   final j = jsonDecode(raw);
   if (j is! Map<String, dynamic>) {
-    throw const CodexException('法典数据格式异常');
+    throw CodexException(l10nNow.codexBadData);
   }
   final idx = (indexRaw != null && indexRaw.isNotEmpty)
       ? CodexMeta.fromJson(indexRaw)

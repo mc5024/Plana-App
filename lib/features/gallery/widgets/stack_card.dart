@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../gallery_groups.dart';
 import '../models.dart';
 import 'result_thumb.dart';
+import '../../../l10n/l10n.dart';
 
 /// 堆的封面卡:封面图 + 身后两片露边的「还有更多」+ 名字 + 张数。
 ///
@@ -163,7 +164,7 @@ class GalleryStackCard extends StatelessWidget {
                           top: 8,
                           left: w - 34,
                           child: Semantics(
-                            label: '新图保存到这里',
+                            label: context.l10n.newImagesSaveHere,
                             child: Container(
                               width: 26,
                               height: 26,
@@ -221,7 +222,7 @@ class GalleryStackCard extends StatelessWidget {
             ),
           ),
           Text(
-            '${group.items.length} 张',
+            context.l10n.imagesN(group.items.length),
             maxLines: 1,
             style: context.texts.bodySmall!.copyWith(color: scheme.outline),
           ),

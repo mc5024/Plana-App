@@ -21,6 +21,7 @@ import '../profile/widgets/credential_login_sheet.dart';
 import '../profile/widgets/token_status.dart';
 import '../shell/float_theme_intro.dart';
 import '../../core/util/haptics.dart';
+import '../../l10n/l10n.dart';
 
 /// 首启欢迎流程:欢迎 → 外观 → 接入 → 通知 → 完成,共 5 页。
 /// 内容居中,页间横滑,元素错峰浮现;凭据在本页内就地配完,不再跳出去。
@@ -172,10 +173,10 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                     ),
                     child: Text(
                       last
-                          ? '开始使用'
+                          ? context.l10n.getStarted
                           : notifyPage
-                          ? '开启通知'
-                          : '下一步',
+                          ? context.l10n.enableNotifications
+                          : context.l10n.next,
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
@@ -185,7 +186,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                     child: notifyPage
                         ? TextButton(
                             onPressed: () => _notifyChoice(false),
-                            child: const Text('暂不开启'),
+                            child: Text(context.l10n.notNow),
                           )
                         : needPick
                         ? TextButton(
@@ -195,7 +196,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                                   .set(AuthMode.token);
                               _next();
                             },
-                            child: const Text('暂时跳过'),
+                            child: Text(context.l10n.skipForNow),
                           )
                         : null,
                   ),
@@ -374,14 +375,14 @@ class _IntroStep extends StatelessWidget {
     return _Step(
       active: active,
       icon: Icons.auto_awesome,
-      title: '欢迎使用 Plana',
-      desc: 'NovelAI 移动创作端',
+      title: context.l10n.welcomeTitle,
+      desc: context.l10n.appTagline,
       child: Column(
         children: [
-          for (final f in const [
-            (Icons.edit_note, '全屏提示词编辑器'),
-            (Icons.photo_library_outlined, '图库留参数,随时复现'),
-            (Icons.auto_fix_high, 'Vibe · 参考 · 重绘 · 超分'),
+          for (final f in [
+            (Icons.edit_note, context.l10n.featEditor),
+            (Icons.photo_library_outlined, context.l10n.featGallery),
+            (Icons.auto_fix_high, context.l10n.featTools),
           ])
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
@@ -390,10 +391,12 @@ class _IntroStep extends StatelessWidget {
                 children: [
                   Icon(f.$1, size: 17, color: scheme.onSurfaceVariant),
                   const SizedBox(width: 9),
-                  Text(
-                    f.$2,
-                    style: context.texts.bodySmall!.copyWith(
-                      color: scheme.onSurfaceVariant,
+                  Flexible(
+                    child: Text(
+                      f.$2,
+                      style: context.texts.bodySmall!.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],
@@ -419,16 +422,25 @@ class _AppearanceStep extends ConsumerWidget {
     return _Step(
       active: active,
       icon: Icons.color_lens_outlined,
-      title: '外观配色',
+      title: context.l10n.appearanceColors,
       child: Column(
         children: [
           SizedBox(
             width: double.infinity,
             child: SegmentedButton<ThemeMode>(
-              segments: const [
-                ButtonSegment(value: ThemeMode.system, label: Text('跟随系统')),
-                ButtonSegment(value: ThemeMode.light, label: Text('浅色')),
-                ButtonSegment(value: ThemeMode.dark, label: Text('深色')),
+              segments: [
+                ButtonSegment(
+                  value: ThemeMode.system,
+                  label: Text(context.l10n.followSystem),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.light,
+                  label: Text(context.l10n.themeLight),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.dark,
+                  label: Text(context.l10n.themeDark),
+                ),
               ],
               selected: {ts.mode},
               onSelectionChanged: (s) =>
@@ -579,7 +591,7 @@ class _AccessStepState extends ConsumerState<_AccessStep> {
     // —— 中转站多半没开 GET,探测失败反而拦住能用的地址。
     final url = _third ? naiEndpointFor(_urlCtrl.text, _format) : '';
     if (_third && (url.isEmpty || !naiBaseLooksValid(url))) {
-      setState(() => _urlError = '请填 http:// 或 https:// 开头的接口地址');
+      setState(() => _urlError = context.l10n.urlNeedsHttp);
       return;
     }
     setState(() => _saving = true);
@@ -612,12 +624,12 @@ class _AccessStepState extends ConsumerState<_AccessStep> {
     return _Step(
       active: widget.active,
       icon: Icons.key,
-      title: '生成接入方式',
-      desc: '之后可在「我的」里改',
+      title: context.l10n.accessMethod,
+      desc: context.l10n.changeLaterInProfile,
       child: _AccessCard(
         icon: Icons.vpn_key,
-        title: '直连 NovelAI Token',
-        note: savedToken ? '已保存' : null,
+        title: context.l10n.directNaiToken,
+        note: savedToken ? context.l10n.statusSaved : null,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -625,9 +637,15 @@ class _AccessStepState extends ConsumerState<_AccessStep> {
             SizedBox(
               width: double.infinity,
               child: SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(value: false, label: Text('官方')),
-                  ButtonSegment(value: true, label: Text('第三方')),
+                segments: [
+                  ButtonSegment(
+                    value: false,
+                    label: Text(context.l10n.official),
+                  ),
+                  ButtonSegment(
+                    value: true,
+                    label: Text(context.l10n.thirdParty),
+                  ),
                 ],
                 selected: {_third},
                 showSelectedIcon: false,
@@ -690,7 +708,7 @@ class _AccessStepState extends ConsumerState<_AccessStep> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  '代理访问 NovelAI',
+                                  context.l10n.naiProxy,
                                   style: context.texts.labelMedium!.copyWith(
                                     color: scheme.onSurfaceVariant,
                                   ),
@@ -755,7 +773,7 @@ class _AccessStepState extends ConsumerState<_AccessStep> {
               style: mono(context, size: 12),
               decoration: _fieldDec(
                 scheme,
-                _third ? '接口 key' : 'pst-… / eyJ…',
+                _third ? context.l10n.apiKey : 'pst-… / eyJ…',
                 suffix: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -804,7 +822,9 @@ class _AccessStepState extends ConsumerState<_AccessStep> {
                     minimumSize: const Size(72, 38),
                     visualDensity: VisualDensity.compact,
                   ),
-                  child: Text(_saving ? '保存中' : '保存'),
+                  child: Text(
+                    _saving ? context.l10n.jobSaving : context.l10n.save,
+                  ),
                 ),
               ],
             ),
@@ -820,7 +840,7 @@ class _AccessStepState extends ConsumerState<_AccessStep> {
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                   ),
                   icon: const Icon(Icons.mail_outline, size: 15),
-                  label: const Text('没有令牌?用邮箱密码登录'),
+                  label: Text(context.l10n.noTokenUseLogin),
                 ),
               ),
           ],
@@ -906,8 +926,8 @@ class _NotifyStep extends StatelessWidget {
     return _Step(
       active: active,
       icon: Icons.notifications_active_outlined,
-      title: '生成进度通知',
-      desc: '开启后可接收生成进度及完成通知,Android 16+ 支持灵动岛显示',
+      title: context.l10n.notifyTitle,
+      desc: context.l10n.notifyDesc,
     );
   }
 }
@@ -948,7 +968,7 @@ class _DoneStep extends StatelessWidget {
             active: active,
             delayMs: 220,
             child: Text(
-              '全部完成',
+              context.l10n.allDone,
               style: context.texts.headlineSmall!.copyWith(
                 fontWeight: FontWeight.w800,
               ),

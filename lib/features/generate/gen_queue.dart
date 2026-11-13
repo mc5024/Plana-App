@@ -10,6 +10,7 @@ import 'loop_controller.dart';
 import 'models.dart';
 import '../gallery/albums/album_models.dart';
 import '../gallery/albums/album_state.dart';
+import '../../l10n/l10n.dart';
 
 /// 排队任务:入队瞬间的完整参数快照,之后随便改编辑器不影响已排的。
 class QueuedTask {
@@ -172,10 +173,13 @@ class GenQueueNotifier extends Notifier<GenQueueState> {
 
     // 与循环同款收尾:岛上先显示完成态;前台不留通知,后台留一条汇总可点回应用
     final all = left == 0;
+    final l = l10nNow;
     await LiveProgress.instance.finish(
-      title: all ? '队列完成' : '队列暂停',
-      text: _appForeground ? '' : (all ? '共 $done 张 · 点按查看' : '剩 $left 项'),
-      short: all ? '完成' : '暂停',
+      title: all ? l.queueDone : l.queuePaused,
+      text: _appForeground
+          ? ''
+          : (all ? l.queueDoneText(done) : l.queueLeftText(left)),
+      short: all ? l.shortDone : l.shortPaused,
       keep: !_appForeground,
     );
   }

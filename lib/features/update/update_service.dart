@@ -16,6 +16,7 @@ import 'package:http/http.dart' as http;
 import '../../core/app_info.dart';
 import '../../core/store/prefs_store.dart';
 import '../../core/util/log.dart';
+import '../../l10n/l10n.dart';
 
 /// 检查更新失败。`toString()` 直接是可展示文案。
 class UpdateException implements Exception {
@@ -189,25 +190,25 @@ Future<GithubRelease?> fetchLatestRelease(
         (resp.statusCode == 403 &&
             resp.headers['x-ratelimit-remaining'] == '0')) {
       logd('[update] GitHub API 限流');
-      throw const UpdateException('GitHub 查询次数已达上限,请稍后再试');
+      throw UpdateException(l10nNow.ghRateLimited);
     }
     if (resp.statusCode != 200) {
-      throw UpdateException('检查更新失败(HTTP ${resp.statusCode})');
+      throw UpdateException(l10nNow.updateHttpFailed(resp.statusCode));
     }
     final j = jsonDecode(utf8.decode(resp.bodyBytes));
-    if (j is! List) throw const UpdateException('更新信息格式异常');
+    if (j is! List) throw UpdateException(l10nNow.updateBadFormat);
     return pickNewer(current, j);
   } on TimeoutException {
-    throw const UpdateException('检查更新超时,请检查网络后重试');
+    throw UpdateException(l10nNow.updateTimeout);
   } on SocketException {
-    throw const UpdateException('连不上 GitHub,请检查网络后重试');
+    throw UpdateException(l10nNow.cantReachGithub);
   } on TlsException {
-    throw const UpdateException('连不上 GitHub,请检查网络后重试');
+    throw UpdateException(l10nNow.cantReachGithub);
   } on UpdateException {
     rethrow;
   } catch (e) {
     logd('[update] 检查更新异常: $e');
-    throw const UpdateException('检查更新失败,请稍后重试');
+    throw UpdateException(l10nNow.updateFailed);
   }
 }
 

@@ -31,6 +31,8 @@ import 'widgets/rich_tag_controller.dart';
 import 'widgets/tag_panel.dart';
 import '../../core/util/haptics.dart';
 import 'chrome_scroll.dart';
+import '../../l10n/l10n.dart';
+import '../generate/display_names.dart';
 
 /// 提示词编辑器。正文有两种形态,底栏一键切,选择记在编辑器设置里:
 ///
@@ -881,7 +883,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
     setState(() => _translating = false);
     final ins = en?.trim() ?? '';
     if (ins.isEmpty) {
-      hintSnack(context, '翻译失败,稍后再试', icon: Icons.error_outline);
+      hintSnack(
+        context,
+        context.l10n.translateFailed,
+        icon: Icons.error_outline,
+      );
       return;
     }
     if (_chipMode) {
@@ -1171,7 +1177,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
     ].join(', ');
     if (out.isEmpty) return;
     Clipboard.setData(ClipboardData(text: out));
-    hintSnack(context, '已复制 ${ordered.length} 项', icon: Icons.check);
+    hintSnack(
+      context,
+      context.l10n.copiedItems(ordered.length),
+      icon: Icons.check,
+    );
   }
 
   /// 提取所选为新分区:所选从这一段拿掉,原样(权重、禁用、折叠都带着)放进
@@ -1190,7 +1200,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
     if (draft.isEmpty) return;
     final (next, cursor) = remove();
     if (next == text) {
-      hintSnack(context, '所选和折叠连在一起,没法提取');
+      hintSnack(context, context.l10n.cantExtractFold);
       return;
     }
     final section = ref
@@ -1201,7 +1211,11 @@ class _EditorPageState extends ConsumerState<EditorPage>
         );
     _applyText(next, cursor, extracted: section);
     _save(); // 当场回写:别让这几枚在原处和新分区里同时存着
-    hintSnack(context, '已提取到「${section.name}」', icon: Icons.check);
+    hintSnack(
+      context,
+      context.l10n.extractedTo(sectionDisplayName(context.l10n, section.name)),
+      icon: Icons.check,
+    );
   }
 
   void _chipExtract() => _extractUnits(_chipSel, () {
@@ -1618,7 +1632,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
                     fontSize: settings.fontSize,
                     onCursorDrag: _setCursorDragging,
                     onFoldTap: _unfoldByName,
-                    hint: '点击输入标签,可输入中文自动触发翻译与联想',
+                    hint: context.l10n.editorInputHint,
                   ),
                 ),
               ),

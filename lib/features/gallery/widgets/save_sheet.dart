@@ -15,6 +15,7 @@ import '../models.dart';
 import '../phone_gallery_save.dart';
 import '../phone_image_date.dart';
 import '../save_settings.dart';
+import '../../../l10n/l10n.dart';
 
 /// 保存设置面板(长按图库「保存」进入,对齐 web SaveModal):
 /// 格式 PNG/JPG + 压缩质量、元数据 原始/清除/自定义、实时预估大小;
@@ -100,7 +101,13 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
     try {
       final ok = await Gal.hasAccess() || await Gal.requestAccess();
       if (!ok) {
-        if (mounted) hintSnack(context, '未获相册权限', icon: Icons.error_outline);
+        if (mounted) {
+          hintSnack(
+            context,
+            context.l10n.noPhotoPermission,
+            icon: Icons.error_outline,
+          );
+        }
         return;
       }
       final out = await processForSave(widget.bytes, settings);
@@ -113,12 +120,18 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
       if (!mounted) return;
       hintSnack(
         context,
-        '已保存到相册 · ${fmtBytes(savedSize)}',
+        context.l10n.savedToPhotosSize(fmtBytes(savedSize)),
         icon: Icons.check_circle_outline,
       );
       Navigator.of(context).pop();
     } catch (e) {
-      if (mounted) hintSnack(context, '保存失败: $e', icon: Icons.error_outline);
+      if (mounted) {
+        hintSnack(
+          context,
+          context.l10n.saveFailedSpace('$e'),
+          icon: Icons.error_outline,
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -128,7 +141,11 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
     final next = _current;
     await ref.read(saveSettingsProvider.notifier).patch((_) => next);
     if (!mounted) return;
-    hintSnack(context, '已设为默认保存方式', icon: Icons.check_circle_outline);
+    hintSnack(
+      context,
+      context.l10n.setAsDefaultSave,
+      icon: Icons.check_circle_outline,
+    );
     Navigator.of(context).pop();
   }
 
@@ -176,7 +193,11 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          '预估大小 ${_size == null ? '计算中…' : fmtBytes(_size!)}',
+                          context.l10n.estimatedSize(
+                            _size == null
+                                ? context.l10n.calculating
+                                : fmtBytes(_size!),
+                          ),
                           style: context.texts.bodySmall!.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
@@ -188,9 +209,15 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
               ),
               const SizedBox(height: 14),
               SegmentedButton<SaveFormat>(
-                segments: const [
-                  ButtonSegment(value: SaveFormat.png, label: Text('PNG 无损')),
-                  ButtonSegment(value: SaveFormat.jpg, label: Text('JPG 有损')),
+                segments: [
+                  ButtonSegment(
+                    value: SaveFormat.png,
+                    label: Text(context.l10n.pngLossless),
+                  ),
+                  ButtonSegment(
+                    value: SaveFormat.jpg,
+                    label: Text(context.l10n.jpgLossy),
+                  ),
                 ],
                 selected: {_s.format},
                 onSelectionChanged: (v) => _set(_s.copyWith(format: v.first)),
@@ -200,14 +227,17 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Text('压缩质量', style: context.texts.bodySmall),
+                    Text(
+                      context.l10n.compressQuality,
+                      style: context.texts.bodySmall,
+                    ),
                     const Spacer(),
                     ParamValueBox(
                       text: '${(_s.quality * 100).round()}',
                       onTap: () async {
                         final v = await showParamInput(
                           context,
-                          title: '压缩质量',
+                          title: context.l10n.compressQuality,
                           value: (_s.quality * 100).roundToDouble(),
                           min: 10,
                           max: 100,
@@ -230,7 +260,7 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
                       _set(_s.copyWith(quality: v.roundToDouble() / 100)),
                 ),
                 Text(
-                  'JPG 不保留生成参数',
+                  context.l10n.jpgNoParams,
                   style: context.texts.labelSmall!.copyWith(
                     color: scheme.outline,
                   ),
@@ -250,9 +280,9 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
                           dense: true,
                           contentPadding: EdgeInsets.zero,
                           title: Text(switch (m) {
-                            SaveMeta.original => '保留原始元数据',
-                            SaveMeta.clean => '清除生成信息',
-                            SaveMeta.custom => '自定义提示词',
+                            SaveMeta.original => context.l10n.keepOriginalMeta,
+                            SaveMeta.clean => context.l10n.clearGenInfo,
+                            SaveMeta.custom => context.l10n.customPrompt,
                           }, style: context.texts.bodyMedium),
                         ),
                     ],
@@ -268,7 +298,7 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
                     decoration: InputDecoration(
                       filled: true,
                       fillColor: scheme.surfaceContainerHigh,
-                      hintText: '写入图片的提示词(其余参数清除)…',
+                      hintText: context.l10n.customPromptHint,
                       hintStyle: TextStyle(color: scheme.outline, fontSize: 12),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -291,7 +321,7 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.save_alt, size: 18),
-                      label: const Text('单次保存'),
+                      label: Text(context.l10n.saveOnce),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -299,7 +329,7 @@ class _SaveSheetState extends ConsumerState<_SaveSheet> {
                     child: FilledButton.icon(
                       onPressed: _applyDefault,
                       icon: const Icon(Icons.check, size: 18),
-                      label: const Text('设为默认'),
+                      label: Text(context.l10n.setAsDefault),
                     ),
                   ),
                 ],

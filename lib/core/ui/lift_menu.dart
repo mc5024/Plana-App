@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_skin.dart';
 import '../theme/app_theme.dart';
+import '../../l10n/l10n.dart';
 
 /// 抬起菜单的一项:图标 + 文字,点了把 [value] 作为结果交回。
 typedef LiftAction<T> = ({IconData icon, String label, T value});
@@ -57,7 +58,7 @@ class _LiftRoute<T> extends PopupRoute<T> {
   bool get barrierDismissible => true;
 
   @override
-  String? get barrierLabel => '关闭菜单';
+  String? get barrierLabel => l10nNow.closeMenu;
 
   @override
   Duration get transitionDuration => const Duration(milliseconds: 230);

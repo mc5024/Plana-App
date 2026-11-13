@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/store/app_stores.dart';
 import 'models.dart';
 import 'prompt_sections.dart';
+import '../../l10n/l10n.dart';
 
 export 'models.dart'
     show GenProvider, isAnimaModel, providerLabel, providerOfModel;
@@ -370,3 +371,12 @@ class GenModulesNotifier extends AsyncNotifier<GenModuleSettings> {
     } catch (_) {}
   }
 }
+
+/// 模块名按界面语言显示;Bot 专属的几个保持原文。
+String genModuleLabel(AppLocalizations l, GenModuleDef d) => switch (d.key) {
+  GenModule.character => l.characters,
+  GenModule.vibe => l.vibeTransfer,
+  GenModule.charRef => l.preciseReference,
+  GenModule.img2img => l.img2img,
+  _ => d.label,
+};

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../l10n/l10n.dart';
 
 /// 「我的 / 公共库」分段:滑动指示器 + 渐变标签(随 [controller] 的动画走),
 /// 整段任意位置可点。[compact] 是搜索框旁的窄版:不带图标、不写条数。
@@ -69,17 +70,21 @@ class ScopeSegTabs extends StatelessWidget {
                                 context,
                                 0,
                                 Icons.bookmark_outline,
-                                compact ? '我的' : '我的 · $mineCount',
+                                compact
+                                    ? context.l10n.scopeMine
+                                    : context.l10n.scopeMineN(mineCount),
                                 t,
                               ),
                               _label(context, 1, Icons.public, switch ((
                                 compact,
                                 publicCount,
                               )) {
-                                (true, final int n) => '公共 $n',
-                                (true, null) => '公共',
-                                (false, final int n) => '公共库 · $n',
-                                (false, null) => '公共库',
+                                (true, final int n) =>
+                                  context.l10n.scopePublicShortN(n),
+                                (true, null) => context.l10n.scopePublicShort,
+                                (false, final int n) =>
+                                  context.l10n.scopePublicN(n),
+                                (false, null) => context.l10n.publicLibrary,
                               }, t),
                             ],
                           ),

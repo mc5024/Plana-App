@@ -39,6 +39,7 @@ import 'agent_model.dart'
 import 'custom_endpoint.dart';
 import 'custom_endpoint_api.dart';
 import 'direct_agent.dart' show testEndpoint;
+import '../../l10n/l10n.dart';
 
 /// [editId] 为空 = 展开「添加接口」那张;否则展开那一条。
 Future<void> openEndpointsPage(BuildContext context, {String? editId}) =>
@@ -65,9 +66,9 @@ class _EndpointsPageState extends ConsumerState<EndpointsPage> {
 
   Future<bool> _discard() => confirmDialog(
     context,
-    title: '放弃修改?',
-    message: '没保存的改动会丢掉。',
-    confirmLabel: '放弃',
+    title: context.l10n.discardChangesQ,
+    message: context.l10n.unsavedLost,
+    confirmLabel: context.l10n.discardAction,
   );
 
   Future<void> _toggle(String id) async {
@@ -88,7 +89,7 @@ class _EndpointsPageState extends ConsumerState<EndpointsPage> {
     });
     hintSnack(
       context,
-      '已保存「${e.displayName}」',
+      context.l10n.savedNamed(e.displayName),
       icon: Icons.check_circle_outline,
     );
   }
@@ -96,9 +97,9 @@ class _EndpointsPageState extends ConsumerState<EndpointsPage> {
   Future<void> _delete(CustomEndpoint e) async {
     final ok = await confirmDialog(
       context,
-      title: '删除这个接口?',
-      message: '地址和 API Key 都会从本机删除。已经发生过的对话不受影响。',
-      confirmLabel: '删除',
+      title: context.l10n.deleteEndpointQ,
+      message: context.l10n.deleteEndpointBody,
+      confirmLabel: context.l10n.delete,
     );
     if (!ok || !mounted) return;
     await ref.read(customEndpointsProvider.notifier).remove(e.id);
@@ -134,7 +135,7 @@ class _EndpointsPageState extends ConsumerState<EndpointsPage> {
         Navigator.of(context).pop();
       },
       child: Scaffold(
-        appBar: AppBar(title: const Text('我的接口')),
+        appBar: AppBar(title: Text(context.l10n.myEndpoints)),
         body: ReorderableListView(
           padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
           buildDefaultDragHandles: false,
@@ -144,7 +145,7 @@ class _EndpointsPageState extends ConsumerState<EndpointsPage> {
           onReorderItem: (from, to) =>
               ref.read(customEndpointsProvider.notifier).reorder(from, to),
           footer: _EndpointCard(
-            title: '添加接口',
+            title: context.l10n.addEndpoint,
             adding: true,
             open: _open == _kAdd,
             onToggle: () => _toggle(_kAdd),
@@ -180,12 +181,12 @@ class _EndpointsPageState extends ConsumerState<EndpointsPage> {
 
 /// 卡上副行:起过名的补上服务名,认不出的地址补上格式,最后列模型。
 String _subtitle(CustomEndpoint e) {
-  if (!e.usable) return '还没填全';
+  if (!e.usable) return l10nNow.notComplete;
   return [
     if (e.name.trim().isNotEmpty) e.providerLabel,
     if (endpointPresetOf(e.format, e.baseUrl) == null)
-      '${agentApiFormatLabel(e.format)} 格式',
-    e.allModels.join('、'),
+      l10nNow.formatOf(agentApiFormatLabel(e.format)),
+    e.allModels.join(l10nNow.listSep),
   ].join(' · ');
 }
 
@@ -309,7 +310,7 @@ class _EndpointCardState extends State<_EndpointCard> {
                         ),
                         if (w.onDelete != null)
                           IconButton(
-                            tooltip: '删除',
+                            tooltip: context.l10n.delete,
                             visualDensity: VisualDensity.compact,
                             onPressed: w.onDelete,
                             icon: Icon(
@@ -371,7 +372,7 @@ class _EndpointCardState extends State<_EndpointCard> {
                     ),
                   ),
                   child: Text(
-                    '使用中',
+                    context.l10n.inUse,
                     style: context.texts.labelSmall!.copyWith(
                       color: scheme.onPrimary,
                       height: 1.2,
@@ -530,16 +531,16 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
   /// 缺了什么就返回那句话,填齐了返回 null。请求头不合格时顺手展开高级设置。
   String? _missing({bool needModel = true}) {
     final b = _base.text.trim();
-    if (b.isEmpty) return '先选服务或填接口地址';
+    if (b.isEmpty) return context.l10n.pickServiceOrUrl;
     if (!RegExp(r'^https?://', caseSensitive: false).hasMatch(b)) {
-      return '接口地址要以 http:// 或 https:// 开头';
+      return context.l10n.urlMustHttp;
     }
-    if (_key.text.trim().isEmpty) return '还没填 API Key';
-    if (needModel && _allModels.isEmpty) return '还没添加模型';
+    if (_key.text.trim().isEmpty) return context.l10n.noApiKeyYet;
+    if (needModel && _allModels.isEmpty) return context.l10n.noModelYet;
     final bad = parseHeaderLines(_headers.text).bad;
     if (bad != null) {
       _advanced = true;
-      return '请求头第 $bad 行要写成「名称: 值」,只能用英文字符';
+      return context.l10n.headerLineBad(bad);
     }
     return null;
   }
@@ -619,7 +620,9 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
     } catch (_) {}
     if (ok) return;
     await Clipboard.setData(ClipboardData(text: url));
-    if (mounted) setState(() => _result = (ok: true, text: '已复制链接:$url'));
+    if (mounted) {
+      setState(() => _result = (ok: true, text: context.l10n.linkCopied(url)));
+    }
   }
 
   /// 拉模型列表多选。列表里勾掉的移出去,手填的(列表里没有的)留着。
@@ -637,7 +640,7 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
       if (mounted) _fail(e.message);
       return;
     } catch (e) {
-      if (mounted) _fail('拉取失败:$e');
+      if (mounted) _fail(context.l10n.fetchFailedWith('$e'));
       return;
     } finally {
       if (mounted) setState(() => _loadingModels = false);
@@ -674,8 +677,8 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
         () => _result = (
           ok: true,
           text: draft.allModels.length > 1
-              ? '${draft.model} 连接正常 · $secs 秒'
-              : '连接正常 · $secs 秒',
+              ? context.l10n.modelConnOk(draft.model, secs)
+              : context.l10n.connOk(secs),
         ),
       );
     } on BackendException catch (e) {
@@ -717,12 +720,12 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
             children: [
               for (final p in kEndpointPresets)
                 _serviceChip(p.label, _preset == p, () => _pickPreset(p)),
-              _serviceChip('自定义', _custom, _pickCustom),
+              _serviceChip(context.l10n.sizeCustom, _custom, _pickCustom),
             ],
           ),
           const SizedBox(height: 6),
           _row(
-            '格式',
+            context.l10n.formatField,
             top: 12,
             SegmentedButton<AgentApiFormat>(
               segments: [
@@ -736,7 +739,7 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
             ),
           ),
           _row(
-            '地址',
+            context.l10n.urlField,
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -783,7 +786,7 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
                     IconButton(
                       onPressed: () => _openKeyPage(_preset!.keyUrl),
                       icon: const Icon(Icons.open_in_new, size: 20),
-                      tooltip: '获取 Key',
+                      tooltip: context.l10n.getKey,
                       color: scheme.primary,
                     )
                   else
@@ -794,7 +797,9 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
                         _obscureKey ? Icons.visibility : Icons.visibility_off,
                         size: 20,
                       ),
-                      tooltip: _obscureKey ? '显示' : '隐藏',
+                      tooltip: _obscureKey
+                          ? context.l10n.show
+                          : context.l10n.hide,
                       color: scheme.onSurfaceVariant,
                     ),
                 ],
@@ -802,7 +807,7 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
             ),
           ),
           _row(
-            '模型',
+            context.l10n.modelField,
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -819,14 +824,16 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
                             materialTapTargetSize:
                                 MaterialTapTargetSize.shrinkWrap,
                             onDeleted: () => _removeModel(m),
-                            deleteButtonTooltipMessage: '移除',
+                            deleteButtonTooltipMessage: context.l10n.remove,
                           ),
                       ],
                     ),
                   ),
                 _field(
                   _modelInput,
-                  hint: _models.isEmpty ? '模型 ID' : '再加一个模型',
+                  hint: _models.isEmpty
+                      ? context.l10n.modelIdHint
+                      : context.l10n.addAnotherModel,
                   action: TextInputAction.done,
                   onSubmitted: (_) => _addModel(),
                   suffix: Row(
@@ -836,7 +843,7 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
                         IconButton(
                           onPressed: _addModel,
                           icon: const Icon(Icons.add, size: 20),
-                          tooltip: '添加',
+                          tooltip: context.l10n.add,
                           color: scheme.primary,
                         ),
                       _loadingModels
@@ -855,7 +862,7 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
                                 Icons.format_list_bulleted,
                                 size: 20,
                               ),
-                              tooltip: '模型列表',
+                              tooltip: context.l10n.modelList,
                               color: scheme.onSurfaceVariant,
                             ),
                     ],
@@ -875,7 +882,7 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _row(
-                        '名称',
+                        context.l10n.name,
                         _field(
                           _name,
                           hint: _draft().providerLabel,
@@ -885,7 +892,7 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
                       // 中转改路径是常事;Gemini 那条还得把模型名写进路径,所以给了
                       // {model} 占位
                       _row(
-                        '路径',
+                        context.l10n.pathField,
                         _field(
                           _path,
                           hint: agentApiDefaultPath(_format),
@@ -893,10 +900,10 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
                         ),
                       ),
                       _row(
-                        '请求头',
+                        context.l10n.headersField,
                         _field(
                           _headers,
-                          hint: '一行一条,如 X-Title: Plana',
+                          hint: context.l10n.headersHint,
                           multiline: true,
                         ),
                       ),
@@ -939,10 +946,10 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
                           dimension: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('测试'),
+                      : Text(context.l10n.test),
                 ),
                 const SizedBox(width: 8),
-                FilledButton(onPressed: _save, child: const Text('保存')),
+                FilledButton(onPressed: _save, child: Text(context.l10n.save)),
               ],
             ),
           ),
@@ -969,11 +976,16 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
           width: 44,
           child: Padding(
             padding: EdgeInsets.only(top: top),
-            child: Text(
-              label,
-              style: context.texts.labelMedium!.copyWith(
-                color: context.scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
+            // 英文标签放不下时缩字号
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                label,
+                style: context.texts.labelMedium!.copyWith(
+                  color: context.scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ),
@@ -988,9 +1000,9 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
     final scheme = context.scheme;
     final headers = parseHeaderLines(_headers.text).headers.length;
     final summary = [
-      if (_name.text.trim().isNotEmpty) '名称',
-      if (_path.text.trim().isNotEmpty) '路径',
-      if (headers > 0) '请求头 $headers',
+      if (_name.text.trim().isNotEmpty) context.l10n.name,
+      if (_path.text.trim().isNotEmpty) context.l10n.pathField,
+      if (headers > 0) context.l10n.headersN(headers),
     ].join(' · ');
     return InkWell(
       onTap: () => setState(() => _advanced = !_advanced),
@@ -1003,7 +1015,7 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                '高级设置',
+                context.l10n.advancedSettings,
                 style: context.texts.bodyMedium!.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -1032,7 +1044,7 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
   Widget _pasteBtn(TextEditingController c) => IconButton(
     onPressed: () => _paste(c),
     icon: const Icon(Icons.content_paste, size: 20),
-    tooltip: '粘贴',
+    tooltip: context.l10n.paste,
     color: context.scheme.onSurfaceVariant,
   );
 
@@ -1135,7 +1147,7 @@ class _ModelPickerState extends State<_ModelPicker> {
                   onChanged: (v) => setState(() => _q = v),
                   decoration: InputDecoration(
                     isDense: true,
-                    hintText: '搜索 ${widget.models.length} 个模型',
+                    hintText: context.l10n.searchNModels(widget.models.length),
                     prefixIcon: const Icon(Icons.search, size: 20),
                     border: const OutlineInputBorder(),
                   ),
@@ -1175,7 +1187,7 @@ class _ModelPickerState extends State<_ModelPicker> {
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: () => Navigator.pop(context, _on),
-                    child: Text('完成 · 已选 ${_on.length} 个'),
+                    child: Text(context.l10n.doneSelectedN(_on.length)),
                   ),
                 ),
               ),

@@ -16,6 +16,7 @@ import 'gen_abort.dart';
 import 'nai_chat_compat.dart';
 import 'nai_endpoint.dart';
 import 'nai_proxy.dart';
+import '../../l10n/l10n.dart';
 
 /// 流式生成的一帧:step 非空=中间预览,isFinal=终图。
 typedef NaiFrame = ({int? step, bool isFinal, Uint8List bytes});
@@ -174,7 +175,7 @@ String naiTierName(int tier) => switch (tier) {
   3 => 'Opus',
   2 => 'Scroll',
   1 => 'Tablet',
-  _ => '未订阅',
+  _ => l10nNow.notSubscribed,
 };
 
 /// [NaiUsage] 的派生显示值。常数取自官方前端:满值 100% ≈ 1730 张免费尺寸
@@ -385,7 +386,7 @@ class NaiClient {
       final payload = _encodeBody(body);
       final r = req = await (_longIdle ? _longIdleHttp : _shortIdleHttp)
           .postUrl(uri);
-      if (abort?.aborted ?? false) throw NaiException('已取消生成');
+      if (abort?.aborted ?? false) throw NaiException(l10nNow.genCancelled);
       _streamHeaders(token).forEach(r.headers.set);
       r.headers.set('Content-Type', payload.contentType);
       r.contentLength = payload.bytes.length;
@@ -418,7 +419,7 @@ class NaiClient {
               (buf[off + 2] << 8) |
               buf[off + 3];
           if (len < 0 || len > (64 << 20)) {
-            throw NaiException('流数据格式异常(帧长 $len)');
+            throw NaiException(l10nNow.streamBadFrame('$len'));
           }
           if (buf.length - off < 4 + len) break;
           final msgBytes = Uint8List.fromList(
@@ -441,7 +442,7 @@ class NaiClient {
           if (type == 'error' || (code != null && code != 200)) {
             final m = msg['message'];
             throw NaiException(
-              m is String ? m : '生成失败(code $code)',
+              m is String ? m : l10nNow.genFailedCode('$code'),
               status: code is int ? code : null,
             );
           }
@@ -469,22 +470,27 @@ class NaiClient {
       }
 
       if (yielded == 0) {
-        final diag = StringBuffer('未收到图片帧(收到 $received 字节');
-        if (parseFails > 0) diag.write(',$parseFails 帧解析失败:$firstParseErr');
-        diag.write(')');
-        throw NaiException(diag.toString());
+        throw NaiException(
+          parseFails > 0
+              ? l10nNow.noImageFrameParse(
+                  received,
+                  parseFails,
+                  '$firstParseErr',
+                )
+              : l10nNow.noImageFrame(received),
+        );
       }
       finished = true;
     } on NaiException {
       rethrow;
     } on TimeoutException {
-      throw NaiException('生成超时,请重试');
+      throw NaiException(l10nNow.genTimeout);
     } on SocketException catch (e) {
-      throw NaiException('无法连接 $_hostName:${e.message}');
+      throw NaiException(l10nNow.cantConnect(_hostName, e.message));
     } on HandshakeException {
-      throw NaiException('TLS 握手失败,当前网络可能拦截了 $_hostName');
+      throw NaiException(l10nNow.tlsFailed(_hostName));
     } catch (e) {
-      throw NaiException('流式生成失败:$e');
+      throw NaiException(l10nNow.streamGenFailed('$e'));
     } finally {
       // 没正常读完(出错、超时、取消、下游不再收)就拆掉这条连接,别放回池里
       if (!finished) req?.abort();
@@ -538,7 +544,7 @@ class NaiClient {
           .timeout(const Duration(seconds: 120));
     } catch (e) {
       stopNow();
-      throw NaiException('网络错误:$e');
+      throw NaiException(l10nNow.networkError('$e'));
     }
 
     if (resp.statusCode != 200) {
@@ -575,7 +581,7 @@ class NaiClient {
           )
           .timeout(const Duration(seconds: 120));
     } catch (e) {
-      throw NaiException('网络错误:$e');
+      throw NaiException(l10nNow.networkError('$e'));
     } finally {
       client.close();
     }
@@ -606,9 +612,9 @@ class NaiClient {
         }
       }
     } catch (e) {
-      throw NaiException('解压结果失败:$e');
+      throw NaiException(l10nNow.unzipFailed('$e'));
     }
-    throw NaiException('结果中未找到图片');
+    throw NaiException(l10nNow.noImageInResult);
   }
 
   /// NAI 官方超分:POST https://api.novelai.net/ai/upscale → zip,解出 PNG。
@@ -637,7 +643,7 @@ class NaiClient {
           )
           .timeout(const Duration(seconds: 120));
     } catch (e) {
-      throw NaiException('网络错误:$e');
+      throw NaiException(l10nNow.networkError('$e'));
     }
     if (resp.statusCode != 200) {
       throw NaiException(_errorText(resp), status: resp.statusCode);
@@ -661,7 +667,7 @@ class NaiClient {
     String model = kNaiV5UpscaleModel,
     double declaredBlurSigma = 0,
   }) async {
-    if (_chat) throw NaiException('这个接口没有超分');
+    if (_chat) throw NaiException(l10nNow.apiNoUpscale);
     final uri = Uri.parse('$_host/ai/upscale');
     final http.Response resp;
     try {
@@ -677,7 +683,7 @@ class NaiClient {
           )
           .timeout(const Duration(seconds: 300));
     } catch (e) {
-      throw NaiException('网络错误:$e');
+      throw NaiException(l10nNow.networkError('$e'));
     }
     if (resp.statusCode != 200) {
       throw NaiException(_errorText(resp), status: resp.statusCode);
@@ -689,7 +695,7 @@ class NaiClient {
   /// anlas = 固定额 + 已购额;isOpus = tier==3 且 active/宽限期(与 web `novelai.ts` 一致)。
   /// 同一份响应里还带 NAI 5 的额度电池(`usage`),见 [parseNaiUsage]。
   Future<NaiSubscription> subscription(String token) async {
-    if (_chat) throw NaiException('这个接口不提供账户状态');
+    if (_chat) throw NaiException(l10nNow.apiNoAccountStatus);
     final uri = Uri.parse('$_host/user/subscription');
     final http.Response resp;
     try {
@@ -697,7 +703,7 @@ class NaiClient {
           .get(uri, headers: {'Authorization': 'Bearer $token'})
           .timeout(const Duration(seconds: 20));
     } catch (e) {
-      throw NaiException('网络错误:$e');
+      throw NaiException(l10nNow.networkError('$e'));
     }
     if (resp.statusCode != 200) {
       throw NaiException(_errorText(resp), status: resp.statusCode);
@@ -727,7 +733,7 @@ class NaiClient {
     required double infoExtracted,
     required String model,
   }) async {
-    if (_chat) throw NaiException('这个接口没有 Vibe 编码');
+    if (_chat) throw NaiException(l10nNow.apiNoVibe);
     final uri = Uri.parse('$_host/ai/encode-vibe');
     final http.Response resp;
     try {
@@ -749,7 +755,7 @@ class NaiClient {
           )
           .timeout(const Duration(seconds: 120));
     } catch (e) {
-      throw NaiException('编码参考图失败:$e');
+      throw NaiException(l10nNow.vibeEncodeFailed('$e'));
     }
     if (resp.statusCode != 200) {
       throw NaiException(_errorText(resp), status: resp.statusCode);
@@ -768,10 +774,10 @@ class NaiClient {
       if (e is Map && e['message'] is String) return e['message'] as String;
     } catch (_) {}
     return switch (code) {
-      401 => 'Token 无效或已过期',
-      402 => '订阅 / 点数不足',
-      429 => '并发过多或触发限流,请稍后重试',
-      _ => '请求失败(HTTP $code)',
+      401 => l10nNow.http401,
+      402 => l10nNow.http402,
+      429 => l10nNow.http429,
+      _ => l10nNow.httpFailed(code),
     };
   }
 }

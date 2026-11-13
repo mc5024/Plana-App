@@ -13,9 +13,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:plana_app/core/util/prompt_tokens.dart';
 import 'package:plana_app/features/editor/data/local_tag_db.dart';
+import 'package:plana_app/features/editor/data/tag_index.dart';
 import 'package:plana_app/features/gallery/gallery_groups.dart';
 import 'package:plana_app/features/gallery/gallery_search.dart';
 import 'package:plana_app/features/inspiration/tag_models.dart';
@@ -29,13 +31,15 @@ List<String> pieces(String s) => [
 
 String joinP(Iterable<String> ps) => ps.join(', ');
 
-/// 与图库检索索引同一口径:正向 + 角色正向拼起来 → normalizeSearchText → 分词。
-Set<String> imageToks(String prompt, [List<String> chars = const []]) =>
-    tokenizeSet(
-      normalizeSearchText(
-        [prompt, ...chars].where((t) => t.trim().isNotEmpty).join(', '),
-      ),
+/// 与图库检索索引同一口径:正向 + 角色正向拼起来 → normalizeSearchText。
+String imageText(String prompt, [List<String> chars = const []]) =>
+    normalizeSearchText(
+      [prompt, ...chars].where((t) => t.trim().isNotEmpty).join(', '),
     );
+
+/// 同上,再分词。
+Set<String> imageToks(String prompt, [List<String> chars = const []]) =>
+    tokenizeSet(imageText(prompt, chars));
 
 class Ent {
   Ent(this.key, this.raw) : ps = pieces(raw);
@@ -254,6 +258,12 @@ void main() {
       for (final e in [...ocs, ...arts]) ...e.toks,
     });
     int postCount(String t) => posts[t] ?? 0;
+    // 图里的画师:和 app 同一个来源(词库类目 + `artist:` 前缀)
+    final tagIdx = TagIndex(await rootBundle.load(kTagIndexAsset));
+    Set<String> artistsOf(Scn s) => {
+      ...tagIdx.artistsIn(imageToks(s.prompt, s.chars)),
+      ...taggedArtists(imageText(s.prompt, s.chars)),
+    };
 
     // 词池:外观 / 服装词取自全体 OC 与服装法典,动作表情取自场景法典,
     // 画师取自全体画师串 —— 用真实用词做替换,别让随机串一眼就对不上。
@@ -412,6 +422,20 @@ void main() {
     Scn actx(String s, Random r) =>
         bare('$s, 1girl, ${pick(chars, r)}, ${pick(scenes, r)}');
 
+    List<String> artistsPieces(Ent e) => [
+      for (final p in e.ps)
+        if (!isExtra(p)) p,
+    ];
+    List<String> others(Ent e, int k, Random r) {
+      final own = tokenizeSet(e.raw);
+      final out = <String>[];
+      for (var g = 0; out.length < k && g < 500; g++) {
+        final t = pick(artistPool, r);
+        if (!own.contains(cleanPromptToken(t)) && !out.contains(t)) out.add(t);
+      }
+      return out;
+    }
+
     // ── 画师串条件 ── 上下文里不放质量 / 年份词,免得碰巧把删掉的那枚补回来
     final artConds = <Cond>[
       Cond('原样粘贴', (e, r) => bare(e.raw), random: false),
@@ -468,6 +492,10 @@ void main() {
         );
       }),
       Cond('加 1 个画师', (e, r) => actx('${e.raw}, ${pick(artistPool, r)}', r)),
+      Cond(
+        '加 2 个画师',
+        (e, r) => actx([e.raw, ...others(e, 2, r)].join(', '), r),
+      ),
       Cond('artist: 前缀增删', (e, r) {
         final has = e.raw.toLowerCase().contains('artist:');
         final s = has
@@ -520,6 +548,11 @@ void main() {
 
     // 画师串难负例:只用了这个串里一半的画师,另一半换成别人 —— 那是另一个组合。
     final artNegConds = <Cond>[
+      Cond('整串夹在另一套组合里(再加同样多的画师)', (e, r) {
+        final n = artistsPieces(e).length;
+        if (n == 0) return null;
+        return actx([e.raw, ...others(e, n, r)].join(', '), r);
+      }),
       Cond('一半画师换成别人', (e, r) {
         final idx = [
           for (var i = 0; i < e.ps.length; i++)
@@ -542,23 +575,52 @@ void main() {
     final ocEntries = [for (final e in ocs) te(TagCategory.character, e)];
     final artEntries = [for (final e in arts) te(TagCategory.artist, e)];
 
-    Variant ocAt(String name, double cover) {
-      final m = OcMatcher(ocEntries, postCount: postCount, cover: cover);
+    Variant ocAt(String name, double cover, [int minKeep = kOcMinKeep]) {
+      final m = OcMatcher(
+        ocEntries,
+        postCount: postCount,
+        cover: cover,
+        minKeep: minKeep,
+      );
       return Variant(
         name,
         (s) => [for (final h in m.match(imageToks(s.prompt, s.chars))) h.key],
       );
     }
 
-    final ocVariants = [ocAt('现行', kOcMatchCover)];
-    final styleM = StyleMatcher(artEntries, postCount: postCount);
-    final artVariants = [
-      Variant(
-        '现行',
+    final ocVariants = [
+      ocAt('现行', kOcMatchCover),
+      for (final (c, k) in const [
+        (.55, 4),
+        (.65, 4),
+        (.7, 4),
+        (.75, 4),
+        (.7, 5),
+      ])
+        if (c != kOcMatchCover || k != kOcMinKeep) ocAt('$c/$k', c, k),
+    ];
+    Variant styleAt(String name, double share, [List<TagEntry>? entries]) {
+      final m = StyleMatcher(
+        entries ?? artEntries,
+        postCount: postCount,
+        share: share,
+      );
+      return Variant(
+        name,
         (s) => [
-          for (final h in styleM.match(imageToks(s.prompt, s.chars))) h.key,
+          for (final h in m.match(
+            imageToks(s.prompt, s.chars),
+            artists: artistsOf(s),
+          ))
+            h.key,
         ],
-      ),
+      );
+    }
+
+    final artVariants = [
+      styleAt('现行', kStyleArtistShare),
+      for (final x in const [0.0, .5, .67, .75])
+        if (x != kStyleArtistShare) styleAt('占比$x', x),
     ];
 
     const trials = 6;
@@ -748,7 +810,7 @@ void main() {
       '只剩通用一半(误归) | 角色法典误命中 |',
     );
     say('|---:|---:|---:|---:|---:|---:|---:|');
-    for (final th in const [.45, .5, .55, .6, .65]) {
+    for (final th in const [.5, .55, .6, .65, .7, .75, .8]) {
       final v = ocAt('$th', th);
       String rate(Cond c) {
         final r = Random(20260915);
@@ -776,6 +838,41 @@ void main() {
 
     runSuite('画师串命中率', arts, artConds, artVariants);
     runSuite('画师串难负例', arts, artNegConds, artVariants, negative: true);
+
+    // 一两个画师的小画风:用户自己存的库里常见,公共画师串库里没有这种。
+    final smallR = Random(31);
+    final smalls = [
+      for (var i = 0; i < 80; i++)
+        Ent(
+          'S$i',
+          (List.of(artistPool)..shuffle(smallR)).take(1 + i % 2).join(', '),
+        ),
+    ];
+    final smallEntries = [for (final e in smalls) te(TagCategory.artist, e)];
+    final smallVariants = [
+      styleAt('现行', kStyleArtistShare, smallEntries),
+      for (final x in const [0.0, .5, .67, .75])
+        if (x != kStyleArtistShare) styleAt('占比$x', x, smallEntries),
+    ];
+    runSuite('小画风(1–2 个画师)命中率', smalls, [
+      Cond('放开头,后接角色场景', (e, r) => actx(e.raw, r)),
+      Cond(
+        '加 1 个画师',
+        (e, r) => actx([e.raw, ...others(e, 1, r)].join(', '), r),
+      ),
+    ], smallVariants);
+    runSuite(
+      '小画风难负例',
+      smalls,
+      [
+        Cond(
+          '夹在另一套组合里(再加 3 个画师)',
+          (e, r) => actx([e.raw, ...others(e, 3, r)].join(', '), r),
+        ),
+      ],
+      smallVariants,
+      negative: true,
+    );
 
     // 误命中:拿法典里不含条目的提示词整句去跑
     say('\n## 误命中(法典提示词整句被归进了某个条目)\n');

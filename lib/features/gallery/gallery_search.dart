@@ -1,6 +1,6 @@
-/// 图库检索索引:id → (模型, 归一化提示词文本)。模型筛选与 tag 搜索的
-/// 数据源 —— 参数快照散在 `inputs/*.json`,筛选时逐张现读太重,这里维护
-/// 一份轻量可查的内存镜像,旁挂 `search.json` 持久化。
+/// 图库检索索引:id → (模型, 归一化提示词文本, 来源)。模型筛选、tag 搜索与
+/// 按角色 / 画风归类的数据源 —— 参数快照散在 `inputs/*.json`,逐张现读太重,
+/// 这里维护一份轻量可查的内存镜像,旁挂 `search.json` 持久化。
 ///
 /// 该索引**可重建**:文件坏了/缺了,回填会重扫快照补齐 —— 容错语义与
 /// index.json(最不能坏)完全不同,所以坚决不并进 index.json。
@@ -10,18 +10,19 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/store/app_stores.dart';
+import '../editor/editor_models.dart' show outputOf, parseFolds;
 import '../generate/models.dart' show GenerateState;
 import 'gallery_store.dart';
 
-/// 一条检索元数据;text 已按 [normalizeSearchText] 归一。
-typedef GallerySearchMeta = ({String model, String text});
+export 'gallery_store.dart' show GallerySearchMeta;
 
 final _reWeightMark = RegExp(r'-?\d+(?:\.\d+)?::');
 final _reBrackets = RegExp(r'[\[\]{}]');
+final _reNewline = RegExp(r'[\s,]*\n[\s,]*');
 final _reSpaces = RegExp(r'\s+');
 
 /// 搜索归一化(索引与查询词必须同一口径):小写、剥权重记号与括号、
-/// 下划线归空格、全角逗号归半角、压空白。保留 `:`(artist:wlop 要搜得到)。
+/// 下划线归空格、全角逗号归半角、换行归逗号、压空白。保留 `:`(artist:wlop 要搜得到)。
 String normalizeSearchText(String s) => s
     .toLowerCase()
     .replaceAll(_reWeightMark, '')
@@ -29,6 +30,7 @@ String normalizeSearchText(String s) => s
     .replaceAll(_reBrackets, '')
     .replaceAll('_', ' ')
     .replaceAll('，', ',')
+    .replaceAll(_reNewline, ', ')
     .replaceAll(_reSpaces, ' ')
     .trim();
 
@@ -52,14 +54,40 @@ String _joinedText(String prompt, Iterable<String> charPositives) =>
       [prompt, ...charPositives].where((t) => t.trim().isNotEmpty).join(', '),
     );
 
+/// 草稿里进了载荷的折叠组名。草稿过期(对不上定稿)的不算,折叠体全被禁用的也不算。
+List<String> _foldNames(Iterable<(String raw, String text)> drafts) => {
+  for (final (raw, text) in drafts)
+    if (raw.isNotEmpty && outputOf(raw) == text)
+      for (final f in parseFolds(raw))
+        if (f.name.trim().isNotEmpty &&
+            outputOf(raw.substring(f.bodyStart, f.bodyEnd)).isNotEmpty)
+          f.name.trim(),
+}.toList();
+
 /// 内存里的输入快照 → 元数据(addResult 同帧,input 一定在)。
-GallerySearchMeta metaOfInput(GenerateState s) => (
-  model: s.params.model,
-  text: _joinedText(s.prompt, [
+GallerySearchMeta metaOfInput(GenerateState s) {
+  final chars = [
     for (final c in s.characters)
-      if (c.enabled) c.positive,
-  ]),
-);
+      if (c.enabled) c,
+  ];
+  return (
+    model: s.params.model,
+    text: _joinedText(s.prompt, [for (final c in chars) c.positive]),
+    ids: {
+      ...s.usedEntries,
+      for (final c in chars)
+        if (c.source != null) c.source!,
+    }.toList(),
+    cards: [
+      for (final c in chars)
+        if (c.name.trim().isNotEmpty) c.name.trim(),
+    ],
+    folds: _foldNames([
+      (s.promptRaw, s.prompt),
+      for (final c in chars) (c.positiveRaw, c.positive),
+    ]),
+  );
+}
 
 /// 快照原始 JSON(`inputs/<id>.json` 的 `{v, refs, state}`)→ 元数据。
 /// 字段名钉在 state_codec 的编码形状上;认不出返回 null。
@@ -67,16 +95,34 @@ GallerySearchMeta? metaOfSnapshotJson(Map<String, dynamic> j) {
   final st = j['state'];
   if (st is! Map) return null;
   final params = st['params'];
+  String str(Object? v) => v is String ? v : '';
+  final chars = [
+    if (st['characters'] is List)
+      for (final c in st['characters'] as List)
+        // 缺 enabled 键按启用算:state_codec 解码时默认就是 true
+        if (c is Map && c['enabled'] != false) c,
+  ];
   return (
     model: params is Map && params['model'] is String
         ? params['model'] as String
         : '',
-    text: _joinedText(st['prompt'] is String ? st['prompt'] as String : '', [
-      if (st['characters'] is List)
-        for (final c in st['characters'] as List)
-          // 缺 enabled 键按启用算:state_codec 解码时默认就是 true
-          if (c is Map && c['enabled'] != false && c['positive'] is String)
-            c['positive'] as String,
+    text: _joinedText(str(st['prompt']), [
+      for (final c in chars) str(c['positive']),
+    ]),
+    ids: {
+      if (st['usedEntries'] is List)
+        for (final x in st['usedEntries'] as List)
+          if (x is String) x,
+      for (final c in chars)
+        if (c['source'] is String) c['source'] as String,
+    }.toList(),
+    cards: [
+      for (final c in chars)
+        if (str(c['name']).trim().isNotEmpty) str(c['name']).trim(),
+    ],
+    folds: _foldNames([
+      (str(st['promptRaw']), str(st['prompt'])),
+      for (final c in chars) (str(c['positiveRaw']), str(c['positive'])),
     ]),
   );
 }

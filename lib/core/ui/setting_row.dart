@@ -13,6 +13,7 @@ import '../../features/editor/widgets/tag_panel.dart' show RepeatBtn;
 import '../theme/app_skin.dart';
 import '../theme/app_theme.dart';
 import '../util/haptics.dart';
+import '../../l10n/l10n.dart';
 
 /// 分组小标题。
 Widget settingSection(BuildContext context, String text) => Padding(
@@ -144,7 +145,7 @@ class SettingChoiceRow<T> extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
+            child: Text(context.l10n.cancel),
           ),
         ],
       ),
@@ -417,7 +418,7 @@ class SettingSheet extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    tooltip: '关闭',
+                    tooltip: context.l10n.close,
                     visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.close, size: 20),
                     onPressed: () => Navigator.of(context).maybePop(),

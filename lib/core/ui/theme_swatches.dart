@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/theme_settings.dart';
+import '../../l10n/l10n.dart';
 
 /// 主题色色板:上行浮卡各档,下行种子档位,点选即时换肤。外观页和欢迎页共用。
 class ThemeSwatches extends ConsumerWidget {
@@ -36,7 +37,9 @@ class ThemeSwatches extends ConsumerWidget {
         row([
           for (final a in floatAccents)
             ThemeSwatch(
-              label: '浮卡 ${a.label}',
+              label: context.l10n.floatCardsColor(
+                themeColorName(context.l10n, a.key, a.label),
+              ),
               size: size,
               selected: current == floatThemeKey(a),
               fill: floatSwatchFill(a),
@@ -48,7 +51,7 @@ class ThemeSwatches extends ConsumerWidget {
         row([
           for (final s in themeSeeds)
             ThemeSwatch(
-              label: s.label,
+              label: themeColorName(context.l10n, s.key, s.label),
               size: size,
               selected: current == s.key,
               fill: BoxDecoration(color: s.color, shape: BoxShape.circle),
@@ -125,3 +128,17 @@ class ThemeSwatch extends StatelessWidget {
     );
   }
 }
+
+/// 主题色 / 浮卡色名按界面语言取([key] 是存档用的英文名)。
+String themeColorName(AppLocalizations l, String key, String fallback) =>
+    switch (key) {
+      'blue' => l.colorBlue,
+      'orange' => l.colorOrange,
+      'rose' => l.colorPink,
+      'violet' => l.colorPurple,
+      'green' => l.colorGreen,
+      'gold' => l.colorGold,
+      'sky' => l.colorLightBlue,
+      'teal' => l.colorTeal,
+      _ => fallback,
+    };

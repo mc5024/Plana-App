@@ -7,6 +7,7 @@ import 'dart:ui' show Color;
 
 import '../../core/theme/app_theme.dart' show FixedSemantic;
 import '../generate/models.dart' show GenerateState;
+import '../../l10n/l10n.dart';
 
 /// 结果图的处理标记 —— 决定缩略图角标与画布顶部标签。
 enum ResultBadge { none, upscaled, inpaint, censored }
@@ -15,8 +16,8 @@ extension ResultBadgeX on ResultBadge {
   /// 角标短文案;none 无角标。
   String? get label => switch (this) {
     ResultBadge.upscaled => '4x',
-    ResultBadge.inpaint => '重绘',
-    ResultBadge.censored => '打码',
+    ResultBadge.inpaint => l10nNow.inpaint,
+    ResultBadge.censored => l10nNow.tabCensor,
     ResultBadge.none => null,
   };
 

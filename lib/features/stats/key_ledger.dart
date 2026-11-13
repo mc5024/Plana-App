@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import '../../l10n/l10n.dart';
 
 /// 直连 Key 模式的本机记账。服务端只记 bot 用量,直连生成不经过后端,
 /// 统计只能在本机落账:生成按天聚合(张数/免费张/点数),Vibe 编码与
@@ -379,7 +380,7 @@ class KeyLedgerStore {
         for (var h = 0; h < 24; h++)
           TrendPoint(
             label: '$h',
-            full: '今天 ${h.toString().padLeft(2, '0')}:00',
+            full: l10nNow.todayHour(h.toString().padLeft(2, '0')),
             images: live ? hourImages[h] : 0,
             pts: (live ? hourPts[h] : 0) + opsByHour[h],
           ),

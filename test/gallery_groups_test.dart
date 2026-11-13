@@ -134,8 +134,15 @@ void main() {
   group('画风:画师整组都在', () {
     StyleMatcher style(List<TagEntry> es) =>
         StyleMatcher(es, postCount: postCount);
-    List<String> hit(StyleMatcher m, String prompt) =>
-        keys(m.match(tokenizeSet(prompt)));
+    List<String> hit(
+      StyleMatcher m,
+      String prompt, {
+      Set<String> artists = const {},
+      Set<String> ids = const {},
+      Set<String> names = const {},
+    }) => keys(
+      m.match(tokenizeSet(prompt), artists: artists, ids: ids, names: names),
+    );
 
     test('画师全在图里才算命中,少一个不算', () {
       final m = style([
@@ -224,7 +231,7 @@ void main() {
       expect(hit(m, 'wlop, ciloranko, 1girl'), ['双人']);
     });
 
-    test('一个画师都没有的条目(纯质量词串)退回全部标签', () {
+    test('一个画师都没有的条目(纯质量词串)只认来源,不做文本匹配', () {
       final m = style([
         entry(
           TagCategory.artist,
@@ -232,8 +239,59 @@ void main() {
           'masterpiece, very aesthetic, realistic',
         ),
       ]);
-      expect(hit(m, 'masterpiece, very aesthetic, realistic, 1girl'), ['纯质感']);
-      expect(hit(m, 'masterpiece, very aesthetic, 1girl'), isEmpty);
+      expect(hit(m, 'masterpiece, very aesthetic, realistic, 1girl'), isEmpty);
+      expect(hit(m, 'masterpiece, 1girl', names: {'纯质感'}), ['纯质感']);
+    });
+
+    test('条目的画师不到图里画师的六成不算:那是另一个组合', () {
+      final m = style([entry(TagCategory.artist, '单人', 'wlop')]);
+      expect(hit(m, 'wlop, 1girl'), ['单人']);
+      expect(
+        hit(m, 'wlop, ciloranko, rella', artists: {'ciloranko', 'rella'}),
+        isEmpty,
+      );
+      final three = style([
+        entry(TagCategory.artist, '三人', 'wlop, ciloranko, rella'),
+      ]);
+      expect(
+        hit(three, 'wlop, ciloranko, rella, ask', artists: {'ask'}),
+        ['三人'],
+        reason: '多一个画师照样算(四分之三)',
+      );
+    });
+
+    test('别的条目里出现过的画师也算进图里的画师', () {
+      final m = style([
+        entry(TagCategory.artist, 'A', 'wlop'),
+        entry(TagCategory.artist, 'B', 'ciloranko, rella'),
+      ]);
+      expect(hit(m, 'wlop, ciloranko, 1girl'), isEmpty);
+    });
+
+    test('记下来源的直接算:条目 id 或折叠组名,画师删了也认', () {
+      final m = style([
+        entry(TagCategory.artist, 'A', 'wlop, ciloranko, rella'),
+      ]);
+      expect(hit(m, 'wlop, 1girl', ids: {'e_A'}), ['A']);
+      expect(hit(m, 'wlop, 1girl', names: {'A'}), ['A']);
+      expect(hit(m, 'wlop, 1girl'), isEmpty);
+    });
+
+    test('被记下来源的条目整个包含的小条目让位', () {
+      final m = style([
+        entry(TagCategory.artist, '双人', 'wlop, ciloranko'),
+        entry(TagCategory.artist, '三人', 'wlop, ciloranko, rella'),
+      ]);
+      expect(hit(m, 'wlop, ciloranko, 1girl', ids: {'e_三人'}), ['三人']);
+    });
+
+    test('artist: 前缀写的画师认得出来(词库没收的冷门画师靠它)', () {
+      expect(
+        taggedArtists(
+          normalizeSearchText('1girl, Artist:Foo_Bar, artist: baz'),
+        ),
+        {'foo bar', 'baz'},
+      );
     });
 
     test('没标签 / 没名字的条目一律剔掉,不当成「人人都用了」', () {
@@ -307,8 +365,12 @@ void main() {
         'star-shaped pupils, white dress, thighhighs, black ribbon choker, '
         'halo, feathered wings';
     OcMatcher oc(List<TagEntry> es) => OcMatcher(es, postCount: postCount);
-    List<String> hit(OcMatcher m, String prompt) =>
-        keys(m.match(tokenizeSet(prompt)));
+    List<String> hit(
+      OcMatcher m,
+      String prompt, {
+      Set<String> ids = const {},
+      Set<String> names = const {},
+    }) => keys(m.match(tokenizeSet(prompt), ids: ids, names: names));
     final m = oc([entry(TagCategory.character, '小夜', saya)]);
 
     test('原样插进去,前后再加别的标签也认', () {
@@ -437,6 +499,52 @@ void main() {
       expect(hit(empty, 'a, b, c, d'), isEmpty);
     });
 
+    test('记下来源的直接算:换得面目全非也认', () {
+      expect(hit(m, '1girl, school uniform', ids: {'e_小夜'}), ['小夜']);
+      expect(hit(m, '1girl, school uniform', names: {'小夜'}), ['小夜']);
+      expect(hit(m, '1girl, school uniform'), isEmpty);
+    });
+
+    test('折叠组名是清洗过的条目名,也对得上', () {
+      final m = oc([entry(TagCategory.character, '小夜:泳装', saya)]);
+      expect(hit(m, '1girl', names: {'小夜 泳装'}), ['小夜:泳装']);
+    });
+
+    test('同一个角色的几个版本:记下来源的那个优先于覆盖更全的', () {
+      final both = oc([
+        entry(TagCategory.character, '小夜', saya),
+        entry(
+          TagCategory.character,
+          '小夜·泳装',
+          'blue_hair, long_hair, red_eyes, crescent hair ornament, '
+              'star-shaped pupils, halo, feathered wings, '
+              'white bikini, sarong, sandals',
+        ),
+      ]);
+      expect(
+        hit(
+          both,
+          '1girl, blue hair, long hair, red eyes, crescent hair ornament, '
+          'star-shaped pupils, halo, feathered wings, white bikini, sarong, '
+          'sandals',
+          names: {'小夜'},
+        ),
+        ['小夜'],
+      );
+    });
+
+    test('记下来源的和文本命中的另一个 OC 同框,两个都留', () {
+      final two = oc([
+        entry(TagCategory.character, '小夜', saya),
+        entry(
+          TagCategory.character,
+          '黑兔',
+          'pink hair, twin drills, heterochromia, gothic lolita, bat wings',
+        ),
+      ]);
+      expect(hit(two, '2girls, $saya', names: {'黑兔'}), ['小夜', '黑兔']);
+    });
+
     test('词的分量:词库没收的顶格,越大众越轻', () {
       expect(ocTokenWeight(0), 1);
       expect(ocTokenWeight(1000), greaterThan(ocTokenWeight(100000)));
@@ -455,6 +563,9 @@ void main() {
             'a': (
               model: 'nai-diffusion-4-5-full',
               text: normalizeSearchText('1girl, hakurei_reimu, smile'),
+              ids: const [],
+              cards: const [],
+              folds: const [],
             ),
           }),
         ),
@@ -468,6 +579,68 @@ void main() {
     final tags = await c.read(galleryCharTagsProvider.future);
     expect(keys(tags['a'] ?? const []), ['hakurei_reimu']);
   }, timeout: const Timeout(Duration(seconds: 60)));
+
+  test(
+    'provider 认索引里的来源:角色卡名、条目 id、折叠组名',
+    () async {
+      TestWidgetsFlutterBinding.ensureInitialized(); // 词库从 asset 读
+      GallerySearchMeta meta({
+        List<String> ids = const [],
+        List<String> cards = const [],
+        List<String> folds = const [],
+      }) => (
+        model: '',
+        text: normalizeSearchText('1girl, smile'),
+        ids: ids,
+        cards: cards,
+        folds: folds,
+      );
+      final c = ProviderContainer(
+        overrides: [
+          gallerySearchProvider.overrideWith(
+            () => _Search({
+              'card': meta(cards: ['小夜']),
+              'id': meta(ids: ['e_小夜', 'e_水彩']),
+              'fold': meta(folds: ['水彩']),
+              'none': meta(),
+            }),
+          ),
+          tagLibraryProvider.overrideWith(
+            () => _Library(const [
+              TagEntry(
+                id: 'e_小夜',
+                category: TagCategory.character,
+                name: '小夜',
+                positive:
+                    'blue hair, halo, feathered wings, star-shaped pupils',
+              ),
+              TagEntry(
+                id: 'e_水彩',
+                category: TagCategory.artist,
+                name: '水彩',
+                positive: 'wlop, ciloranko',
+              ),
+            ]),
+          ),
+          myPublicTagsProvider.overrideWith(_Mine.new),
+        ],
+      );
+      addTearDown(c.dispose);
+      await c.read(tagLibraryProvider.future);
+      await c.read(myPublicTagsProvider.future);
+      final chars = await c.read(galleryCharTagsProvider.future);
+      final styles = await c.read(galleryStyleTagsProvider.future);
+      expect(keys(chars['card'] ?? const []), ['小夜']);
+      expect(keys(chars['id'] ?? const []), ['小夜']);
+      expect(chars['fold'], isNull, reason: '「水彩」是画风条目');
+      expect(keys(styles['id'] ?? const []), ['水彩']);
+      expect(keys(styles['fold'] ?? const []), ['水彩']);
+      expect(styles['card'], isNull, reason: '角色卡名只认角色条目');
+      expect(chars['none'], isNull);
+      expect(styles['none'], isNull);
+    },
+    timeout: const Timeout(Duration(seconds: 60)),
+  );
 
   test('GalleryGroupBy 的存档名稳定(UiPrefs 存的是 name)', () {
     expect(GalleryGroupBy.day.name, 'day');

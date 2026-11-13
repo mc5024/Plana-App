@@ -1,4 +1,8 @@
 /// 日期只保存日历值；查询时才按当前设备时区构造边界。
+library;
+
+import '../../l10n/l10n.dart';
+
 enum GalleryDateKind { all, today, week, month, day, range }
 
 class GalleryDateFilter {
@@ -14,11 +18,13 @@ class GalleryDateFilter {
   bool get active => kind != GalleryDateKind.all;
 
   /// 指定日期 / 日期范围(相对「今天」滚动的那几档之外)。
-  bool get fixed => kind == GalleryDateKind.day || kind == GalleryDateKind.range;
+  bool get fixed =>
+      kind == GalleryDateKind.day || kind == GalleryDateKind.range;
 
   /// 重启后恢复的筛选:相对日期照旧;指定日期只在本次运行内有效 ——
   /// 否则过几天再打开图库,之后生成的新图全被那天的日期挡在外面。
-  GalleryDateFilter get restored => fixed ? const GalleryDateFilter.all() : this;
+  GalleryDateFilter get restored =>
+      fixed ? const GalleryDateFilter.all() : this;
 
   factory GalleryDateFilter.legacy(int days) =>
       GalleryDateFilter(switch (days) {
@@ -66,10 +72,10 @@ class GalleryDateFilter {
         ? ''
         : '${d.year == now.year ? '' : '${d.year}/'}${d.month}/${d.day}';
     return switch (kind) {
-      GalleryDateKind.all => '日期',
-      GalleryDateKind.today => '今天',
-      GalleryDateKind.week => '近 7 天',
-      GalleryDateKind.month => '近 30 天',
+      GalleryDateKind.all => l10nNow.dateLabel,
+      GalleryDateKind.today => l10nNow.today,
+      GalleryDateKind.week => l10nNow.last7Days,
+      GalleryDateKind.month => l10nNow.last30Days,
       GalleryDateKind.day => date(start),
       GalleryDateKind.range => '${date(start)}–${date(end)}',
     };

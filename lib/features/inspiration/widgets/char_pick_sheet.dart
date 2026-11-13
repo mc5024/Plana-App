@@ -20,6 +20,7 @@ import 'category_tabs.dart';
 import 'tag_card.dart';
 import 'tag_filter_chips.dart';
 import 'tag_sheets.dart';
+import '../../../l10n/l10n.dart';
 
 /// 选中的一个条目:条目 + 它该显示的预览(按 publicId 补过,见 [tagPreviewOf])。
 typedef PickedChar = ({TagEntry entry, String? preview});
@@ -139,7 +140,11 @@ class _PickSheetState extends ConsumerState<_PickSheet> {
 
   bool _roomFull() {
     if (_count < widget.max) return false;
-    hintSnack(context, '最多选 ${widget.max} 个', icon: Icons.block_outlined);
+    hintSnack(
+      context,
+      context.l10n.maxSelectN(widget.max),
+      icon: Icons.block_outlined,
+    );
     return true;
   }
 
@@ -251,7 +256,9 @@ class _PickSheetState extends ConsumerState<_PickSheet> {
                     size: 18,
                   ),
                   label: Text(
-                    widget.library ? '加入 ($_count)' : '加入角色 ($_count)',
+                    widget.library
+                        ? context.l10n.addLibN(_count)
+                        : context.l10n.addCharsN(_count),
                   ),
                 ),
               ),
@@ -327,7 +334,7 @@ class _PickSheetState extends ConsumerState<_PickSheet> {
             decoration: InputDecoration(
               isDense: true,
               hintText: cat == null
-                  ? '搜索标题 / 提示词…'
+                  ? context.l10n.searchTitlePromptHint
                   : tagCategoryDef(cat).searchHint,
               prefixIcon: const Icon(Icons.search, size: 20),
               filled: true,
@@ -363,8 +370,8 @@ class _PickSheetState extends ConsumerState<_PickSheet> {
       return _empty(
         def.icon,
         _queryOf(_keyOf(cat)).isEmpty && _validFilter(cat, lib) == null
-            ? '还没有${def.label}'
-            : '没有匹配的${def.label}',
+            ? context.l10n.noneYetInCat(def.label)
+            : context.l10n.noMatchingInCat(def.label),
       );
     }
     // 画风是横图,三列太小看不清,两列
@@ -420,7 +427,9 @@ class _PickSheetState extends ConsumerState<_PickSheet> {
     if (list.isEmpty) {
       return _empty(
         Icons.menu_book_outlined,
-        favs.isEmpty ? '还没有收藏' : '没有匹配的词条',
+        favs.isEmpty
+            ? context.l10n.noFavoritesYet
+            : context.l10n.noMatchingEntries,
       );
     }
     // 收藏里存的是词条快照,图 URL 还得靠 meta;索引里找不到就给个占位,

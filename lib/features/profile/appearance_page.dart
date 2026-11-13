@@ -19,7 +19,7 @@ class AppearancePage extends ConsumerWidget {
     final ts = ref.watch(themeSettingsProvider);
     final notifier = ref.read(themeSettingsProvider.notifier);
     return Scaffold(
-      appBar: AppBar(title: const Text('外观与触感')),
+      appBar: AppBar(title: Text(context.l10n.appearanceHaptics)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
         children: [
@@ -34,7 +34,7 @@ class AppearancePage extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 16),
-          const SettingsLabel('深浅模式'),
+          SettingsLabel(context.l10n.themeMode),
           SettingsCard(
             children: [
               Padding(
@@ -42,13 +42,19 @@ class AppearancePage extends ConsumerWidget {
                 child: SizedBox(
                   width: double.infinity,
                   child: SegmentedButton<ThemeMode>(
-                    segments: const [
+                    segments: [
                       ButtonSegment(
                         value: ThemeMode.system,
-                        label: Text('跟随系统'),
+                        label: Text(context.l10n.followSystem),
                       ),
-                      ButtonSegment(value: ThemeMode.light, label: Text('浅色')),
-                      ButtonSegment(value: ThemeMode.dark, label: Text('深色')),
+                      ButtonSegment(
+                        value: ThemeMode.light,
+                        label: Text(context.l10n.themeLight),
+                      ),
+                      ButtonSegment(
+                        value: ThemeMode.dark,
+                        label: Text(context.l10n.themeDark),
+                      ),
                     ],
                     selected: {ts.mode},
                     onSelectionChanged: (s) =>
@@ -60,20 +66,20 @@ class AppearancePage extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 16),
-          const SettingsLabel('主题色'),
+          SettingsLabel(context.l10n.themeColor),
           const SettingsCard(
             children: [
               Padding(padding: EdgeInsets.all(16), child: ThemeSwatches()),
             ],
           ),
           const SizedBox(height: 16),
-          const SettingsLabel('底部导航'),
+          SettingsLabel(context.l10n.bottomNav),
           SettingsCard(
             children: [
               _SwitchRow(
                 icon: Icons.auto_awesome,
-                title: '显示 AI 助手',
-                subtitle: '关掉后底栏不再显示 AI 入口',
+                title: context.l10n.showAssistant,
+                subtitle: context.l10n.showAssistantSub,
                 value: ts.showAssistant,
                 onChanged: (v) =>
                     notifier.patch((x) => x.copyWith(showAssistant: v)),
@@ -81,12 +87,12 @@ class AppearancePage extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 16),
-          const SettingsLabel('创作页'),
+          SettingsLabel(context.l10n.createPage),
           SettingsCard(
             children: [
               _SwitchRow(
                 icon: Icons.view_agenda_outlined,
-                title: '紧凑角色卡',
+                title: context.l10n.compactCharCards,
                 value: ts.compactCharCards,
                 onChanged: (v) =>
                     notifier.patch((x) => x.copyWith(compactCharCards: v)),
@@ -94,12 +100,12 @@ class AppearancePage extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 16),
-          const SettingsLabel('触感'),
+          SettingsLabel(context.l10n.haptics),
           SettingsCard(
             children: [
               _SwitchRow(
                 icon: Icons.vibration,
-                title: '振动反馈',
+                title: context.l10n.hapticFeedback,
                 value: ts.haptics,
                 onChanged: (v) => notifier.patch((x) => x.copyWith(haptics: v)),
               ),
@@ -107,7 +113,7 @@ class AppearancePage extends ConsumerWidget {
           ),
           if (Platform.isAndroid) ...[
             const SizedBox(height: 16),
-            const SettingsLabel('图库选择器'),
+            SettingsLabel(context.l10n.galleryPicker),
             SettingsCard(
               children: [
                 Padding(
@@ -120,9 +126,15 @@ class AppearancePage extends ConsumerWidget {
                       builder: (context, snap) {
                         final system = ts.systemPicker ?? snap.data;
                         return SegmentedButton<bool>(
-                          segments: const [
-                            ButtonSegment(value: false, label: Text('应用内')),
-                            ButtonSegment(value: true, label: Text('系统')),
+                          segments: [
+                            ButtonSegment(
+                              value: false,
+                              label: Text(context.l10n.inApp),
+                            ),
+                            ButtonSegment(
+                              value: true,
+                              label: Text(context.l10n.system),
+                            ),
                           ],
                           selected: {?system},
                           emptySelectionAllowed: true,

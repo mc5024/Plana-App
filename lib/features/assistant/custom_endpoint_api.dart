@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'custom_endpoint.dart';
+import '../../l10n/l10n.dart';
 
 /// 拉模型列表。失败一律抛 [EndpointException],消息是给用户看的原话。
 Future<List<String>> fetchModelList(
@@ -42,20 +43,20 @@ Future<List<String>> fetchModelList(
           .get(uri, headers: e.withHeaders(headers))
           .timeout(const Duration(seconds: 20));
     } catch (_) {
-      throw EndpointException('连不上 ${uri.host},检查地址与网络');
+      throw EndpointException(l10nNow.epCantConnect(uri.host));
     }
     if (resp.statusCode == 401 || resp.statusCode == 403) {
-      throw EndpointException('API Key 不对(${resp.statusCode})');
+      throw EndpointException(l10nNow.epBadKey(resp.statusCode));
     }
     if (resp.statusCode == 404) {
-      throw EndpointException('这个地址没有模型列表接口,手填模型名也能用');
+      throw EndpointException(l10nNow.epNoModelList);
     }
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw EndpointException('拉取失败(${resp.statusCode})');
+      throw EndpointException(l10nNow.epFetchFailed(resp.statusCode));
     }
     final body = jsonDecode(utf8.decode(resp.bodyBytes));
     final out = parseModelList(e.format, body);
-    if (out.isEmpty) throw EndpointException('拿到了,但一个模型都没有');
+    if (out.isEmpty) throw EndpointException(l10nNow.epNoModels);
     return out;
   } finally {
     if (own) c.close();

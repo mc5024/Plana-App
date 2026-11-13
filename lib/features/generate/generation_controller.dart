@@ -47,6 +47,7 @@ import 'vibe_encoder.dart';
 import '../char_library/char_library.dart';
 import '../vibe_library/naiv4vibe_codec.dart' show kModelToEncodingKey;
 import '../vibe_library/vibe_library.dart';
+import '../../l10n/l10n.dart';
 
 /// 生成状态。error 为哨兵 `no-token` 时表示未设置令牌(引导去我的页)。
 /// busy 期间 step/total/preview 驱动图库的「生成中」画布。
@@ -141,7 +142,7 @@ class _PreviewOnly implements Exception {
   const _PreviewOnly();
 
   @override
-  String toString() => '没收到成图,只拿到了预览帧';
+  String toString() => l10nNow.previewOnlyNoImage;
 }
 
 /// 服务端明确拒收的状态码:请求没被受理,重试不花钱。
@@ -470,9 +471,7 @@ class GenerationNotifier extends Notifier<GenPool> {
     // 池满拒收。守卫与建卡之间**不能有 await**:按钮不再禁用,连点两下会各自
     // 走一遍这里,中间插一个 await 就等于没守。
     if (state.jobs.length >= kMaxPoolJobs) {
-      ref
-          .read(genNoticeProvider.notifier)
-          .show('同时最多 $kMaxPoolJobs 条任务,等前面的出完再提交');
+      ref.read(genNoticeProvider.notifier).show(l10nNow.poolFull(kMaxPoolJobs));
       return GenOutcome.notCharged;
     }
 
@@ -520,7 +519,7 @@ class GenerationNotifier extends Notifier<GenPool> {
       seq: _seq,
       total: s.params.activeSteps,
       // 已经有别的在跑 → 这条多半要等位,先说清楚是在等而不是在准备
-      note: state.jobs.isEmpty ? null : '等待中',
+      note: state.jobs.isEmpty ? null : l10nNow.jobWaiting,
       pasteUnder: under?.original,
       pasteAt: under?.region,
       pasteSize: under == null ? null : (w: under.outW, h: under.outH),
@@ -578,7 +577,7 @@ class GenerationNotifier extends Notifier<GenPool> {
                   .isNotEmpty;
           return _fail(
             job.id,
-            saved ? '没有能接这一单的令牌(检查各令牌的参与条件)' : 'no-token',
+            saved ? l10nNow.noEligibleToken : 'no-token',
             GenOutcome.notCharged,
           );
         }
@@ -635,7 +634,7 @@ class GenerationNotifier extends Notifier<GenPool> {
     } else {
       ref
           .read(genNoticeProvider.notifier)
-          .show(msg == 'no-token' ? '未设置 NovelAI 令牌' : msg);
+          .show(msg == 'no-token' ? l10nNow.naiTokenNotSet : msg);
     }
     if (!_inFlow) _endIsland(success: false);
     return outcome;
@@ -739,7 +738,7 @@ class GenerationNotifier extends Notifier<GenPool> {
           // 流结束却没有终图:预览帧只有成图约 1/8 大,不能拿来顶替
           if (last == null) {
             if (!abort.aborted) _streamMisses++;
-            throw NaiException('没收到成图,只拿到了预览帧');
+            throw NaiException(l10nNow.previewOnlyNoImage);
           }
         } else {
           // 关了流式:整张画完才回来,期间没有步数 —— 置 step 0 走不确定进度条
@@ -804,7 +803,7 @@ class GenerationNotifier extends Notifier<GenPool> {
         logd('[gen] $e');
         return _fail(
           jobId,
-          '生成失败:$e',
+          l10nNow.generationFailedWith('$e'),
           built == null ? GenOutcome.notCharged : GenOutcome.maybeCharged,
         );
       }
@@ -819,14 +818,14 @@ class GenerationNotifier extends Notifier<GenPool> {
     if (!gs.retryOn429 || attempt >= gs.retryCount) return false;
     final secs = gs.retryDelaySecs;
     final label = secs > 0
-        ? '限流 · ${secs}s 后重试(${attempt + 1}/${gs.retryCount})'
-        : '限流 · 立即重试(${attempt + 1}/${gs.retryCount})';
+        ? l10nNow.rateLimitedRetryIn(secs, attempt + 1, gs.retryCount)
+        : l10nNow.rateLimitedRetryNow(attempt + 1, gs.retryCount);
     _patch(
       jobId,
       (j) => j.copyWith(stage: GenJobStage.preparing, step: 0, note: label),
     );
     _lastPush = null; // 绕过通知节流,提示立即可见
-    _pushIndeterminate(label, '限流');
+    _pushIndeterminate(label, l10nNow.shortRateLimited);
     if (secs > 0) await Future<void>.delayed(Duration(seconds: secs));
     return true;
   }
@@ -938,10 +937,12 @@ class GenerationNotifier extends Notifier<GenPool> {
   String get _flowNote {
     final lp = ref.read(loopStatusProvider);
     if (lp.active) {
-      return lp.total > 0 ? '第 ${lp.batch}/${lp.total} 张' : '第 ${lp.batch} 张';
+      return lp.total > 0
+          ? l10nNow.notifyImageOf(lp.batch, lp.total)
+          : l10nNow.loopImage(lp.batch);
     }
     final q = ref.read(genQueueProvider);
-    if (q.active) return '队列 ${q.batch}/${q.total}';
+    if (q.active) return l10nNow.notifyQueueOf(q.batch, q.total);
     return '';
   }
 
@@ -987,14 +988,18 @@ class GenerationNotifier extends Notifier<GenPool> {
     // 多条在跑时标题给张数(挂机时「3 张在跑」比「37/84」有用得多),
     // 状态栏胶囊同理;批量流程里仍优先显示流程自己的「第几/共几」。
     final many = a.count > 1;
-    final short = ls.isNotEmpty ? ls : (many ? '${a.count} 张' : '$step/$total');
+    final short = ls.isNotEmpty
+        ? ls
+        : (many ? l10nNow.shortImages(a.count) : '$step/$total');
     if (step <= 0) {
       // 还没步数也走确定态 0/total:保持同一条可上岛的进度条,不在准备/首帧
       // 之间闪成转圈再变回来。
       LiveProgress.instance.update(
         step: 0,
         total: total,
-        title: many ? '生成中 · ${a.count} 张' : '生成中…',
+        title: many
+            ? l10nNow.generatingCount(a.count)
+            : l10nNow.generatingEllipsis,
         text: _flowNote,
         short: short,
       );
@@ -1002,7 +1007,9 @@ class GenerationNotifier extends Notifier<GenPool> {
       LiveProgress.instance.update(
         step: step,
         total: total,
-        title: many ? '生成中 · ${a.count} 张 ($step/$total)' : '生成中 $step/$total',
+        title: many
+            ? l10nNow.generatingCountStep(a.count, step, total)
+            : l10nNow.generatingStep(step, total),
         text: _flowNote,
         short: short,
       );
@@ -1031,16 +1038,16 @@ class GenerationNotifier extends Notifier<GenPool> {
             step: 0,
             total: total,
             indeterminate: total <= 0,
-            title: '准备生成…',
+            title: l10nNow.lpPreparing,
             text: _flowNote,
             short: _flowShort.isEmpty
-                ? (total > 0 ? '0/$total' : '准备')
+                ? (total > 0 ? '0/$total' : l10nNow.shortPreparing)
                 : _flowShort,
           ),
         );
       } else {
         await LiveProgress.instance.start(
-          title: '准备生成…',
+          title: l10nNow.lpPreparing,
           text: _flowNote,
           total: total,
         );
@@ -1061,9 +1068,11 @@ class GenerationNotifier extends Notifier<GenPool> {
       return;
     }
     LiveProgress.instance.finish(
-      title: success ? '生成完成' : '生成失败',
-      text: _appForeground ? '' : (success ? '点按查看' : '点按回到应用'),
-      short: success ? '完成' : '失败',
+      title: success ? l10nNow.lpGenDone : l10nNow.generationFailed,
+      text: _appForeground
+          ? ''
+          : (success ? l10nNow.tapToView : l10nNow.tapToReturn),
+      short: success ? l10nNow.shortDone : l10nNow.shortFailed,
       keep: !_appForeground,
     );
   }
@@ -1397,7 +1406,7 @@ class GenerationNotifier extends Notifier<GenPool> {
         step: j.total > 0 ? j.total : 1,
         total: j.total > 0 ? j.total : 1,
         prepPct: -1,
-        note: '保存中',
+        note: l10nNow.jobSaving,
       ),
     );
     final origin = _runs[jobId]?.origin;

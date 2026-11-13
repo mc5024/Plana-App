@@ -1,5 +1,6 @@
 // 图库展开页的时间分组/时刻徽标 + 检索索引的归一化/抽取 + 入库快照的取舍。
 import 'package:flutter_test/flutter_test.dart';
+import 'package:plana_app/features/editor/editor_models.dart' show outputOf;
 import 'package:plana_app/features/gallery/gallery_dates.dart';
 import 'package:plana_app/features/gallery/gallery_search.dart';
 import 'package:plana_app/features/gallery/gallery_state.dart';
@@ -51,6 +52,13 @@ void main() {
 
     test('保留冒号(artist:wlop 要搜得到)', () {
       expect(normalizeSearchText('Artist:WLOP'), 'artist:wlop');
+    });
+
+    test('换行归逗号(只换行不写逗号的提示词也切得开)', () {
+      expect(
+        normalizeSearchText('1girl\nlong hair,\n\nsmile'),
+        '1girl, long hair, smile',
+      );
     });
 
     test('查询词切分 AND 匹配', () {
@@ -127,6 +135,42 @@ void main() {
         ],
       );
       expect(metaOfInput(s).text, '1girl, red eyes');
+    });
+
+    test('来源:条目 id(分区 + 角色卡)、启用的角色卡名、进了载荷的折叠组名', () {
+      const raw = '1girl, <#小夜: blue hair, red eyes#>, <#黑兔: ~pink hair~#>';
+      final m = metaOfSnapshotJson({
+        'state': {
+          'prompt': outputOf(raw),
+          'promptRaw': raw,
+          'usedEntries': ['e1'],
+          'characters': [
+            {'name': '初音', 'positive': 'miku', 'source': 'e2'},
+            {'name': '角色 2', 'positive': 'cat ears', 'enabled': false},
+            {
+              'name': '角色 3',
+              'positive': 'halo',
+              'positiveRaw': '<#旧条目: wings, halo#>',
+            },
+          ],
+        },
+      });
+      expect(m!.ids, ['e1', 'e2']);
+      expect(m.cards, ['初音', '角色 3'], reason: '停用的卡不算');
+      expect(m.folds, ['小夜'], reason: '整组禁用的折叠没进载荷;草稿对不上定稿的过期了');
+
+      final s = GenerateState.initial().copyWith(
+        prompt: outputOf(raw),
+        promptRaw: raw,
+        usedEntries: const ['e1'],
+        characters: const [
+          CharacterPrompt(id: 'a', name: '初音', positive: 'miku', source: 'e2'),
+        ],
+      );
+      final n = metaOfInput(s);
+      expect(n.ids, ['e1', 'e2']);
+      expect(n.cards, ['初音']);
+      expect(n.folds, ['小夜']);
     });
   });
 

@@ -251,10 +251,18 @@ class GenerateNotifier extends Notifier<GenerateState> {
   }
 
   /// 灵感页「加入角色」/ 角色卡头「角色库」:带名追加(名字取自角色条目,
-  /// 头像取条目预览),尊重张数上限(按模型取,见 maxCharactersOf),超出静默
-  /// 截断(对齐 web availableSlots 语义)。返回实际加入条数。
+  /// 头像取条目预览,[source] 是条目 id),尊重张数上限(按模型取,见
+  /// maxCharactersOf),超出静默截断(对齐 web availableSlots 语义)。返回实际加入条数。
   int addNamedCharactersFrom(
-    List<({String name, String positive, String negative, String? avatar})>
+    List<
+      ({
+        String name,
+        String positive,
+        String negative,
+        String? avatar,
+        String? source,
+      })
+    >
     chars,
   ) {
     final cap = maxCharactersOf(state.params.model);
@@ -270,6 +278,7 @@ class GenerateNotifier extends Notifier<GenerateState> {
           negative: c.negative,
           position: _spawnPos(base),
           avatar: c.avatar,
+          source: c.source,
         ),
       );
       added++;
@@ -281,7 +290,7 @@ class GenerateNotifier extends Notifier<GenerateState> {
     return added;
   }
 
-  /// 角色卡点头像换人:名字、正负向、头像整份换成库条目的,站位和开关不动。
+  /// 角色卡点头像换人:名字、正负向、头像、来源整份换成库条目的,站位和开关不动。
   /// 编辑器草稿一并清空(空 = 与定稿无差别)—— 那份草稿对的是旧提示词。
   /// 条目没有预览图时头像也清掉,别让新名字挂着上一个人的脸。
   void fillCharacterFrom(
@@ -290,6 +299,7 @@ class GenerateNotifier extends Notifier<GenerateState> {
     required String positive,
     required String negative,
     String? avatar,
+    String? source,
   }) {
     state = state.copyWith(
       characters: [
@@ -302,6 +312,7 @@ class GenerateNotifier extends Notifier<GenerateState> {
               positiveRaw: '',
               negativeRaw: '',
               avatar: avatar,
+              source: source,
             )
           else
             c,

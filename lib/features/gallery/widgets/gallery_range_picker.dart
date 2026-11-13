@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderMetaData;
 
 import '../../../core/util/haptics.dart';
+import '../../../l10n/l10n.dart';
 
 // 尺寸与行高取 showDatePicker(Material 3)的数值:和「指定日期」那只弹窗
 // 并排看是同一套东西。Flutter 自带的范围日历只有全屏一种,所以这里自己画。
@@ -225,11 +226,11 @@ class _GalleryRangePickerState extends State<GalleryRangePicker> {
       currentDate: _today,
       initialDateRange: DateTimeRange(start: _start, end: _end ?? _start),
       initialEntryMode: DatePickerEntryMode.inputOnly,
-      helpText: '选择日期范围',
-      cancelText: '返回日历',
-      confirmText: '应用',
-      fieldStartLabelText: '开始日期',
-      fieldEndLabelText: '结束日期',
+      helpText: context.l10n.selectDateRange,
+      cancelText: context.l10n.backToCalendar,
+      confirmText: context.l10n.applyLabel,
+      fieldStartLabelText: context.l10n.startDate,
+      fieldEndLabelText: context.l10n.endDate,
     );
     if (range != null && mounted) Navigator.pop(context, range);
   }
@@ -307,7 +308,7 @@ class _GalleryRangePickerState extends State<GalleryRangePicker> {
     final foreground =
         picker.headerForegroundColor ?? defaults.headerForegroundColor;
     final help = Text(
-      '选择日期范围',
+      context.l10n.selectDateRange,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: (picker.headerHelpStyle ?? defaults.headerHelpStyle)?.copyWith(
@@ -320,8 +321,10 @@ class _GalleryRangePickerState extends State<GalleryRangePicker> {
         : labels.formatShortDate(day);
     final text =
         '${label(_start)} – ${_end == null ? labels.dateRangeEndLabel : label(_end!)}';
-    final titleStyle = (picker.headerHeadlineStyle ?? defaults.headerHeadlineStyle)
-        ?.copyWith(color: foreground);
+    final titleStyle =
+        (picker.headerHeadlineStyle ?? defaults.headerHeadlineStyle)?.copyWith(
+          color: foreground,
+        );
     final input = IconButton(
       tooltip: labels.inputDateModeButtonLabel,
       color: foreground,
@@ -655,9 +658,7 @@ class _GalleryRangePickerState extends State<GalleryRangePicker> {
     final shape = resolve((t) => t.dayShape) ?? const CircleBorder();
     final foreground = inside && !selected && enabled
         ? theme.colorScheme.onSecondaryContainer
-        : resolve(
-            (t) => today ? t.todayForegroundColor : t.dayForegroundColor,
-          );
+        : resolve((t) => today ? t.todayForegroundColor : t.dayForegroundColor);
     final background = resolve(
       (t) => today ? t.todayBackgroundColor : t.dayBackgroundColor,
     );
@@ -685,7 +686,7 @@ class _GalleryRangePickerState extends State<GalleryRangePicker> {
         padding: EdgeInsets.all(pad),
         child: Semantics(
           label: semantics,
-          hint: selected ? '可直接拖动调整日期' : null,
+          hint: selected ? context.l10n.dragToAdjustDate : null,
           button: true,
           selected: selected,
           enabled: enabled,
@@ -727,7 +728,7 @@ class _GalleryRangePickerState extends State<GalleryRangePicker> {
               TextButton(
                 style: picker.cancelButtonStyle ?? defaults.cancelButtonStyle,
                 onPressed: () => Navigator.pop(context),
-                child: const Text('取消'),
+                child: Text(context.l10n.cancel),
               ),
               TextButton(
                 style: picker.confirmButtonStyle ?? defaults.confirmButtonStyle,
@@ -737,7 +738,7 @@ class _GalleryRangePickerState extends State<GalleryRangePicker> {
                         context,
                         DateTimeRange(start: _start, end: _end!),
                       ),
-                child: const Text('应用'),
+                child: Text(context.l10n.applyLabel),
               ),
             ],
           ),

@@ -28,6 +28,7 @@ import 'dart:typed_data';
 
 import '../generate/prompt_presets.dart';
 import '../vibe_library/naiv4vibe_codec.dart';
+import '../../l10n/l10n.dart';
 
 const kWebBackupIdentifier = 'novelai-web-ui-backup';
 const kWebBackupVersion = 1;
@@ -87,7 +88,7 @@ class WebBackup {
     try {
       j = jsonDecode(text);
     } catch (_) {
-      throw const FormatException('不是有效的 JSON 文件');
+      throw FormatException(l10nNow.notValidJson);
     }
     return fromDecoded(j);
   }
@@ -96,20 +97,24 @@ class WebBackup {
   /// 手上已经有对象树时走这里,别再拿原文本重解析一遍 —— 那等于把整份数据
   /// 在内存里又存了一份。流式读文件见 `core/util/file_read.dart`。
   static WebBackup fromDecoded(Object? j) {
-    if (j is! Map<String, dynamic>) throw const FormatException('不是有效的备份文件');
+    if (j is! Map<String, dynamic>) {
+      throw FormatException(l10nNow.notValidBackup);
+    }
 
     final meta = j['meta'];
     if (meta is! Map || meta['identifier'] != kWebBackupIdentifier) {
-      throw const FormatException('无效的备份文件:文件标识不匹配');
+      throw FormatException(l10nNow.backupIdMismatch);
     }
     final ver = meta['version'];
     if (ver != kWebBackupVersion) {
-      throw FormatException('不支持的备份版本:$ver(本 app 支持 v$kWebBackupVersion)');
+      throw FormatException(
+        l10nNow.backupVersionUnsupported('$ver', '$kWebBackupVersion'),
+      );
     }
     final idb = j['indexedDB'];
     final ls = j['localStorage'];
     if (idb is! Map || ls is! Map) {
-      throw const FormatException('无效的备份文件:数据结构不完整');
+      throw FormatException(l10nNow.backupIncomplete);
     }
 
     List<Map<String, dynamic>> mapsOf(Object? v) => [

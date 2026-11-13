@@ -13,6 +13,7 @@ import '../../inspiration/widgets/char_pick_sheet.dart' show panelTagCats;
 import '../generate_state.dart';
 import '../models.dart' show PromptSection;
 import 'common.dart';
+import '../../../l10n/l10n.dart';
 
 /// 这一格存进灵感库的词:实际出图的那份(停用的不算、折叠展开)。主体只存正向,
 /// 卡上负面那行是整张卡的。
@@ -106,8 +107,8 @@ Future<bool> saveSectionToLibrary(
       case final e?) {
     hintSnack(
       anchor,
-      '灵感库里已有「${e.name}」',
-      actionLabel: '编辑',
+      anchor.l10n.inspirationAlreadyHas(e.name),
+      actionLabel: anchor.l10n.edit,
       onAction: () =>
           nav.push(sharedAxisRoute(TagEditorPage(cat: e.category, edit: e))),
     );

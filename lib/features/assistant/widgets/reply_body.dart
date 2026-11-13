@@ -15,12 +15,15 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import '../../../core/theme/app_theme.dart';
 import '../../generate/widgets/common.dart' show hintSnack;
 import '../assistant_models.dart' show DrawProposal, promptTextOf;
+import '../../../l10n/l10n.dart';
 
 /// 复制到剪贴板并给一句回执。
 Future<void> copyText(BuildContext context, String text) async {
   if (text.isEmpty) return;
   await Clipboard.setData(ClipboardData(text: text));
-  if (context.mounted) hintSnack(context, '已复制', icon: Icons.copy_outlined);
+  if (context.mounted) {
+    hintSnack(context, context.l10n.copied, icon: Icons.copy_outlined);
+  }
 }
 
 /// 开围栏:行首三个反引号,后面可以跟语言标注(`text`、`plaintext`……,不显示)。
@@ -150,12 +153,12 @@ class PromptTextBlocks extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (t.positive.isNotEmpty) ...[
-          if (labeled) label('正面'),
+          if (labeled) label(context.l10n.positiveShort),
           CodeBlock(t.positive, size: fontSize - 1),
         ],
         if (t.negative.isNotEmpty) ...[
           if (labeled) const SizedBox(height: 10),
-          if (labeled) label('负面'),
+          if (labeled) label(context.l10n.negativeShort),
           CodeBlock(t.negative, size: fontSize - 1),
         ],
       ],

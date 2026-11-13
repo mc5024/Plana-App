@@ -85,37 +85,45 @@ class SettingsRow extends StatelessWidget {
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: scheme.onSurfaceVariant),
-            const SizedBox(width: 12),
-            Text(
-              title,
-              style: context.texts.bodyMedium!.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                value ?? '',
-                textAlign: TextAlign.end,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: context.texts.bodySmall!.copyWith(
-                  color: valueColor ?? scheme.onSurfaceVariant,
+        child: LayoutBuilder(
+          builder: (context, cons) => Row(
+            children: [
+              Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 12),
+              // 标题最多占六成宽(英文标题长),不把右侧的值挤没
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: cons.maxWidth * .6),
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.texts.bodyMedium!.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-            ),
-            if (onTap != null || dropdown) ...[
-              const SizedBox(width: 4),
-              Icon(
-                dropdown ? Icons.expand_more : Icons.chevron_right,
-                size: 18,
-                color: scheme.outline,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  value ?? '',
+                  textAlign: TextAlign.end,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.texts.bodySmall!.copyWith(
+                    color: valueColor ?? scheme.onSurfaceVariant,
+                  ),
+                ),
               ),
+              if (onTap != null || dropdown) ...[
+                const SizedBox(width: 4),
+                Icon(
+                  dropdown ? Icons.expand_more : Icons.chevron_right,
+                  size: 18,
+                  color: scheme.outline,
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

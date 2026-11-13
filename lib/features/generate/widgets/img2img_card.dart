@@ -39,7 +39,7 @@ Future<void> pickImg2ImgImage(BuildContext context, WidgetRef ref) async {
   if (before.width != res.w || before.height != res.h) {
     hintSnack(
       context,
-      '分辨率已按底图调整为 ${res.w}×${res.h}',
+      context.l10n.resolutionMatchedBase(res.w, res.h),
       icon: Icons.aspect_ratio,
     );
   }
@@ -107,13 +107,15 @@ class _Img2ImgCardState extends ConsumerState<Img2ImgCard> {
         if (hasImage)
           RoundIconBtn(
             Icons.delete_outline,
-            tooltip: '移除底图',
+            tooltip: context.l10n.removeBaseImage,
             color: context.scheme.error,
             onTap: notifier.disableImg2Img,
           ),
         RoundIconBtn(
           Icons.add,
-          tooltip: hasImage ? '更换底图' : '选择底图',
+          tooltip: hasImage
+              ? context.l10n.changeBaseImage
+              : context.l10n.selectBaseImage,
           color: context.scheme.primary,
           onTap: _onPick,
         ),
@@ -309,7 +311,12 @@ class _Img2ImgCardState extends ConsumerState<Img2ImgCard> {
                 child: Column(
                   children: [
                     LockedParam(
-                      hint: strengthOk ? null : '${modelName(model)} 不支持「重绘强度」',
+                      hint: strengthOk
+                          ? null
+                          : context.l10n.paramUnsupported(
+                              modelName(model),
+                              context.l10n.inpaintStrength,
+                            ),
                       child: ParamSlider(
                         label: context.l10n.paramStrength,
                         help: Help.img2imgStrength,

@@ -47,8 +47,9 @@ class LiveProgressService : Service() {
             val title = intent.getStringExtra(EXTRA_TITLE) ?: "Plana"
             val text = intent.getStringExtra(EXTRA_TEXT) ?: ""
             val total = intent.getIntExtra(EXTRA_TOTAL, 0)
+            val short = intent.getStringExtra(EXTRA_SHORT) ?: ""
             // total>0:准备态即用确定进度条(0/total),从一开始就能上岛
-            startInForeground(build(title, text, 0, total, indeterminate = total <= 0, shortText = "准备", ongoing = true))
+            startInForeground(build(title, text, 0, total, indeterminate = total <= 0, shortText = short, ongoing = true))
             // startForegroundService 是异步的:服务起来之前 Flutter 侧推的进度/收尾
             // 全被 companion 暂存在这里。不补发就会丢掉开头那几百毫秒的更新,
             // 更糟的是丢掉 finish/stop —— 那条常驻通知会永远挂着。
@@ -255,6 +256,7 @@ class LiveProgressService : Service() {
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_TEXT = "text"
         private const val EXTRA_TOTAL = "total"
+        private const val EXTRA_SHORT = "short"
 
         /**
          * 建好两条通道。**应用启动时就调一次**,而不是等第一次生成 ——
@@ -264,6 +266,21 @@ class LiveProgressService : Service() {
          * 分工:进度 LOW 全程静默(一秒刷一次,弹横幅是灾难);完成 HIGH 但也静默,
          * 只弹一张不响不振的横幅。想要声音/振动的用户自己在系统设置里开。
          */
+        /** 两条通道的名字与说明换成界面语言(同 id 重建只更新这几项)。 */
+        fun setChannelNames(ctx: Context, progress: String, progressDesc: String, done: String, doneDesc: String) {
+            if (Build.VERSION.SDK_INT < 26) return
+            ensureChannels(ctx)
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, progress, NotificationManager.IMPORTANCE_LOW)
+                    .apply { description = progressDesc },
+            )
+            nm.createNotificationChannel(
+                NotificationChannel(DONE_CHANNEL_ID, done, NotificationManager.IMPORTANCE_HIGH)
+                    .apply { description = doneDesc },
+            )
+        }
+
         fun ensureChannels(ctx: Context) {
             if (Build.VERSION.SDK_INT < 26) return
             val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -302,13 +319,14 @@ class LiveProgressService : Service() {
             }
         }
 
-        fun start(ctx: Context, title: String?, text: String?, total: Int) {
+        fun start(ctx: Context, title: String?, text: String?, total: Int, short: String?) {
             pending = null // 新一轮,上一轮没送达的指令作废
             val i = Intent(ctx, LiveProgressService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_TITLE, title)
                 putExtra(EXTRA_TEXT, text)
                 putExtra(EXTRA_TOTAL, total)
+                putExtra(EXTRA_SHORT, short)
             }
             if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)
         }

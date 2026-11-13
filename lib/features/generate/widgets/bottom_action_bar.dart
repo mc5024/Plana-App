@@ -25,7 +25,7 @@ import '../nai_request.dart' show effectiveInpaintStrength;
 import '../vibe_encoder.dart';
 import '../../import/import_panel.dart';
 import 'advanced_sheet.dart';
-import 'common.dart' show hintSnack;
+import 'common.dart' show hintSnack, measureText;
 import 'loop_sheet.dart';
 import 'resolution_sheet.dart';
 import '../../../l10n/l10n.dart';
@@ -160,29 +160,66 @@ class _BottomActionBarState extends ConsumerState<BottomActionBar> {
               //    张数会和「高级」贴在一起;
               //  · NAI 三颗 —— 还是「左边一串 + 高级钉右边」。三颗均分会把步数
               //    甩到正中间,中间那片空白比贴在一起更晃眼。
-              Row(
-                mainAxisAlignment: batchable
-                    ? MainAxisAlignment.spaceBetween
-                    : MainAxisAlignment.start,
-                children: [
-                  _ReadoutChip(
-                    caption: context.l10n.size,
-                    value: '${p.width}×${p.height}',
-                    onTap: () => showResolutionSheet(context),
-                  ),
-                  if (!batchable) const SizedBox(width: 8),
-                  const _StepsChip(),
-                  // 张数只有 anima / krea 有(NAI 那条路一单一张)。**不给它常驻
-                  // 一个位置**:NAI 下摆个恒为 1、点了还得解释「这个模型不支持」
-                  // 的读数,只是白占那条本来就挤的行。
-                  if (batchable) const _BatchChip() else const Spacer(),
-                  _ReadoutChip(
+              LayoutBuilder(
+                builder: (context, cons) {
+                  final l = context.l10n;
+                  final size = '${p.width}×${p.height}';
+                  // 一行放不下时(英文标签长)「高级」只留图标
+                  final need =
+                      _ReadoutChip.widthOf(
+                        context,
+                        caption: l.size,
+                        value: size,
+                      ) +
+                      _ReadoutChip.widthOf(
+                        context,
+                        caption: l.steps,
+                        value: '00',
+                      ) +
+                      (batchable
+                          ? _ReadoutChip.widthOf(
+                                  context,
+                                  caption: l.imageCount,
+                                  value: '0',
+                                ) +
+                                12
+                          : 8) +
+                      _ReadoutChip.widthOf(
+                        context,
+                        icon: Icons.tune,
+                        value: l.advanced,
+                        valueMuted: true,
+                      );
+                  final compact = need > cons.maxWidth;
+                  final advanced = _ReadoutChip(
                     icon: Icons.tune,
-                    value: context.l10n.advanced,
+                    value: compact ? '' : l.advanced,
                     valueMuted: true,
                     onTap: () => showAdvancedSheet(context),
-                  ),
-                ],
+                  );
+                  return Row(
+                    mainAxisAlignment: batchable
+                        ? MainAxisAlignment.spaceBetween
+                        : MainAxisAlignment.start,
+                    children: [
+                      _ReadoutChip(
+                        caption: l.size,
+                        value: size,
+                        onTap: () => showResolutionSheet(context),
+                      ),
+                      if (!batchable) const SizedBox(width: 8),
+                      const _StepsChip(),
+                      // 张数只有 anima / krea 有(NAI 那条路一单一张)。**不给它常驻
+                      // 一个位置**:NAI 下摆个恒为 1、点了还得解释「这个模型不支持」
+                      // 的读数,只是白占那条本来就挤的行。
+                      if (batchable) const _BatchChip() else const Spacer(),
+                      if (compact)
+                        Tooltip(message: l.advanced, child: advanced)
+                      else
+                        advanced,
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 8),
               Row(
@@ -221,7 +258,7 @@ class _BottomActionBarState extends ConsumerState<BottomActionBar> {
                   const SizedBox(width: 9),
                   // 循环伴钮:进循环面板(选张数并开始);运行中高亮,面板里可停
                   Tooltip(
-                    message: '循环生成',
+                    message: context.l10n.loopGenerate,
                     child: AnimatedContainer(
                       duration: Motion.fast,
                       width: 52,
@@ -301,7 +338,7 @@ void _hintDisabledVibes(BuildContext context, WidgetRef ref) {
   if (n > 0) {
     hintSnack(
       context,
-      '$n 个 Vibe 缺当前模型编码,已停用',
+      context.l10n.vibesDisabledNoEncoding(n),
       icon: Icons.visibility_off_outlined,
     );
   }
@@ -409,8 +446,8 @@ class _GenerateButton extends StatelessWidget {
               ),
               Tooltip(
                 message: runningCount > 1
-                    ? '取消当前跟随的这条($runningCount 条在跑)'
-                    : '取消生成',
+                    ? context.l10n.cancelTrackedJob(runningCount)
+                    : context.l10n.cancelGeneration,
                 child: InkWell(
                   onTap: onStop,
                   child: SizedBox(
@@ -576,7 +613,14 @@ class CostPill extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: !paid
-                  ? [Text('免费', maxLines: 1, softWrap: false, style: style)]
+                  ? [
+                      Text(
+                        context.l10n.free,
+                        maxLines: 1,
+                        softWrap: false,
+                        style: style,
+                      ),
+                    ]
                   : [
                       Icon(Icons.toll, size: _icon, color: fg),
                       const SizedBox(width: _gap),
@@ -623,7 +667,10 @@ class _StepsChip extends ConsumerWidget {
       animateValue: !open,
       onTap: () {
         if (locked) {
-          hintSnack(context, '${modelName(model)} 步数固定为 $kNai5MediumSteps');
+          hintSnack(
+            context,
+            context.l10n.stepsFixed(modelName(model), kNai5MediumSteps),
+          );
           return;
         }
         ref.read(floatingPillProvider.notifier).toggle(FloatingPill.steps);
@@ -662,8 +709,7 @@ class _BatchChip extends ConsumerWidget {
         if (locked) {
           hintSnack(
             context,
-            '重绘放大开着时只能出 1 张:二段采样要按放大后的尺寸再跑一遍,'
-            '显存吃不下一批。',
+            context.l10n.batchLockedHires,
             icon: Icons.info_outline,
           );
           return;
@@ -961,15 +1007,46 @@ class _ReadoutChip extends StatelessWidget {
   final bool animateValue;
   final VoidCallback onTap;
 
+  static const _captionSize = 10.0;
+
+  static TextStyle _valueStyle(BuildContext context, bool muted) => muted
+      ? context.texts.bodyMedium!.copyWith(
+          color: context.scheme.onSurfaceVariant,
+        )
+      : mono(context, size: 13);
+
+  /// 按当前字号排出来有多宽(含内边距与边框)。
+  static double widthOf(
+    BuildContext context, {
+    String? caption,
+    IconData? icon,
+    required String value,
+    bool valueMuted = false,
+  }) {
+    var w = 26.0 + 2;
+    if (icon != null) w += 17 + (value.isEmpty ? 0 : 5);
+    if (caption != null) {
+      w +=
+          measureText(
+            context,
+            caption,
+            const TextStyle(fontSize: _captionSize),
+          ) +
+          5;
+    }
+    if (value.isNotEmpty) {
+      w += measureText(context, value, _valueStyle(context, valueMuted));
+    }
+    return w;
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
     final text = Text(
       value,
       key: ValueKey(value),
-      style: valueMuted
-          ? context.texts.bodyMedium!.copyWith(color: scheme.onSurfaceVariant)
-          : mono(context, size: 13),
+      style: _valueStyle(context, valueMuted),
     );
     return Material(
       color: scheme.surfaceContainerHighest,
@@ -995,16 +1072,21 @@ class _ReadoutChip extends StatelessWidget {
             children: [
               if (icon != null) ...[
                 Icon(icon, size: 17, color: scheme.onSurfaceVariant),
-                const SizedBox(width: 5),
+                if (value.isNotEmpty) const SizedBox(width: 5),
               ],
               if (caption != null) ...[
                 Text(
                   caption!,
-                  style: TextStyle(fontSize: 10, color: scheme.outline),
+                  style: TextStyle(
+                    fontSize: _captionSize,
+                    color: scheme.outline,
+                  ),
                 ),
                 const SizedBox(width: 5),
               ],
-              if (animateValue)
+              if (value.isEmpty)
+                const SizedBox.shrink()
+              else if (animateValue)
                 AnimatedSwitcher(duration: Motion.fast, child: text)
               else
                 text,

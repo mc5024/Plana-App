@@ -23,6 +23,7 @@ import '../../generate/widgets/common.dart' show dropFocusSoon;
 import '../agent_model.dart';
 import '../custom_endpoint.dart';
 import '../endpoints_page.dart';
+import '../../../l10n/l10n.dart';
 
 Future<void> showModelSheet(BuildContext context) async {
   await showModalBottomSheet<void>(
@@ -53,10 +54,13 @@ class _ModelSheet extends ConsumerWidget {
     final hidden = !authorized && async.hasValue && shown(async.value!).isEmpty;
 
     return SettingSheet(
-      title: '选择模型',
+      title: context.l10n.selectModel,
       children: [
         if (!hidden) ...[
-          settingSection(context, authorized ? 'Plana 后端' : '免费模型'),
+          settingSection(
+            context,
+            authorized ? context.l10n.planaBackend : context.l10n.freeModels,
+          ),
           switch (async) {
             AsyncData(:final value) when shown(value).isNotEmpty => Column(
               mainAxisSize: MainAxisSize.min,
@@ -88,7 +92,7 @@ class _ModelSheet extends ConsumerWidget {
             ),
           },
         ],
-        settingSection(context, '我的接口'),
+        settingSection(context, context.l10n.myEndpoints),
         for (final e in endpoints)
           // 一个接口下的每个模型各一行,副行写是哪个接口
           if (e.usable)
@@ -107,7 +111,7 @@ class _ModelSheet extends ConsumerWidget {
               context,
               icon: Icons.bolt_outlined,
               title: e.displayName,
-              subtitle: '还没填全,点一下去补',
+              subtitle: context.l10n.incompleteTapToFix,
               dim: true,
               onTap: () => openEndpointsPage(context, editId: e.id),
               onEdit: () => openEndpointsPage(context, editId: e.id),
@@ -115,7 +119,7 @@ class _ModelSheet extends ConsumerWidget {
         _row(
           context,
           icon: Icons.add,
-          title: '添加接口',
+          title: context.l10n.addEndpoint,
           accent: true,
           onTap: () => openEndpointsPage(context),
         ),
@@ -212,7 +216,7 @@ class _ModelSheet extends ConsumerWidget {
       trailing: onEdit == null
           ? null
           : IconButton(
-              tooltip: '编辑',
+              tooltip: context.l10n.edit,
               visualDensity: VisualDensity.compact,
               icon: Icon(
                 Icons.edit_outlined,
@@ -241,7 +245,7 @@ class _ModelSheet extends ConsumerWidget {
             ),
           ),
         ),
-        TextButton(onPressed: onRetry, child: const Text('重试')),
+        TextButton(onPressed: onRetry, child: Text(context.l10n.retry)),
       ],
     ),
   );

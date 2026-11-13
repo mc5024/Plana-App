@@ -115,9 +115,17 @@ class _VibeCardState extends ConsumerState<VibeCard> {
     }
     // 提示只留一条(新提示顶掉旧的):有失败先说失败,否则才提互斥
     if (failed > 0) {
-      hintSnack(context, '$failed 个文件无法导入', icon: Icons.error_outline);
+      hintSnack(
+        context,
+        context.l10n.filesImportFailed(failed),
+        icon: Icons.error_outline,
+      );
     } else if (lastId == null) {
-      hintSnack(context, '没有可导入的内容', icon: Icons.error_outline);
+      hintSnack(
+        context,
+        context.l10n.nothingToImport,
+        icon: Icons.error_outline,
+      );
     } else if (hadCharRefs) {
       _mutexHint();
     }
@@ -132,8 +140,11 @@ class _VibeCardState extends ConsumerState<VibeCard> {
   }
 
   /// 互斥切换提示:启用/加入 Vibe 导致角色参考被暂停时,弹一次 toast。
-  void _mutexHint() =>
-      hintSnack(context, '与角色参考互斥,已暂停角色参考', icon: Icons.swap_horiz);
+  void _mutexHint() => hintSnack(
+    context,
+    context.l10n.refMutexCharRefPaused,
+    icon: Icons.swap_horiz,
+  );
 
   /// 删除某张,并把选中态平移到相邻项
   void _removeVibe(String id) {
@@ -181,7 +192,7 @@ class _VibeCardState extends ConsumerState<VibeCard> {
         if (idle)
           Flexible(
             child: Text(
-              '重绘时不生效',
+              context.l10n.inactiveWhenInpainting,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: context.texts.labelSmall!.copyWith(color: scheme.outline),
@@ -191,7 +202,7 @@ class _VibeCardState extends ConsumerState<VibeCard> {
       actions: [
         RoundIconBtn(
           Icons.grid_view,
-          tooltip: 'Vibe 库',
+          tooltip: context.l10n.vibeLibrary,
           color: scheme.onSurfaceVariant,
           onTap: () => Navigator.of(
             context,
@@ -200,7 +211,7 @@ class _VibeCardState extends ConsumerState<VibeCard> {
         RoundIconBtn(
           Icons.add,
           // 与角色参考卡的同位按钮区分:两者互斥,tooltip 一样会让人分不清点了哪个
-          tooltip: '导入 Vibe 参考图',
+          tooltip: context.l10n.importVibe,
           color: scheme.primary,
           onTap: _onAdd,
         ),
@@ -315,7 +326,7 @@ class _VibeDetail extends ConsumerWidget {
           Opacity(
             opacity: .7,
             child: ParamSlider(
-              label: 'Info Extracted 信息提取(随编码固定)',
+              label: context.l10n.infoExtractedFixed,
               help: Help.infoExtracted,
               value: vibe.infoExtracted,
               divisions: 100,

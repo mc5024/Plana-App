@@ -37,6 +37,7 @@ import 'widgets/tag_filter_chips.dart';
 import 'widgets/tag_filter_sheet.dart';
 import 'widgets/tag_sheets.dart';
 import '../../core/util/haptics.dart';
+import '../../l10n/l10n.dart';
 
 /// 顶部各行统一的左右边距;行尾若是 IconButton,用 [_kIconEdge]
 /// (减去按钮 8px 内衬)让图标视觉边与其他行对齐。
@@ -130,7 +131,11 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
       } else if (sel.length < cap) {
         sel.add(e.id);
       } else {
-        hintSnack(context, '最多选 $cap 个', icon: Icons.block_outlined);
+        hintSnack(
+          context,
+          context.l10n.maxSelectN(cap),
+          icon: Icons.block_outlined,
+        );
       }
     });
   }
@@ -199,15 +204,22 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
           positive: e.positive,
           negative: e.negative,
           avatar: tagPreviewOf(e, pubPreview),
+          source: e.id,
         ),
     ]);
     if (added == 0) {
-      hintSnack(context, '角色已满 $cap 个', icon: Icons.block_outlined);
+      hintSnack(
+        context,
+        context.l10n.charsFullN(cap),
+        icon: Icons.block_outlined,
+      );
       return;
     }
     await _afterConfirm(
       entries,
-      added < entries.length ? '已加入 $added 个角色(超出 $cap 个截断)' : '已加入 $added 个角色',
+      added < entries.length
+          ? context.l10n.addedCharsTruncated(added, cap)
+          : context.l10n.addedChars(added),
     );
   }
 
@@ -219,7 +231,7 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
     final gen = ref.read(generateProvider);
     if (gen.sections.isNotEmpty) {
       ref.read(generateProvider.notifier).addEntrySections(entries);
-      await _afterConfirm(entries, '已加入提示词');
+      await _afterConfirm(entries, context.l10n.addedToPrompt);
       return;
     }
     // 追加到编辑器原文草稿(带回既有的禁用/折叠),每个条目自成一个折叠组;
@@ -237,7 +249,7 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
           negative: appendTagNegatives(gen.negativePrompt, entries),
           positiveRaw: draftOf(draft, positive),
         );
-    await _afterConfirm(entries, '已加入提示词');
+    await _afterConfirm(entries, context.l10n.addedToPrompt);
   }
 
   // ---- build ----
@@ -401,7 +413,7 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
               );
             },
             child: IconButton(
-              tooltip: '新建',
+              tooltip: context.l10n.newLabel,
               icon: const Icon(Icons.add),
               onPressed: () => _openNew(_cat),
             ),
@@ -465,7 +477,11 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
         n++;
       }
       if (mounted) {
-        hintSnack(context, '已给 $n 项加上「$tag」', icon: Icons.sell_outlined);
+        hintSnack(
+          context,
+          context.l10n.taggedN(n, tag),
+          icon: Icons.sell_outlined,
+        );
       }
     });
   }
@@ -504,23 +520,23 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
         title = '删除收藏?';
         message = '将从本地移除「${one.name}」,公共库原作不受影响。';
       } else {
-        title = '删除「${one.name}」?';
-        message = '仅删除本地条目,不可恢复。';
+        title = context.l10n.deleteNamedQ(one.name);
+        message = context.l10n.localOnlyDeleteBody;
       }
     } else {
-      title = '删除 ${entries.length} 项?';
+      title = context.l10n.deleteNItemsQ(entries.length);
       final lines = [
         if (published.isNotEmpty) '· 你发布的 ${published.length} 项:连同公共库条目一起删',
         if (favorited.isNotEmpty) '· 收藏的 ${favorited.length} 项:只移除本地副本,原作不动',
-        if (localOnly > 0) '· 本地的 $localOnly 项:仅删除本地',
+        if (localOnly > 0) context.l10n.localOnlyNLine(localOnly),
       ];
-      message = '${lines.join('\n')}\n\n不可恢复。';
+      message = '${lines.join('\n')}\n\n${context.l10n.cantUndoShort}';
     }
     final ok = await confirmDialog(
       context,
       title: title,
       message: message,
-      confirmLabel: '删除',
+      confirmLabel: context.l10n.delete,
     );
     if (!ok || !mounted) return;
     await _runBatch(() async {
@@ -551,8 +567,10 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
       hintSnack(
         context,
         failed > 0
-            ? '已删除 $done 项,$failed 项失败'
-            : (one != null ? '已删除' : '已删除 $done 项'),
+            ? context.l10n.deletedNFailed(done, failed)
+            : (one != null
+                  ? context.l10n.deletedLabel
+                  : context.l10n.deletedNItems(done)),
         icon: Icons.delete_outline,
       );
     });
@@ -606,13 +624,13 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
         if (publicScope)
           SelectionIconButton(
             icon: Icons.favorite_border,
-            tooltip: '收藏',
+            tooltip: context.l10n.favoriteAction,
             onTap: _busy ? null : () => _batchCollect(lib),
           )
         else
           SelectionIconButton(
             icon: Icons.sell_outlined,
-            tooltip: '标签',
+            tooltip: context.l10n.kindTag,
             onTap: _busy ? null : () => _batchTag(lib),
           ),
       ],
@@ -620,7 +638,7 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
           ? null
           : SelectionIconButton(
               icon: Icons.delete_outline,
-              tooltip: '删除',
+              tooltip: context.l10n.delete,
               color: scheme.error,
               onTap: _busy ? null : () => _batchDelete(lib),
             ),
@@ -628,7 +646,7 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
         onPressed: () =>
             asCharacters ? _confirmAsCharacters(lib) : _confirmToPrompt(lib),
         icon: Icon(asCharacters ? Icons.person_add_alt : Icons.add, size: 18),
-        label: Text('添加 ($n)'),
+        label: Text(context.l10n.addN(n)),
         style: selectionPrimaryStyle(),
       ),
     );
@@ -978,7 +996,7 @@ class _CategoryPageState extends ConsumerState<_CategoryPage>
     final label = _filterPillLabel;
     if (label == null) {
       return IconButton(
-        tooltip: '筛选',
+        tooltip: context.l10n.filter,
         visualDensity: VisualDensity.compact,
         icon: Icon(
           Icons.filter_alt_outlined,
@@ -1076,10 +1094,15 @@ class _CategoryPageState extends ConsumerState<_CategoryPage>
     if (list.isEmpty) {
       final narrowed = _search.isNotEmpty || _filter != null || _narrowed;
       return _empty(
-        narrowed ? '没有匹配的${_def.label}' : '还没有${_def.label}',
+        narrowed
+            ? context.l10n.noMatchingInCat(_def.label)
+            : context.l10n.noneYetInCat(_def.label),
         action: narrowed
             ? null
-            : ('新建${_def.label}', () => widget.host._openNew(_cat)),
+            : (
+                context.l10n.newInCat(_def.label),
+                () => widget.host._openNew(_cat),
+              ),
       );
     }
     // 按作者排序:整个 scope 改成一个作者一栏(我的这边同理 —— 自建的归自己
@@ -1103,7 +1126,11 @@ class _CategoryPageState extends ConsumerState<_CategoryPage>
       if (mine.isNotEmpty)
         (
           header: headed
-              ? _sectionHeader(Icons.favorite, '我的${_def.label}', mine.length)
+              ? _sectionHeader(
+                  Icons.favorite,
+                  context.l10n.myInCat(_def.label),
+                  mine.length,
+                )
               : null,
           items: mine,
         ),
@@ -1112,7 +1139,7 @@ class _CategoryPageState extends ConsumerState<_CategoryPage>
           header: headed
               ? _sectionHeader(
                   Icons.star_rounded,
-                  '收藏的${_def.label}',
+                  context.l10n.savedInCat(_def.label),
                   fav.length,
                   muted: true,
                 )
@@ -1152,7 +1179,7 @@ class _CategoryPageState extends ConsumerState<_CategoryPage>
         final needBot =
             (e is StateError && e.message == 'need-bot') ||
             (e is BackendException && (e.status == 401 || e.status == 403));
-        if (needBot) return _empty('公共库暂未开放');
+        if (needBot) return _empty(context.l10n.publicLibUnavailable);
         return _empty('公共库加载失败', action: ('重试', _reloadPublic));
       },
       data: (all) {
@@ -1469,15 +1496,20 @@ class _CategoryPageState extends ConsumerState<_CategoryPage>
       aspect: _cardAspect,
       preview: TagCardPreview(url: preview, name: e.name, mosaic: masked),
       actions: [
-        if (!isPublic) (icon: Icons.edit_outlined, label: '编辑', value: 'edit'),
-        (icon: Icons.notes, label: '查看提示词', value: 'detail'),
-        (icon: Icons.copy, label: '复制提示词', value: 'copy'),
+        if (!isPublic)
+          (icon: Icons.edit_outlined, label: context.l10n.edit, value: 'edit'),
+        (icon: Icons.notes, label: context.l10n.viewPrompt, value: 'detail'),
+        (icon: Icons.copy, label: context.l10n.copyPrompt, value: 'copy'),
         if (isPublic)
           (icon: Icons.favorite_border, label: '收藏', value: 'collect'),
       ],
       danger: isPublic
           ? null
-          : (icon: Icons.delete_outline, label: '删除', value: 'delete'),
+          : (
+              icon: Icons.delete_outline,
+              label: context.l10n.delete,
+              value: 'delete',
+            ),
     );
     if (!mounted) return;
     switch (action) {
@@ -1491,7 +1523,9 @@ class _CategoryPageState extends ConsumerState<_CategoryPage>
         unawaited(showTagDetailSheet(context, e));
       case 'copy':
         await Clipboard.setData(ClipboardData(text: e.positive));
-        if (mounted) hintSnack(context, '已复制提示词', icon: Icons.copy);
+        if (mounted) {
+          hintSnack(context, context.l10n.promptCopied, icon: Icons.copy);
+        }
       case 'collect':
         await widget.host._collect(e);
       case 'delete':

@@ -27,6 +27,7 @@ import 'package:yaml/yaml.dart';
 import '../../core/auth/bot_session_store.dart';
 import '../../core/net/backend_config.dart';
 import '../../core/store/app_stores.dart';
+import '../../l10n/l10n.dart';
 
 const _key = 'assistant_rule_presets';
 
@@ -225,14 +226,16 @@ bool _whenWanted(String when, List<String>? modes, List<String> chosen) {
 /// 超限时的提示,没超限返回 null。[reserveChars] 是给之后挂上去的工具层留的。
 String? rulesLimitError(List<PresetRule> rules, {int reserveChars = 0}) {
   if (rules.length + (reserveChars > 0 ? 1 : 0) > kRulesMaxSections) {
-    return '规则段数太多(上限 ${kRulesMaxSections - (reserveChars > 0 ? 1 : 0)} 段)';
+    return l10nNow.rulesTooManySections(
+      kRulesMaxSections - (reserveChars > 0 ? 1 : 0),
+    );
   }
   final total = rules.fold<int>(
     0,
     (n, r) => n + r.name.length + r.content.length,
   );
   final cap = kRulesMaxChars - reserveChars;
-  if (total > cap) return '规则太长(上限 $cap 字)';
+  if (total > cap) return l10nNow.rulesTooLong(cap);
   return null;
 }
 
@@ -299,10 +302,10 @@ String encodeRulesFile({
   required List<PresetRule> rules,
 }) {
   final b = StringBuffer()
-    ..writeln('# Plana AI 助手规则预设')
-    ..writeln('# 每段一个 name 和 content。带 when 的是条件段,例如 when: comic 只在画漫画时发送。')
-    ..writeln('# when 以 mode: 开头的是模式段,例如 when: "mode:comic" 只在选了漫画模式时发送。')
-    ..writeln('# when 前面加 ! 表示没选时才发送,例如 when: "!mode:natural" 选了仅自然语言就不发。')
+    ..writeln(l10nNow.rulesHeader1)
+    ..writeln(l10nNow.rulesHeader2)
+    ..writeln(l10nNow.rulesHeader3)
+    ..writeln(l10nNow.rulesHeader4)
     ..writeln('format: $_fileFormat')
     ..writeln('version: 2')
     // 名字、作者用 JSON 字符串写:JSON 的双引号串本身就是合法 YAML,
@@ -343,13 +346,15 @@ RulesFile decodeRulesFile(String text, {String fileName = ''}) {
     // 带上行号:全文编辑里改坏了,几万字的规则光说一句「格式不对」没法找
     final line = e.span?.start.line;
     throw FormatException(
-      '文件格式不对${line == null ? '' : '(第 ${line + 1} 行)'}:${e.message}',
+      line == null
+          ? l10nNow.badFileFormat(e.message)
+          : l10nNow.badFileFormatLine(line + 1, e.message),
     );
   }
-  if (doc is! Map) throw const FormatException('文件格式不对:找不到 sections');
+  if (doc is! Map) throw FormatException(l10nNow.noSections);
 
   final sections = doc['sections'];
-  if (sections is! List) throw const FormatException('文件格式不对:找不到 sections');
+  if (sections is! List) throw FormatException(l10nNow.noSections);
 
   // 带 group 字段的是一整份服务端预设:只取规则主体那段,外壳不要
   final isServerPreset = sections.any(
@@ -365,7 +370,7 @@ RulesFile decodeRulesFile(String text, {String fileName = ''}) {
     if (rule == null || rule.name == kToolLayerName) continue;
     rules.add(rule);
   }
-  if (rules.isEmpty) throw const FormatException('文件里没有可用的规则段');
+  if (rules.isEmpty) throw FormatException(l10nNow.noUsableRules);
   final err = rulesLimitError(rules, reserveChars: _toolLayerReserveChars);
   if (err != null) throw FormatException(err);
 

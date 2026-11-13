@@ -12,6 +12,7 @@ import 'gallery_grid_sheet.dart';
 import 'result_badge_chip.dart';
 import 'result_thumb.dart';
 import '../../../core/util/haptics.dart';
+import '../../../l10n/l10n.dart';
 
 // ---- 缩略图几何:**渲染与滚动定位共用这一组常数,谁都别再各写一份** ----
 //
@@ -841,7 +842,7 @@ class _FilmThumb extends StatelessWidget {
                 Positioned(
                   left: 4,
                   top: 4,
-                  child: ResultBadgeChip(badge: result.badge),
+                  child: ResultBadgeChip(badge: result.badge, maxWidth: w - 8),
                 ),
               if (result.saved)
                 const Positioned(right: 4, top: 4, child: SavedMark(size: 14)),
@@ -962,8 +963,8 @@ class _DropBandsState extends State<_DropBands>
             _DropBand(
               icon: Icons.delete_outline,
               activeIcon: Icons.delete_forever,
-              label: '拖到这里删除',
-              activeLabel: '松手删除',
+              label: context.l10n.dropToDelete,
+              activeLabel: context.l10n.releaseToDelete,
               destructive: true,
               onAccept: widget.onDelete,
             ),
@@ -973,16 +974,20 @@ class _DropBandsState extends State<_DropBands>
               activeIcon: widget.favorite
                   ? Icons.favorite_border
                   : Icons.favorite,
-              label: widget.favorite ? '拖到这里取消收藏' : '拖到这里收藏',
-              activeLabel: widget.favorite ? '松手取消收藏' : '松手收藏',
+              label: widget.favorite
+                  ? context.l10n.dropToUnfav
+                  : context.l10n.dropToFav,
+              activeLabel: widget.favorite
+                  ? context.l10n.releaseToUnfav
+                  : context.l10n.releaseToFav,
               destructive: false,
               onAccept: widget.onFavorite,
             ),
             const SizedBox(height: _bandSpacing),
             _DropBand(
               icon: Icons.ios_share,
-              label: '拖到这里分享',
-              activeLabel: '松手分享',
+              label: context.l10n.dropToShare,
+              activeLabel: context.l10n.releaseToShare,
               destructive: false,
               onAccept: widget.onShare,
             ),

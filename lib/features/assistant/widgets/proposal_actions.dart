@@ -27,6 +27,7 @@ import '../../generate/widgets/common.dart'
     show confirmDialog, dropFocusSoon, hintSnack;
 import '../assistant_models.dart';
 import '../assistant_state.dart';
+import '../../../l10n/l10n.dart';
 
 class ProposalActions extends ConsumerWidget {
   const ProposalActions({
@@ -50,7 +51,7 @@ class ProposalActions extends ConsumerWidget {
 
   void _import(BuildContext context, WidgetRef ref) {
     if (!ref.read(assistantProvider.notifier).applyProposal(msg.id)) return;
-    hintSnack(context, '已写入创作页', icon: Icons.check);
+    hintSnack(context, context.l10n.writtenToCreate, icon: Icons.check);
     onDone?.call();
   }
 
@@ -64,15 +65,15 @@ class ProposalActions extends ConsumerWidget {
     // 所以这里必须拦一下 —— 整套流程里唯一需要确认的地方。
     final ok = await confirmDialog(
       context,
-      title: '撤销这次导入?',
-      message: '你在导入之后又动过提示词。撤销会一并丢掉你那些改动,回到导入之前的样子。',
-      confirmLabel: '仍要撤销',
+      title: context.l10n.undoImportQ,
+      message: context.l10n.undoImportBody,
+      confirmLabel: context.l10n.undoAnyway,
     );
     // 对话框一关焦点会还给输入框、把键盘顶出来,而用户点的是卡上的按钮
     dropFocusSoon();
     if (!ok || !context.mounted) return;
     n.undo(msg.id, force: true);
-    hintSnack(context, '已撤销', icon: Icons.undo);
+    hintSnack(context, context.l10n.undone, icon: Icons.undo);
     onDone?.call();
   }
 
@@ -117,7 +118,9 @@ class ProposalActions extends ConsumerWidget {
             FilledButton.tonalIcon(
               onPressed: _live ? () => _import(context, ref) : null,
               icon: Icon(_live ? Icons.download : Icons.check, size: 17),
-              label: Text(_live ? '导入' : '已导入'),
+              label: Text(
+                _live ? context.l10n.importLabel : context.l10n.imported,
+              ),
               style: FilledButton.styleFrom(
                 minimumSize: Size(0, height),
                 padding: EdgeInsets.symmetric(horizontal: dense ? 12 : 14),
@@ -142,7 +145,7 @@ class ProposalActions extends ConsumerWidget {
                 children: [
                   const Icon(Icons.play_arrow, size: 17),
                   const SizedBox(width: 4),
-                  const Text('生成'),
+                  Text(context.l10n.generate),
                   const SizedBox(width: 7),
                   // 与吸底栏同一颗胶囊:点了要不要花钱、花多少,按之前就该知道。
                   CostPill(cost: _cost(ref)),
@@ -156,12 +159,12 @@ class ProposalActions extends ConsumerWidget {
               ? TextButton(
                   onPressed: () => _undo(context, ref),
                   style: undoStyle,
-                  child: const Text('撤销'),
+                  child: Text(context.l10n.undo),
                 )
               : TextButton.icon(
                   onPressed: () => _undo(context, ref),
                   icon: const Icon(Icons.undo, size: 16),
-                  label: const Text('撤销'),
+                  label: Text(context.l10n.undo),
                   style: undoStyle,
                 ),
       ],

@@ -11,6 +11,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import '../../l10n/l10n.dart';
 
 /// 流式读 JSON:边读边解析,不把整份文本先存成一个大 String。
 /// 内容不是合法 UTF-8 / JSON 时抛 [FormatException](消息可直接给用户看)。
@@ -18,7 +19,7 @@ Future<Object?> readJsonStream(Stream<List<int>> src) async {
   try {
     return await src.transform(utf8.decoder).transform(json.decoder).first;
   } on FormatException {
-    throw const FormatException('不是有效的 JSON 文件');
+    throw FormatException(l10nNow.notValidJson);
   }
 }
 
@@ -28,11 +29,11 @@ Future<Object?> readPickedJson(PlatformFile f) async {
   final path = f.path;
   if (path != null) return readJsonStream(File(path).openRead());
   final bytes = f.bytes;
-  if (bytes == null) throw const FormatException('文件读取失败');
+  if (bytes == null) throw FormatException(l10nNow.fileReadFailed);
   try {
     return jsonDecode(utf8.decode(bytes));
   } on FormatException {
-    throw const FormatException('不是有效的 JSON 文件');
+    throw FormatException(l10nNow.notValidJson);
   }
 }
 
@@ -53,6 +54,6 @@ Future<Uint8List> readPickedBytes(PlatformFile f) {
   final path = f.path;
   if (path != null) return File(path).readAsBytes();
   final bytes = f.bytes;
-  if (bytes == null || bytes.isEmpty) throw const FormatException('文件是空的');
+  if (bytes == null || bytes.isEmpty) throw FormatException(l10nNow.fileEmpty);
   return Future.value(bytes);
 }

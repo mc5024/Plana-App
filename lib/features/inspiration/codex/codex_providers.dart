@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'codex_models.dart';
 import 'codex_service.dart';
 import 'codex_tag_zh.dart';
+import '../../../l10n/l10n.dart';
 
 /// 法典接入的 Riverpod 门面:索引/图床/每部数据都是拉一次缓存,
 /// 选中法典在会话内记忆,首次说明/翻面示范各自落一个标记。
@@ -34,7 +35,7 @@ final codexDataProvider = FutureProvider.family<CodexData, String>((
   final index = await ref.watch(codexIndexProvider.future);
   final meta = index.firstWhere(
     (m) => m.id == id,
-    orElse: () => throw CodexException('未找到法典:$id'),
+    orElse: () => throw CodexException(l10nNow.codexNotFound(id)),
   );
   return ref.read(codexServiceProvider).fetchCodex(meta);
 });

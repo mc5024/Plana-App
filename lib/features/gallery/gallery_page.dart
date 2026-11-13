@@ -20,6 +20,7 @@ import 'share_pipeline.dart';
 import 'widgets/film_strip.dart';
 import 'widgets/gallery_grid_sheet.dart';
 import 'widgets/result_canvas.dart';
+import '../../l10n/l10n.dart';
 
 /// 图库页:上方结果画布(大图 + 操作轨 + seed)、下方历史胶片条。
 /// 生成链路产出的结果落在这里查看与二次操作。
@@ -41,18 +42,15 @@ class GalleryPage extends ConsumerStatefulWidget {
 /// 图库连弹两条本身就很吵。按下面的顺序挑第一条没提过的,剩下的等下次进
 /// 图库(下次冷启动)再说 —— 这两个手势都藏得深,不说没人发现,但也不急在
 /// 同一秒说完。
-const _kGalleryHints = <({String key, String text, IconData icon})>[
-  (
-    key: 'hint_save_longpress',
-    text: '长按「保存」可进入下载设置',
-    icon: Icons.download_outlined,
-  ),
-  (
-    key: 'hint_strip_swipe',
-    text: '底部胶片条里的图,向上滑可以分享、收藏或删除',
-    icon: Icons.swipe_up_outlined,
-  ),
+const _kGalleryHints = <({String key, IconData icon})>[
+  (key: 'hint_save_longpress', icon: Icons.download_outlined),
+  (key: 'hint_strip_swipe', icon: Icons.swipe_up_outlined),
 ];
+
+String _hintText(AppLocalizations l, String key) => switch (key) {
+  'hint_save_longpress' => l.hintSaveLongPress,
+  _ => l.hintStripSwipe,
+};
 
 class _GalleryPageState extends ConsumerState<GalleryPage>
     with AutomaticKeepAliveClientMixin {
@@ -167,7 +165,11 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
     );
     if (!mounted) return;
     if (prep.files.isEmpty) {
-      hintSnack(context, '没有可分享的图片', icon: Icons.error_outline);
+      hintSnack(
+        context,
+        context.l10n.nothingToShare,
+        icon: Icons.error_outline,
+      );
       return;
     }
     await SharePlus.instance.share(ShareParams(files: prep.files));
@@ -184,7 +186,9 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
       prefs.write(key: h.key, value: '1');
       // build 里不能直接弹 overlay,推到帧后
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) hintSnack(context, h.text, icon: h.icon);
+        if (mounted) {
+          hintSnack(context, _hintText(context.l10n, h.key), icon: h.icon);
+        }
       });
       return; // 一次一条
     }
@@ -388,7 +392,7 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
                 child: Row(
                   children: [
                     IconButton(
-                      tooltip: '返回历史',
+                      tooltip: context.l10n.backToHistory,
                       onPressed: () => ref
                           .read(galleryResultPreviewProvider.notifier)
                           .clear(),
@@ -396,7 +400,11 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
                     ),
                     Expanded(
                       child: Text(
-                        '已保存到 ${ref.watch(albumsProvider).name(preview!.target.albumId)}',
+                        context.l10n.savedToNamed(
+                          ref
+                              .watch(albumsProvider)
+                              .name(preview!.target.albumId),
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -416,7 +424,7 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
                             .read(galleryProvider.notifier)
                             .select(preview.imageId);
                       },
-                      child: const Text('浏览相册'),
+                      child: Text(context.l10n.browseAlbums),
                     ),
                   ],
                 ),
@@ -438,9 +446,9 @@ class _GalleryPageState extends ConsumerState<GalleryPage>
                 gallery.deleteResults([id]);
                 hintSnack(
                   context,
-                  '已移到回收站',
+                  context.l10n.movedToTrash,
                   icon: Icons.delete_outline,
-                  actionLabel: '撤销',
+                  actionLabel: context.l10n.undo,
                   onAction: () {
                     if (gallery.restoreTrash([id]) > 0 && wasSelected) {
                       gallery.select(id);
@@ -679,7 +687,7 @@ class _EmptyGallery extends ConsumerWidget {
           Icon(Icons.photo_library_outlined, size: 56, color: scheme.outline),
           const SizedBox(height: 12),
           Text(
-            inAlbum ? '这个相册还没有照片' : '还没有作品',
+            inAlbum ? context.l10n.albumEmpty : context.l10n.noWorksYet,
             style: context.texts.titleMedium!.copyWith(
               fontWeight: FontWeight.w600,
             ),
@@ -690,15 +698,15 @@ class _EmptyGallery extends ConsumerWidget {
           if (inAlbum)
             TextButton(
               onPressed: () => showAlbumBrowsePicker(context),
-              child: const Text('选择相册'),
+              child: Text(context.l10n.chooseAlbum),
             )
           else if (hasTrash)
             TextButton(
               onPressed: () => showGalleryGrid(context, trash: true),
-              child: const Text('查看回收站'),
+              child: Text(context.l10n.viewTrash),
             ),
           Text(
-            '去「创作」生成第一张',
+            context.l10n.goCreateFirst,
             style: context.texts.bodySmall!.copyWith(color: scheme.outline),
           ),
         ],

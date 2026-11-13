@@ -11,6 +11,7 @@ import 'gallery_store.dart';
 import 'models.dart';
 import 'save_pipeline.dart';
 import 'save_settings.dart';
+import '../../l10n/l10n.dart';
 
 /// 把这几张按保存设置处理好、**打成一个 zip** 落进缓存,返回那个包。
 /// 网格弹层多选里的「打包 ZIP」走这一条。
@@ -208,7 +209,7 @@ Uint8List _endOfCentralDirectory(int count, int cdSize, int cdStart) {
   // 65535 条 / 4GB 以上要 zip64,而这是相册批量导出 —— 真撞上了宁可报错,
   // 也不能吐一个解不开的包出去
   if (count > 0xffff || cdSize > 0xffffffff || cdStart > 0xffffffff) {
-    throw StateError('包太大,超出 zip 的表示范围');
+    throw StateError(l10nNow.zipTooLarge);
   }
   final b = Uint8List(22);
   final d = b.buffer.asByteData();
@@ -298,14 +299,16 @@ class _EntryWorker {
     _tx.send([name, data, mtime]);
     if (!await _reply.moveNext()) {
       dispose();
-      throw StateError('打包中断');
+      throw StateError(l10nNow.zipInterrupted);
     }
     final r = _reply.current;
     // 回的不是两段字节:要么 worker 报错(['err', 说明]),要么它自己挂了
     // (onExit 的 null / onError 的 [错误, 栈])
     if (r is! List || r.length != 2 || r[0] is! Uint8List) {
       dispose();
-      throw StateError(r is List && r.length == 2 ? '${r[1]}' : '打包中断');
+      throw StateError(
+        r is List && r.length == 2 ? '${r[1]}' : l10nNow.zipInterrupted,
+      );
     }
     return (local: r[0] as Uint8List, cd: r[1] as Uint8List);
   }

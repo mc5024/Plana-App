@@ -8,6 +8,7 @@ import '../../generate/models.dart' show tokenLimitOf;
 import '../../generate/prompt_presets.dart';
 import '../../generate/prompt_sections.dart' show mainEnabled, sectionTexts;
 import '../editor_state.dart';
+import '../../../l10n/l10n.dart';
 
 /// 编辑器顶栏(精简,单行):返回(=保存并退出)+ 进度条 + token 读数 + 设置。
 /// 正/负 tab、撤销、纯文本切换都下放到底栏。滚动正文时由页面整栏收起。
@@ -116,7 +117,7 @@ class EditorTopBar extends ConsumerWidget {
             onPressed: onBack,
             visualDensity: const VisualDensity(vertical: -2),
             icon: const Icon(Icons.arrow_back),
-            tooltip: '保存并返回',
+            tooltip: context.l10n.saveAndBack,
           ),
           // 进度条不再单占一行:收进返回键与读数之间,紧挨着读数当它的表头。
           // 角色会话多一个标题,按内容取宽、封顶 45%,其余让给进度条 ——
@@ -168,7 +169,7 @@ class EditorTopBar extends ConsumerWidget {
             onPressed: onSettings,
             visualDensity: const VisualDensity(vertical: -2),
             icon: const Icon(Icons.settings_outlined, size: 22),
-            tooltip: '编辑器设置',
+            tooltip: context.l10n.editorSettings,
           ),
         ],
       ),

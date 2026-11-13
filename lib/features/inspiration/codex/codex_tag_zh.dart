@@ -145,12 +145,7 @@ class CodexTagZh {
     final k = tagZhKey(tag);
     if (k.isEmpty) return null;
     final s = shard;
-    return core.m[k] ??
-        s?.m[k] ??
-        core.d[k] ??
-        s?.d[k] ??
-        core.a[k] ??
-        s?.a[k];
+    return core.m[k] ?? s?.m[k] ?? core.d[k] ?? s?.d[k] ?? core.a[k] ?? s?.a[k];
   }
 }
 
@@ -172,8 +167,5 @@ TagZhShard? tagZhParsePayload(String raw) {
 /// (原站不认 If-None-Match,带 ETag 照样回 200 全量,条件请求这条路走不通。)
 String codexIndexStamp(List<CodexMeta> index) {
   final parts = [for (final m in index) '${m.id}@${m.version}']..sort();
-  return md5
-      .convert(utf8.encode(parts.join('\n')))
-      .toString()
-      .substring(0, 12);
+  return md5.convert(utf8.encode(parts.join('\n'))).toString().substring(0, 12);
 }

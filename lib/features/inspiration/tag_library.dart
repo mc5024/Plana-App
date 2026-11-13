@@ -433,7 +433,9 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
         ? '法典'
         : kTagCategoryDefs.firstWhere((d) => d.webId == key).label;
     final next = {..._s.labels};
-    if (label.trim().isEmpty || label.trim() == orig) {
+    if (label.trim().isEmpty ||
+        label.trim() == orig ||
+        label.trim() == builtinCategoryLabel(key)) {
       next.remove(key);
     } else {
       next[key] = label.trim();

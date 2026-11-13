@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../l10n/l10n.dart';
 
 /// 「我的」库的全部 / 收藏 / 用户标签筛选行,灵感页与灵感库面板共用。
 ///
@@ -86,9 +87,9 @@ class TagFilterChips extends StatelessWidget {
                 scrollDirection: Axis.horizontal,
                 padding: EdgeInsets.fromLTRB(edge, 5, 16, 5),
                 children: [
-                  chip('全部', filter == null, () => onChanged(null)),
+                  chip(context.l10n.all, filter == null, () => onChanged(null)),
                   chip(
-                    '收藏',
+                    context.l10n.favorites,
                     filter == favorites,
                     () => onChanged(favorites),
                     icon: Icons.star_rounded,
@@ -104,7 +105,7 @@ class TagFilterChips extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: '标签池管理',
+            tooltip: context.l10n.manageTagPool,
             icon: Icon(
               Icons.settings_outlined,
               size: 20,

@@ -17,6 +17,7 @@ import 'api_keys_page.dart';
 import 'bot_auth_panel.dart';
 import 'token_manage_page.dart';
 import '../../core/util/haptics.dart';
+import '../../l10n/l10n.dart';
 
 /// 账号与接入(我的页二级):接入方式切换、Token / Bot 凭据、直连代理、标签补全来源。
 class AccountPage extends ConsumerStatefulWidget {
@@ -83,7 +84,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     final session = ref.watch(botSessionProvider).value;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('账号与接入')),
+      appBar: AppBar(title: Text(context.l10n.accountAccess)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
         children: [
@@ -215,15 +216,18 @@ class _TokenCard extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
-                  _StatusChip(saved: on.isNotEmpty, onLabel: '${on.length} 账号'),
+                  _StatusChip(
+                    saved: on.isNotEmpty,
+                    onLabel: context.l10n.accountsCount(on.length),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
               if (on.isEmpty)
                 Text(
                   keys.isEmpty
-                      ? '直连生成需要你自己的 NovelAI 令牌,仅加密存储在本机'
-                      : '存了 ${keys.length} 把,但一把都没参与生成',
+                      ? context.l10n.tokenNeededHint
+                      : context.l10n.tokensNoneJoined(keys.length),
                   style: context.texts.labelSmall!.copyWith(
                     color: keys.isEmpty ? scheme.outline : scheme.error,
                   ),
@@ -276,7 +280,7 @@ class _TokenCard extends StatelessWidget {
                   OutlinedButton.icon(
                     onPressed: onManage,
                     icon: const Icon(Icons.tune, size: 17),
-                    label: const Text('管理令牌'),
+                    label: Text(context.l10n.manageTokens),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(0, 40),
                       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -318,7 +322,7 @@ class _ProxyCard extends StatelessWidget {
           value: on,
           onChanged: onChanged,
           title: Text(
-            '代理访问 NovelAI',
+            context.l10n.naiProxy,
             style: context.texts.bodyMedium!.copyWith(
               fontWeight: FontWeight.w600,
             ),
@@ -389,13 +393,16 @@ class _TotalsLine extends ConsumerWidget {
       }
     }
     if (got == 0) {
-      return Text('查询账户状态…', style: small.copyWith(color: scheme.outline));
+      return Text(
+        context.l10n.queryingAccount,
+        style: small.copyWith(color: scheme.outline),
+      );
     }
     return Text(
       [
         'Anlas ${fmtInt(anlas)}',
         // 额度只有拿得到才写:官方没承诺过这块字段,读不到就干脆不提。
-        if (hasUsage) '额度 ${pct.round()}%',
+        if (hasUsage) context.l10n.quotaPct(pct.round()),
       ].join(' · '),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
@@ -497,15 +504,11 @@ class _KeyChipTile extends ConsumerWidget {
 }
 
 class _StatusChip extends StatelessWidget {
-  const _StatusChip({
-    required this.saved,
-    this.onLabel = '已保存',
-    this.offLabel = '未设置',
-  });
+  const _StatusChip({required this.saved, this.onLabel, this.offLabel});
 
   final bool saved;
-  final String onLabel;
-  final String offLabel;
+  final String? onLabel;
+  final String? offLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -532,7 +535,9 @@ class _StatusChip extends StatelessWidget {
           ),
           const SizedBox(width: 5),
           Text(
-            saved ? onLabel : offLabel,
+            saved
+                ? onLabel ?? context.l10n.statusSaved
+                : offLabel ?? context.l10n.notSet,
             style: context.texts.labelMedium!.copyWith(
               color: fg,
               fontWeight: FontWeight.w600,
@@ -577,7 +582,7 @@ class _RouteCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '生成方式',
+                context.l10n.genMethod,
                 style: context.texts.labelMedium!.copyWith(
                   color: scheme.onSurfaceVariant,
                   fontWeight: FontWeight.w700,
@@ -587,16 +592,16 @@ class _RouteCard extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: SegmentedButton<AuthMode>(
-                  segments: const [
+                  segments: [
                     ButtonSegment(
                       value: AuthMode.token,
-                      label: Text('直连 Token'),
-                      icon: Icon(Icons.vpn_key, size: 16),
+                      label: Text(context.l10n.directToken),
+                      icon: const Icon(Icons.vpn_key, size: 16),
                     ),
                     ButtonSegment(
                       value: AuthMode.bot,
-                      label: Text('使用 Bot 账户'),
-                      icon: Icon(Icons.smart_toy_outlined, size: 16),
+                      label: Text(context.l10n.useBotAccount),
+                      icon: const Icon(Icons.smart_toy_outlined, size: 16),
                     ),
                   ],
                   selected: {mode},
@@ -609,10 +614,10 @@ class _RouteCard extends StatelessWidget {
               Text(
                 missing
                     ? (mode == AuthMode.token
-                          ? '尚未保存 Token,当前无法生成'
+                          ? context.l10n.tokenMissing
                           : '尚未授权 Bot,当前无法生成')
                     : (mode == AuthMode.token
-                          ? '使用你的 NovelAI 账户生成图片'
+                          ? context.l10n.useOwnAccount
                           : '使用 Bot 账户生成图片,费用从钱包扣除'),
                 style: context.texts.labelSmall!.copyWith(
                   color: missing ? scheme.error : scheme.outline,

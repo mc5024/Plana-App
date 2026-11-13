@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/auth/bot_session_store.dart';
 import '../../core/net/backend_client.dart';
 import '../../core/net/nai_client.dart' show NaiUsage;
+import '../../l10n/l10n.dart';
 
 export '../../core/net/anlas_provider.dart' show walletSummaryProvider;
 
@@ -155,7 +156,11 @@ String fmtInt(num v) {
   return v < 0 ? '-$b' : b.toString();
 }
 
-const rangeLabels = {'today': '今日', 'week': '本周', 'month': '本月'};
+Map<String, String> get rangeLabels => {
+  'today': l10nNow.rangeToday,
+  'week': l10nNow.rangeWeek,
+  'month': l10nNow.rangeMonth,
+};
 
 /// 时间范围 → 热力图统计天数(对齐 web)。
 const rangeDays = {'today': 1, 'week': 7, 'month': 30};

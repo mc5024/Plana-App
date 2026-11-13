@@ -14,6 +14,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/ui/setting_row.dart';
 import '../agent_model.dart' show assistantBotAuthorizedProvider;
 import '../assistant_settings.dart';
+import '../../../l10n/l10n.dart';
 
 Future<void> showAssistantIntro(BuildContext context) => showDialog<void>(
   context: context,
@@ -62,7 +63,7 @@ class _IntroDialogState extends ConsumerState<_IntroDialog> {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      settingSection(context, '资料库范围'),
+      settingSection(context, context.l10n.libraryScope),
       RadioGroup<LibraryScope>(
         groupValue: effectiveLibraryScope(
           _draft.libraryScope,
@@ -82,7 +83,7 @@ class _IntroDialogState extends ConsumerState<_IntroDialog> {
                 subtitle: Text(
                   libraryScopeAllowed(o, botAuthorized: authorized)
                       ? libraryScopeDesc(o)
-                      : '暂未开放',
+                      : context.l10n.notAvailableYet,
                 ),
               ),
           ],
@@ -95,25 +96,25 @@ class _IntroDialogState extends ConsumerState<_IntroDialog> {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      settingSection(context, '使用习惯'),
+      settingSection(context, context.l10n.usageHabits),
       SettingRow(
         icon: Icons.bolt_outlined,
-        title: '生成提示词后自动出图',
-        desc: '提示词生成完成后立即开始出图',
+        title: context.l10n.autoDraw,
+        desc: context.l10n.autoDrawDesc,
         value: _draft.autoGenerate,
         onChanged: (v) => _edit((o) => o.copyWith(autoGenerate: v)),
       ),
       SettingRow(
         icon: Icons.image_outlined,
-        title: '在对话内显示图片',
-        desc: '生成的图片显示在对话内,同时保存至图库',
+        title: context.l10n.inlineImages,
+        desc: context.l10n.inlineImagesDesc,
         value: _draft.inlineImage,
         onChanged: (v) => _edit((o) => o.copyWith(inlineImage: v)),
       ),
       SettingRow(
         icon: Icons.draw_outlined,
-        title: '自动写入创作页',
-        desc: '生成的提示词自动写回创作页,无需手动导入',
+        title: context.l10n.autoWrite,
+        desc: context.l10n.autoWriteDesc,
         value: _draft.autoImport,
         onChanged: (v) => _edit((o) => o.copyWith(autoImport: v)),
       ),
@@ -134,7 +135,7 @@ class _IntroDialogState extends ConsumerState<_IntroDialog> {
         insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
         title: Row(
           children: [
-            const Expanded(child: Text('开始使用 AI 助手')),
+            Expanded(child: Text(context.l10n.startUsingAssistant)),
             Text(
               '${_page + 1} / 2',
               style: context.texts.labelMedium!.copyWith(
@@ -163,16 +164,16 @@ class _IntroDialogState extends ConsumerState<_IntroDialog> {
           if (_page == 0)
             FilledButton(
               onPressed: () => setState(() => _page = 1),
-              child: const Text('下一步'),
+              child: Text(context.l10n.next),
             )
           else ...[
             TextButton(
               onPressed: () => setState(() => _page = 0),
-              child: const Text('上一步'),
+              child: Text(context.l10n.previous),
             ),
             FilledButton(
               onPressed: () => _done(authorized),
-              child: const Text('开始使用'),
+              child: Text(context.l10n.getStarted),
             ),
           ],
         ],

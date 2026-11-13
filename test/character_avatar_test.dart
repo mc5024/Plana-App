@@ -56,16 +56,29 @@ void main() {
     expect(back.characters.single.avatar, '/data/previews/a.png');
   });
 
-  test('从库里追加:带上头像,名字取条目名', () {
+  test('从库里追加:带上头像和条目 id,名字取条目名', () {
     final gen = _notifier();
     final n = gen.addNamedCharactersFrom([
-      (name: '初音', positive: 'hatsune_miku', negative: '', avatar: 'u1'),
-      (name: '', positive: 'kagamine_rin', negative: '', avatar: null),
+      (
+        name: '初音',
+        positive: 'hatsune_miku',
+        negative: '',
+        avatar: 'u1',
+        source: 'e1',
+      ),
+      (
+        name: '',
+        positive: 'kagamine_rin',
+        negative: '',
+        avatar: null,
+        source: null,
+      ),
     ]);
     expect(n, 2);
     final chars = gen.state.characters;
     expect([for (final c in chars) c.name], ['初音', '角色 2']);
     expect([for (final c in chars) c.avatar], ['u1', null]);
+    expect([for (final c in chars) c.source], ['e1', null]);
   });
 
   test('点头像换人:内容整份换掉、草稿清空,站位与开关不动', () {
@@ -87,8 +100,10 @@ void main() {
       positive: 'hatsune_miku',
       negative: 'bad hands',
       avatar: 'u1',
+      source: 'e1',
     );
     final c = gen.state.characters.single;
+    expect(c.source, 'e1');
     expect(c.name, '初音');
     expect(c.positive, 'hatsune_miku');
     expect(c.negative, 'bad hands');
@@ -102,13 +117,14 @@ void main() {
   test('换成没有预览图的条目:头像清掉;条目没名字就留原名', () {
     final gen = _notifier();
     gen.addNamedCharactersFrom([
-      (name: '初音', positive: 'a', negative: '', avatar: 'u1'),
+      (name: '初音', positive: 'a', negative: '', avatar: 'u1', source: 'e1'),
     ]);
     final id = gen.state.characters.single.id;
 
     gen.fillCharacterFrom(id, name: '', positive: 'b', negative: '');
     final c = gen.state.characters.single;
     expect(c.avatar, isNull);
+    expect(c.source, isNull, reason: '来源跟着条目换');
     expect(c.name, '初音');
     expect(c.positive, 'b');
   });

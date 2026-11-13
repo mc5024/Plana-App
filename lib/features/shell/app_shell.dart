@@ -31,6 +31,7 @@ import '../update/update_service.dart';
 import '../update/update_sheet.dart' show showUpdateSheet;
 import 'float_theme_intro.dart';
 import 'shell_state.dart';
+import '../../l10n/l10n.dart';
 
 /// 全局骨架:5 tab 底部导航(AI 那格可藏)+ PageView 切页。
 ///
@@ -204,9 +205,9 @@ class _AppShellState extends ConsumerState<AppShell> {
       if (next.noToken) {
         hintSnack(
           context,
-          '请先在「我的」页设置 NovelAI API Token',
+          context.l10n.setTokenFirst,
           icon: Icons.key_off_outlined,
-          actionLabel: '去设置',
+          actionLabel: context.l10n.goToSettings,
           onAction: () =>
               ref.read(shellIndexProvider.notifier).select(kTabProfile),
         );
@@ -229,20 +230,20 @@ class _AppShellState extends ConsumerState<AppShell> {
       final name = ref.read(albumsProvider).name(next.target.albumId);
       hintSnack(
         context,
-        '新图片已保存到「$name」',
+        context.l10n.savedToAlbum(name),
         icon: Icons.photo_library_outlined,
-        actionLabel: '查看',
+        actionLabel: context.l10n.view,
         onAction: () {
           if (!mounted) return;
           if (ref.read(inpaintSessionProvider) != null) {
-            hintSnack(context, '结束编辑后可查看新图片');
+            hintSnack(context, context.l10n.viewAfterEditing);
             return;
           }
           if (!ref
               .read(galleryProvider)
               .results
               .any((r) => r.id == next.imageId)) {
-            hintSnack(context, '这张图片已被删除');
+            hintSnack(context, context.l10n.imageDeleted);
             return;
           }
           final target = ref.read(albumsProvider).exists(next.target.albumId)
@@ -306,19 +307,19 @@ class _AppShellState extends ConsumerState<AppShell> {
                 Symbols.draw_rounded,
                 selected: true,
               ),
-              label: '创作',
+              label: context.l10n.tabCreate,
             ),
-            const NavigationDestination(
-              icon: _NavIcon(
+            NavigationDestination(
+              icon: const _NavIcon(
                 Icons.photo_library_outlined,
                 Symbols.photo_library_rounded,
               ),
-              selectedIcon: _NavIcon(
+              selectedIcon: const _NavIcon(
                 Icons.photo_library,
                 Symbols.photo_library_rounded,
                 selected: true,
               ),
-              label: '图库',
+              label: context.l10n.gallery,
             ),
             if (showAi)
               const NavigationDestination(
@@ -333,26 +334,26 @@ class _AppShellState extends ConsumerState<AppShell> {
                 ),
                 label: 'AI',
               ),
-            const NavigationDestination(
-              icon: _NavIcon(
+            NavigationDestination(
+              icon: const _NavIcon(
                 Icons.lightbulb_outline,
                 Symbols.lightbulb_rounded,
               ),
-              selectedIcon: _NavIcon(
+              selectedIcon: const _NavIcon(
                 Icons.lightbulb,
                 Symbols.lightbulb_rounded,
                 selected: true,
               ),
-              label: '灵感',
+              label: context.l10n.tabInspiration,
             ),
-            const NavigationDestination(
-              icon: _NavIcon(Icons.person_outline, Symbols.person_rounded),
-              selectedIcon: _NavIcon(
+            NavigationDestination(
+              icon: const _NavIcon(Icons.person_outline, Symbols.person_rounded),
+              selectedIcon: const _NavIcon(
                 Icons.person,
                 Symbols.person_rounded,
                 selected: true,
               ),
-              label: '我的',
+              label: context.l10n.tabProfile,
             ),
           ],
         ),

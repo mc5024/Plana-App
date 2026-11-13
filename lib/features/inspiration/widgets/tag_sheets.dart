@@ -8,6 +8,7 @@ import '../public_tags.dart';
 import '../tag_library.dart';
 import '../tag_models.dart';
 import 'prompt_chips.dart';
+import '../../../l10n/l10n.dart';
 
 /// 灵感页的弹层:条目详情、标签池管理(新建/编辑走全屏 TagEditorPage)。
 
@@ -93,7 +94,7 @@ class _DetailSheet extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(18, 2, 18, 0),
                 child: Text(
-                  '作者 $authorLabel',
+                  context.l10n.authorNamed(authorLabel),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: context.texts.bodySmall!.copyWith(
@@ -133,10 +134,10 @@ class _DetailSheet extends ConsumerWidget {
                       ),
                     ],
                     const SizedBox(height: 12),
-                    _block(context, '正向', e.positive),
+                    _block(context, context.l10n.positiveLabel, e.positive),
                     if (e.negative.trim().isNotEmpty) ...[
                       const SizedBox(height: 10),
-                      _block(context, '负面', e.negative),
+                      _block(context, context.l10n.negativeLabel, e.negative),
                     ],
                   ],
                 ),
@@ -149,11 +150,15 @@ class _DetailSheet extends ConsumerWidget {
                   await Clipboard.setData(ClipboardData(text: e.positive));
                   if (context.mounted) {
                     Navigator.pop(context);
-                    hintSnack(context, '已复制提示词', icon: Icons.copy);
+                    hintSnack(
+                      context,
+                      context.l10n.promptCopied,
+                      icon: Icons.copy,
+                    );
                   }
                 },
                 icon: const Icon(Icons.copy, size: 18),
-                label: const Text('复制提示词'),
+                label: Text(context.l10n.copyPrompt),
                 style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
               ),
             ),
@@ -226,7 +231,11 @@ class _PoolSheetState extends ConsumerState<_PoolSheet> {
     if (ok) {
       _input.clear();
     } else {
-      hintSnack(context, '标签已存在', icon: Icons.error_outline);
+      hintSnack(
+        context,
+        context.l10n.tagExistsShort,
+        icon: Icons.error_outline,
+      );
     }
   }
 
@@ -246,7 +255,11 @@ class _PoolSheetState extends ConsumerState<_PoolSheet> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
-            child: _sheetTitle(context, Icons.tune, '${def.label}标签池'),
+            child: _sheetTitle(
+              context,
+              Icons.tune,
+              context.l10n.catTagPool(def.label),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
@@ -257,7 +270,7 @@ class _PoolSheetState extends ConsumerState<_PoolSheet> {
                     controller: _input,
                     decoration: InputDecoration(
                       isDense: true,
-                      hintText: '新建标签…',
+                      hintText: context.l10n.newTagEllipsis,
                       filled: true,
                       fillColor: scheme.surfaceContainerHigh,
                       border: OutlineInputBorder(
@@ -273,7 +286,10 @@ class _PoolSheetState extends ConsumerState<_PoolSheet> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton.tonal(onPressed: _add, child: const Text('添加')),
+                FilledButton.tonal(
+                  onPressed: _add,
+                  child: Text(context.l10n.add),
+                ),
               ],
             ),
           ),
@@ -282,7 +298,7 @@ class _PoolSheetState extends ConsumerState<_PoolSheet> {
                 ? Padding(
                     padding: const EdgeInsets.all(28),
                     child: Text(
-                      '暂无标签',
+                      context.l10n.noTags,
                       textAlign: TextAlign.center,
                       style: context.texts.bodySmall!.copyWith(
                         color: scheme.onSurfaceVariant,
@@ -347,9 +363,10 @@ class _PoolSheetState extends ConsumerState<_PoolSheet> {
                                       n == 0 ||
                                       await confirmDialog(
                                         context,
-                                        title: '删除标签「$t」?',
-                                        message: '$n 个条目会摘掉该标签,条目本身保留。',
-                                        confirmLabel: '删除',
+                                        title: context.l10n.deleteTagQ(t),
+                                        message: context.l10n
+                                            .deleteTagEntriesBody(n),
+                                        confirmLabel: context.l10n.delete,
                                       );
                                   if (ok) {
                                     await notifier.removePoolTag(widget.cat, t);
@@ -410,7 +427,11 @@ class _TagPickSheetState extends ConsumerState<_TagPickSheet> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
-            child: _sheetTitle(context, Icons.sell_outlined, '添加标签'),
+            child: _sheetTitle(
+              context,
+              Icons.sell_outlined,
+              context.l10n.addTag,
+            ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
@@ -421,7 +442,7 @@ class _TagPickSheetState extends ConsumerState<_TagPickSheet> {
                     controller: _input,
                     decoration: InputDecoration(
                       isDense: true,
-                      hintText: '新建标签…',
+                      hintText: context.l10n.newTagEllipsis,
                       filled: true,
                       fillColor: scheme.surfaceContainerHigh,
                       border: OutlineInputBorder(
@@ -445,7 +466,7 @@ class _TagPickSheetState extends ConsumerState<_TagPickSheet> {
                     final t = _input.text.trim();
                     if (t.isNotEmpty) Navigator.pop(context, t);
                   },
-                  child: const Text('使用'),
+                  child: Text(context.l10n.use),
                 ),
               ],
             ),

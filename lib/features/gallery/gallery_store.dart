@@ -12,6 +12,17 @@ import '../generate/models.dart' show GenerateState;
 import '../generate/state_codec.dart';
 import 'models.dart';
 
+/// 一张图的检索元数据(见 gallery_search):[text] 已按 normalizeSearchText 归一;
+/// 后三项是图库按角色 / 画风归类认的来源 —— [ids] 灵感库条目 id(分区与角色卡
+/// 记下的),[cards] 启用的角色卡名,[folds] 草稿里的折叠组名。
+typedef GallerySearchMeta = ({
+  String model,
+  String text,
+  List<String> ids,
+  List<String> cards,
+  List<String> folds,
+});
+
 /// 图库持久化(`<support>/gallery/`):每张结果 `images/<id>.png` 原图 +
 /// `thumbs/<id>.jpg` 缩略图(带透明的是 .png)+ `inputs/<id>.json` 参数快照(参考图外置
 /// blob 仓),旁挂 index.json(顺序/选中/发号器/回收站)。启动只读索引,像素
@@ -440,18 +451,23 @@ class GalleryStore {
   ///
   ///   1 → 2:禁用的角色卡不再进索引(旧版把它们也收了,搜得到图里没画的东西,
   ///          按角色分组也跟着归错)。
-  static const _searchVersion = 2;
+  ///   2 → 3:多存来源(灵感库条目 id、角色卡名、折叠组名);换行算分隔。
+  static const _searchVersion = 3;
 
   /// 检索索引读入;空/坏/**版本不对** → 空表(回填会重扫快照补齐)。
-  /// 值是结构化 record,与 gallery_search 的 GallerySearchMeta 结构同型
-  /// (record 按结构判型,这里不 import 上层 feature 文件,避免环)。
-  Future<Map<String, ({String model, String text})>> readSearchIndex() async {
+  Future<Map<String, GallerySearchMeta>> readSearchIndex() async {
     try {
       if (!await _searchFile.exists()) return const {};
       final j = jsonDecode(await _searchFile.readAsString());
       if (j is! Map || j['v'] != _searchVersion || j['items'] is! Map) {
         return const {};
       }
+      List<String> strs(Object? v) => v is List
+          ? [
+              for (final x in v)
+                if (x is String) x,
+            ]
+          : const [];
       return {
         for (final e in (j['items'] as Map).entries)
           if (e.key is String &&
@@ -460,6 +476,9 @@ class GalleryStore {
             e.key as String: (
               model: ((e.value as Map)['m'] as String?) ?? '',
               text: (e.value as Map)['t'] as String,
+              ids: strs((e.value as Map)['i']),
+              cards: strs((e.value as Map)['c']),
+              folds: strs((e.value as Map)['f']),
             ),
       };
     } catch (_) {
@@ -469,9 +488,9 @@ class GalleryStore {
 
   // 检索索引防抖写(与主索引同节奏)。窗口内被杀 → 下次启动回填重建,无妨。
   Timer? _searchTimer;
-  Map<String, ({String model, String text})>? _searchPending;
+  Map<String, GallerySearchMeta>? _searchPending;
 
-  void writeSearchIndex(Map<String, ({String model, String text})> byId) {
+  void writeSearchIndex(Map<String, GallerySearchMeta> byId) {
     _searchPending = byId;
     _searchTimer?.cancel();
     _searchTimer = Timer(const Duration(milliseconds: 400), () {
@@ -485,7 +504,13 @@ class GalleryStore {
             'v': _searchVersion,
             'items': {
               for (final e in m.entries)
-                e.key: {'m': e.value.model, 't': e.value.text},
+                e.key: {
+                  'm': e.value.model,
+                  't': e.value.text,
+                  if (e.value.ids.isNotEmpty) 'i': e.value.ids,
+                  if (e.value.cards.isNotEmpty) 'c': e.value.cards,
+                  if (e.value.folds.isNotEmpty) 'f': e.value.folds,
+                },
             },
           }),
         );

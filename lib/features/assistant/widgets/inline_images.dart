@@ -29,6 +29,7 @@ import '../../generate/widgets/common.dart' show StripeThumb;
 import '../../shell/shell_state.dart';
 import '../assistant_models.dart';
 import '../assistant_state.dart';
+import '../../../l10n/l10n.dart';
 
 /// 单张最高多少。宽度撑满对话区,超过这个高度的竖图按高度回算宽度 ——
 /// 不封顶的话一张 832×1216 能吃掉一整屏,往下翻不到按钮。
@@ -277,7 +278,7 @@ class _AgainButton extends ConsumerWidget {
         // 图本体点了是去图库,这颗要吃掉自己的点击,别顺着漏下去
         onTap: () => ref.read(assistantProvider.notifier).generateFrom(msgId),
         child: Tooltip(
-          message: '重新生成',
+          message: context.l10n.regenerate,
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Icon(Icons.refresh, size: 24, color: scheme.primary),

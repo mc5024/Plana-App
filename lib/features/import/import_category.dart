@@ -21,6 +21,7 @@ import '../generate/models.dart'
         kreaStepsRange,
         providerOfModel;
 import 'image_metadata.dart';
+import '../../l10n/l10n.dart';
 
 /// `comfy` 是历史名字,实际含义是 **Anima**(那时 ComfyUI 图只可能来自 anima)。
 /// 后加的 `krea` 也跑在 ComfyUI 上,采样器那套甚至是同一张表,但档位不同、
@@ -92,9 +93,9 @@ bool isCrossCategory(ImageMetadata? meta, ModelCategory target) =>
 String foreignModelReason(ImageMetadata meta, ModelCategory target) {
   final other = comfyModelOfImage(meta);
   if (other != null && other != target) {
-    return '这张图用的是 ${categoryLabel(other)} 的模型';
+    return l10nNow.foreignModel(categoryLabel(other));
   }
-  return '不是本机支持的模型';
+  return l10nNow.notLocalModel;
 }
 
 /// 导入这段提示词到目标类别时要不要转换权重语法。

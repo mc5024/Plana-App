@@ -13,6 +13,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:image/image.dart' as img;
 
+import '../../l10n/l10n.dart';
 import 'inpaint_ops.dart' show MaskGrid;
 
 /// 打码样式。
@@ -29,8 +30,8 @@ enum CensorStyle {
 
 extension CensorStyleX on CensorStyle {
   String get label => switch (this) {
-    CensorStyle.mosaic => '马赛克',
-    CensorStyle.solid => '纯色',
+    CensorStyle.mosaic => l10nNow.censorMosaic,
+    CensorStyle.solid => l10nNow.censorSolid,
   };
 }
 
@@ -42,22 +43,23 @@ const int kCensorBlockMax = 12;
 ///
 /// 只给中性灰阶:打码是**遮盖**,不是装饰 —— 花哨的颜色只会把视线更往那儿引。
 /// 黑白两端覆盖了绝大多数成品的做法,中间两档留给深浅背景上的过渡。
-const List<(int, String)> kCensorColors = [
-  (0xFF000000, '黑'),
-  (0xFF444444, '深灰'),
-  (0xFFBBBBBB, '浅灰'),
-  (0xFFFFFFFF, '白'),
+const List<int> kCensorColors = [
+  0xFF000000,
+  0xFF444444,
+  0xFFBBBBBB,
+  0xFFFFFFFF,
 ];
 
 const int kCensorColorDefault = 0xFF000000;
 
-/// 颜色的中文名(不在预设里时回落成十六进制)。
-String censorColorLabel(int color) {
-  for (final (c, name) in kCensorColors) {
-    if (c == color) return name;
-  }
-  return '#${(color & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
-}
+/// 颜色名(不在预设里时回落成十六进制)。
+String censorColorLabel(int color) => switch (color) {
+  0xFF000000 => l10nNow.colorBlack,
+  0xFF444444 => l10nNow.colorDarkGray,
+  0xFFBBBBBB => l10nNow.colorLightGray,
+  0xFFFFFFFF => l10nNow.colorWhite,
+  _ => '#${(color & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}',
+};
 
 /// [censorPngSync] 的入参。具名字段而不是位置元组 —— 五个同类型参数排一起,
 /// 位置写错编译器不会拦。

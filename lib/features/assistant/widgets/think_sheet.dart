@@ -18,6 +18,7 @@ import '../../generate/widgets/common.dart' show dropFocusSoon;
 import '../agent_model.dart' show assistantEndpointProvider;
 import '../assistant_settings.dart';
 import '../direct_agent.dart' show thinkLevelNote;
+import '../../../l10n/l10n.dart';
 
 Future<void> showThinkSheet(BuildContext context) async {
   await showModalBottomSheet<void>(
@@ -55,12 +56,12 @@ class _ThinkSheet extends ConsumerWidget {
     }
 
     return SettingSheet(
-      title: '调整模型思考深度',
+      title: context.l10n.adjustThinkDepth,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
           child: Text(
-            '并非所有模型都支持深度调整,请参考模型和提供商的文档。',
+            context.l10n.thinkDepthNote,
             style: context.texts.bodySmall!.copyWith(
               color: scheme.onSurfaceVariant,
               height: 1.6,

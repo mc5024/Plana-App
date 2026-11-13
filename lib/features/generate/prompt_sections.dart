@@ -247,12 +247,13 @@ String _joinDrafts(
 ///
 /// 入库、「重新生成」、图库搜索、图片元数据都按这一整串走,和发给 NAI 的一致;
 /// 草稿也照样拼一份,导回创作页时折叠还在。拼进去的那几格记在
-/// [GenerateState.composedSections]。没有分区原样返回。
+/// [GenerateState.composedSections],它们来自的灵感库条目记在
+/// [GenerateState.usedEntries]。没有分区原样返回。
 GenerateState composeSections(GenerateState s) {
   if (s.sections.isEmpty) {
-    return s.composedSections.isEmpty
+    return s.composedSections.isEmpty && s.usedEntries.isEmpty
         ? s
-        : s.copyWith(composedSections: const []);
+        : s.copyWith(composedSections: const [], usedEntries: const []);
   }
   final pos = joinSections(s.sections, s.prompt, positive: true);
   final neg = joinSections(s.sections, s.negativePrompt, positive: false);
@@ -275,6 +276,11 @@ GenerateState composeSections(GenerateState s) {
     promptRaw: draft(posDraft, pos),
     negativePromptRaw: draft(negDraft, neg),
     sections: const [],
+    usedEntries: {
+      for (final x in s.sections)
+        if (!x.isMain && x.enabled && _clean(x.positive).isNotEmpty)
+          ...x.sources,
+    }.toList(),
     composedSections: [
       for (final x in _withMain(s.sections))
         if (x.isMain)
@@ -478,6 +484,7 @@ GenerateState? mergeSectionsIn(GenerateState s, Set<String> ids) {
                 negative: n,
                 negativeRaw: draftOf(nDraft, n),
                 enabled: on,
+                sources: {for (final y in picked) ...y.sources}.toList(),
               )
             : x,
     ]),
@@ -510,7 +517,7 @@ List<PromptSection> restoreSection(
 }
 
 /// 灵感库条目各自成一格,不折叠:名字取条目名(调用方换成分类名),正负向原样
-/// 放进这一格。新格子一律接在最后,按加进来的先后往下排 —— 别按分类插到
+/// 放进这一格,条目 id 记进 [PromptSection.sources]。新格子一律接在最后,按加进来的先后往下排 —— 别按分类插到
 /// 主体前后,那样主体看着像在跳。
 ///
 /// 去重同以前追加时:词已经全在提示词里的跳过;同名同词的格子已经在
@@ -532,7 +539,10 @@ List<PromptSection> withEntrySections(
       (s) => !s.isMain && s.name.trim() == name && s.positive.trim() == pos,
     );
     if (same >= 0) {
-      out[same] = out[same].copyWith(enabled: true);
+      out[same] = out[same].copyWith(
+        enabled: true,
+        sources: {...out[same].sources, e.id}.toList(),
+      );
       continue;
     }
     final toks = tokenizeSet(pos);
@@ -546,6 +556,7 @@ List<PromptSection> withEntrySections(
       negative: neg,
       negativeRaw: draftOf(rawNeg, neg),
       artist: e.category == TagCategory.artist,
+      sources: [e.id],
     );
     out.add(sec);
   }

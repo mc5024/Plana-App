@@ -2,6 +2,7 @@ import 'package:flutter/material.dart' show IconData, Icons;
 
 import '../../core/util/prompt_tokens.dart';
 import '../editor/editor_models.dart' show foldWrap, outputOf;
+import '../../l10n/l10n.dart';
 
 /// 灵感页(Tag 管理器)数据模型,对齐 web tag-manager 的注册表与条目结构。
 /// 内置四类的 id 沿用 web(character/artist-style/scene/other),云备份四类键
@@ -41,10 +42,10 @@ enum TagCardLayout { portrait, landscape, square, none }
 
 extension TagCardLayoutX on TagCardLayout {
   String get label => switch (this) {
-    TagCardLayout.portrait => '竖图',
-    TagCardLayout.landscape => '横图',
-    TagCardLayout.square => '方图',
-    TagCardLayout.none => '无图',
+    TagCardLayout.portrait => l10nNow.layoutPortrait,
+    TagCardLayout.landscape => l10nNow.layoutLandscape,
+    TagCardLayout.square => l10nNow.layoutSquare,
+    TagCardLayout.none => l10nNow.layoutNoImage,
   };
 
   double get aspect => switch (this) {
@@ -109,7 +110,7 @@ class TagCategoryDef {
     id,
     label,
     kTagCategoryIcons[iconName] ?? Icons.sell_outlined,
-    searchHint: '搜索名称 / 提示词…',
+    searchHint: l10nNow.searchNamePromptHint,
     maxSelectable: 20,
     previewAspect: layout.aspect,
     hasPreview: layout != TagCardLayout.none,
@@ -148,20 +149,21 @@ class TagCategoryDef {
   final TagCardLayout? layout;
 
   /// 换个名字(内置类别改名用),其余不变。
-  TagCategoryDef withLabel(String label) => TagCategoryDef(
-    key,
-    webId,
-    label,
-    icon,
-    searchHint: searchHint,
-    maxSelectable: maxSelectable,
-    previewAspect: previewAspect,
-    hasPreview: hasPreview,
-    hasPublic: hasPublic,
-    alphabetRail: alphabetRail,
-    iconName: iconName,
-    layout: layout,
-  );
+  TagCategoryDef withLabel(String label, {String? searchHint}) =>
+      TagCategoryDef(
+        key,
+        webId,
+        label,
+        icon,
+        searchHint: searchHint ?? this.searchHint,
+        maxSelectable: maxSelectable,
+        previewAspect: previewAspect,
+        hasPreview: hasPreview,
+        hasPublic: hasPublic,
+        alphabetRail: alphabetRail,
+        iconName: iconName,
+        layout: layout,
+      );
 
   Map<String, dynamic> toJson() => {
     'id': webId,
@@ -250,19 +252,38 @@ void syncCustomTagCategories(
 }
 
 /// 法典页签的名字(可改名)。
-String codexTabLabel() => _labels['codex'] ?? '法典';
+String codexTabLabel() => _labels['codex'] ?? builtinCategoryLabel('codex');
+
+/// 内置类别(含法典)没改过名时的名字,按界面语言取。
+String builtinCategoryLabel(String webId) => switch (webId) {
+  'character' => l10nNow.catCharacter,
+  'artist-style' => l10nNow.catStyle,
+  'scene' => l10nNow.catScene,
+  'other' => l10nNow.catOther,
+  'codex' => l10nNow.sectionCodex,
+  _ => webId,
+};
+
+String _builtinSearchHint(String webId) => switch (webId) {
+  'character' => l10nNow.searchCharHint,
+  'artist-style' => l10nNow.searchStyleHint,
+  'scene' => l10nNow.searchSceneHint,
+  _ => l10nNow.searchNamePromptHint,
+};
 
 TagCategoryDef tagCategoryDef(TagCategory c) {
   for (final d in kTagCategoryDefs) {
     if (d.key == c) {
-      final l = _labels[d.webId];
-      return l == null ? d : d.withLabel(l);
+      return d.withLabel(
+        _labels[d.webId] ?? builtinCategoryLabel(d.webId),
+        searchHint: _builtinSearchHint(d.webId),
+      );
     }
   }
   return _customDefs[c.name] ??
       TagCategoryDef.custom(
         id: c.name,
-        label: '未命名',
+        label: l10nNow.untitled,
         iconName: 'Tag',
         layout: TagCardLayout.square,
       );
@@ -276,9 +297,9 @@ enum TagSort { number, time, author }
 
 extension TagSortX on TagSort {
   String get label => switch (this) {
-    TagSort.number => '编号',
-    TagSort.time => '最新',
-    TagSort.author => '作者',
+    TagSort.number => l10nNow.sortNumber,
+    TagSort.time => l10nNow.sortLatest,
+    TagSort.author => l10nNow.sortAuthor,
   };
 }
 
@@ -559,12 +580,12 @@ Map<String, dynamic> buildBackupFile(
   Map<String, dynamic> j,
 ) {
   if (j['identifier'] != kBackupFileIdentifier) {
-    throw const FormatException('不是 Tag 管理器的备份文件');
+    throw FormatException(l10nNow.notTagBackup);
   }
   final cat = j['category'] is String
       ? tagCategoryByWebId(j['category'] as String)
       : null;
-  if (cat == null) throw const FormatException('备份文件的分类无法识别');
+  if (cat == null) throw FormatException(l10nNow.backupCatUnknown);
   return (
     cat: cat,
     items: [

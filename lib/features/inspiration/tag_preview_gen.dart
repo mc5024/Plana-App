@@ -16,6 +16,7 @@ import '../generate/bot_request.dart';
 import '../generate/models.dart';
 import '../generate/nai_request.dart';
 import 'tag_models.dart';
+import '../../l10n/l10n.dart';
 
 /// 编辑器预览图生成:参数与提示词模板逐字对齐 web(useOCManager
 /// generatePreviewBase64 / useArtistManager buildPreviewPrompts)。
@@ -93,7 +94,7 @@ Future<Uint8List> generateTagPreview(
       artistPreviewPrompts(p)[slot % 4],
       _kArtistNegative,
     ),
-    _ => throw StateError('该分类不支持生成预览'),
+    _ => throw StateError(l10nNow.noPreviewForCat),
   };
 
   final s = GenerateState.initial().copyWith(
@@ -145,7 +146,7 @@ Future<Uint8List> generateTagPreview(
     base,
   ) async {
     if (token == null || token.isEmpty) {
-      throw NaiException('请先在「我的」页设置 NovelAI API Token');
+      throw NaiException(l10nNow.setTokenFirst);
     }
     // 打哪台机器跟着闸门给的那把 Key 走。
     final client = ref.read(naiClientProvider(base));
@@ -171,6 +172,6 @@ Future<Uint8List> generateTagPreview(
     }
     return got;
   });
-  if (last == null) throw NaiException('未收到图片数据');
+  if (last == null) throw NaiException(l10nNow.noImageData);
   return last;
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/editor_theme.dart';
 import '../data/suggestions.dart';
+import '../../../l10n/l10n.dart';
 
 /// 类型 → 图标 + 颜色(横向态与竖向态共用)
 (IconData, Color) suggestionGlyph(BuildContext context, SuggestionKind kind) {
@@ -179,9 +180,11 @@ class CompletionBar extends StatelessWidget {
       : 'rows';
 
   Widget _body(BuildContext context, List<Suggestion> entities) {
-    if (translating) return _busyHint(context, '翻译中…');
+    if (translating) return _busyHint(context, context.l10n.translating);
     if (result.isEmpty) {
-      return loading ? _busyHint(context, '查询「$query」…') : _emptyHint(context);
+      return loading
+          ? _busyHint(context, context.l10n.querying(query))
+          : _emptyHint(context);
     }
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -215,7 +218,7 @@ class CompletionBar extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                '无匹配 · 点此把「$query」加为新标签',
+                context.l10n.noMatchAddTag(query),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: context.texts.bodySmall!.copyWith(
@@ -283,7 +286,7 @@ class CompletionBar extends StatelessWidget {
       case SuggestionKind.oc:
         return s.source;
       case SuggestionKind.artist:
-        return '画风';
+        return l10nNow.sectionStyle;
       case SuggestionKind.character:
         final t = transOf(s);
         if (t == null || t.isEmpty) return s.source;

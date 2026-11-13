@@ -12,6 +12,7 @@ import '../../core/store/app_stores.dart';
 import 'models.dart';
 import 'nai_request.dart' show naiModelId;
 import 'vibe_cache.dart';
+import '../../l10n/l10n.dart';
 
 /// 统一 Vibe 编码服务:内容寻址缓存优先,miss 时按当前授权模式
 /// (直连 NAI / bot 后端)现场编码(扣 2 Anlas)并回填缓存。
@@ -115,7 +116,9 @@ class VibeEncoder {
     } else {
       // 主账号那把 —— 连它的接口地址一起,第三方的 key 得打自己那台机器。
       final key = await _ref.read(primaryNaiKeyProvider.future);
-      if (key == null || key.token.isEmpty) throw StateError('未设置令牌,无法编码');
+      if (key == null || key.token.isEmpty) {
+        throw StateError(l10nNow.noTokenCantEncode);
+      }
       enc = await _ref
           .read(naiClientProvider(key.endpoint))
           .encodeVibe(

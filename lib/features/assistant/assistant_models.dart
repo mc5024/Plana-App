@@ -11,6 +11,7 @@ import '../generate/models.dart' show CharacterPrompt, CharTab, PromptSection;
 import '../generate/state_codec.dart' show decodeSections, encodeSections;
 import 'assistant_mode.dart';
 import 'prompt_diff.dart';
+import '../../l10n/l10n.dart';
 
 enum MsgRole { user, ai, error }
 
@@ -74,10 +75,10 @@ const kDegradedTool = 'degraded';
 
 /// 工具名 → 界面上的中文。与灵感页的分类名对齐(那边叫「画风」,不叫画师串)。
 String toolLabel(String name) => switch (name) {
-  'search_character' => '角色库',
-  'search_artist' || 'random_artist' => '画风库',
-  'lookup_tag' => 'Tag 百科',
-  kDegradedTool => '安全模式',
+  'search_character' => l10nNow.toolCharLib,
+  'search_artist' || 'random_artist' => l10nNow.toolStyleLib,
+  'lookup_tag' => l10nNow.toolTagWiki,
+  kDegradedTool => l10nNow.toolSafeMode,
   _ => name,
 };
 
@@ -97,7 +98,7 @@ String toolSubject(Map<String, dynamic> args) {
   }
   // random_artist 只有个数,那也是信息:「随机 3 个」比空着强
   final n = args['count'];
-  if (n is num && n > 0) return '随机 ${n.toInt()} 个';
+  if (n is num && n > 0) return l10nNow.randomN(n.toInt());
   return '';
 }
 
@@ -110,7 +111,7 @@ String toolSubject(Map<String, dynamic> args) {
 /// 一处都没查、只有它时直接报它,不能报「查了 0 处」。
 String toolHeadline(List<ToolTrace> tools) {
   final n = tools.where((t) => t.name != kDegradedTool).length;
-  return n > 0 ? '查了 $n 处资料' : toolLabel(kDegradedTool);
+  return n > 0 ? l10nNow.lookedUpN(n) : toolLabel(kDegradedTool);
 }
 
 /// AI 助手会写到创作页的那几样东西的快照。
@@ -619,7 +620,7 @@ class ArchivedSession {
         return m.text.trim();
       }
     }
-    return '未命名对话';
+    return l10nNow.untitledChat;
   }
 
   /// 副行取最后一句 AI 回复。

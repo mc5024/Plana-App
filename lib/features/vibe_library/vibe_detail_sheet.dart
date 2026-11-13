@@ -12,6 +12,8 @@ import '../generate/widgets/common.dart'
     show ParamSlider, confirmDialog, hintSnack;
 import 'naiv4vibe_codec.dart' show kEncodingKeyLabel;
 import 'vibe_library.dart';
+import '../../l10n/l10n.dart';
+import '../generate/display_names.dart';
 
 /// 「已编码」状态色(功能绿)—— 单一来源见 [FixedSemantic]。
 const _encOkColor = FixedSemantic.ok;
@@ -63,11 +65,12 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
   }
 
   Future<void> _rename(VibeEntry e) async {
-    final ctl = TextEditingController(text: e.name);
+    final shown = vibeDisplayName(context.l10n, e.name);
+    final ctl = TextEditingController(text: shown);
     final name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('重命名'),
+        title: Text(context.l10n.rename),
         content: TextField(
           controller: ctl,
           autofocus: true,
@@ -76,16 +79,16 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, ctl.text.trim()),
-            child: const Text('保存'),
+            child: Text(context.l10n.save),
           ),
         ],
       ),
     );
-    if (name != null && name.isNotEmpty) {
+    if (name != null && name.isNotEmpty && name != shown) {
       await ref.read(vibeLibraryProvider.notifier).updateMeta(e.id, name: name);
     }
   }
@@ -101,21 +104,29 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
       if (path != null && mounted) {
         hintSnack(
           context,
-          '已导出 $safe.naiv4vibe',
+          context.l10n.exportedName('$safe.naiv4vibe'),
           icon: Icons.check_circle_outline,
         );
       }
     } catch (err) {
-      if (mounted) hintSnack(context, '导出失败:$err', icon: Icons.error_outline);
+      if (mounted) {
+        hintSnack(
+          context,
+          context.l10n.exportFailed('$err'),
+          icon: Icons.error_outline,
+        );
+      }
     }
   }
 
   Future<void> _delete(VibeEntry e) async {
     final ok = await confirmDialog(
       context,
-      title: '删除 Vibe',
-      message: '「${e.name}」将从库中删除(文件与缩略图一并移除),不可恢复。',
-      confirmLabel: '删除',
+      title: context.l10n.deleteVibe,
+      message: context.l10n.deleteVibeBody(
+        vibeDisplayName(context.l10n, e.name),
+      ),
+      confirmLabel: context.l10n.delete,
     );
     if (!ok || !mounted) return;
     await ref.read(vibeLibraryProvider.notifier).delete(e.id);
@@ -130,7 +141,11 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
           (v.imageHash != null && v.imageHash == e.imageHash),
     );
     if (dup) {
-      hintSnack(context, '已在生成面板中', icon: Icons.info_outline);
+      hintSnack(
+        context,
+        context.l10n.alreadyInGenerate,
+        icon: Icons.info_outline,
+      );
       return;
     }
     final data = await ref
@@ -138,7 +153,7 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
         .loadForGenerate(e);
     if (!mounted) return;
     if (data == null) {
-      hintSnack(context, '无法读取该 Vibe 文件', icon: Icons.error_outline);
+      hintSnack(context, context.l10n.cantReadVibe, icon: Icons.error_outline);
       return;
     }
     final id = ref
@@ -155,7 +170,11 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
           sourceId: e.id,
         );
     if (id.isEmpty) {
-      hintSnack(context, '该 Vibe 没有可用的图片或编码', icon: Icons.error_outline);
+      hintSnack(
+        context,
+        context.l10n.vibeNoImageOrEncoding,
+        icon: Icons.error_outline,
+      );
       return;
     }
     if (mounted) Navigator.pop(context, true);
@@ -188,7 +207,7 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
               children: [
                 Expanded(
                   child: Text(
-                    e.name,
+                    vibeDisplayName(context.l10n, e.name),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: context.texts.titleMedium!.copyWith(
@@ -197,7 +216,7 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
                   ),
                 ),
                 IconButton(
-                  tooltip: '重命名',
+                  tooltip: context.l10n.rename,
                   visualDensity: VisualDensity.compact,
                   onPressed: () => _rename(e),
                   icon: Icon(
@@ -213,13 +232,13 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
                 _fmtTime(e.createdAt),
                 if (e.sizeBytes > 0)
                   '${(e.sizeBytes / 1024 / 1024).toStringAsFixed(2)} MB',
-                if (!e.hasImage) '仅编码(无原图)',
+                if (!e.hasImage) context.l10n.encodingOnlyNoImage,
               ].join(' · '),
               style: context.texts.labelSmall!.copyWith(color: scheme.outline),
             ),
             const SizedBox(height: 14),
             ParamSlider(
-              label: 'Strength 默认强度',
+              label: context.l10n.defaultStrength,
               value: _strength!,
               divisions: 100,
               onChanged: (v) {
@@ -230,7 +249,7 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
             const SizedBox(height: 4),
             if (e.hasImage)
               ParamSlider(
-                label: 'Info Extracted 默认信息提取',
+                label: context.l10n.defaultInfoExtracted,
                 value: _ie!,
                 divisions: 100,
                 onChanged: (v) {
@@ -242,7 +261,7 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Text(
-                  'Info Extracted 随编码固定,无原图不可调整。',
+                  context.l10n.ieFixedNoImage,
                   style: context.texts.labelSmall!.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
@@ -254,7 +273,7 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
             FilledButton.icon(
               onPressed: () => _addToGenerate(e),
               icon: const Icon(Icons.add_photo_alternate_outlined, size: 19),
-              label: const Text('添加到生成'),
+              label: Text(context.l10n.addToGenerate),
             ),
             const SizedBox(height: 8),
             Row(
@@ -263,7 +282,7 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
                   child: OutlinedButton.icon(
                     onPressed: () => _export(e),
                     icon: const Icon(Icons.ios_share, size: 17),
-                    label: const Text('导出'),
+                    label: Text(context.l10n.export),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -274,7 +293,7 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
                       foregroundColor: scheme.error,
                     ),
                     icon: const Icon(Icons.delete_outline, size: 17),
-                    label: const Text('删除'),
+                    label: Text(context.l10n.delete),
                   ),
                 ),
               ],
@@ -346,7 +365,7 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
                   Icon(Icons.memory, size: 18, color: scheme.onSurfaceVariant),
                   const SizedBox(width: 8),
                   Text(
-                    '编码',
+                    context.l10n.encodings,
                     style: context.texts.labelLarge!.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),
@@ -354,7 +373,7 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
                   const Spacer(),
                   if (waiting)
                     Text(
-                      '检查中…',
+                      context.l10n.checking,
                       style: context.texts.labelMedium!.copyWith(
                         color: scheme.outline,
                       ),
@@ -367,7 +386,9 @@ class _VibeDetailSheetState extends ConsumerState<VibeDetailSheet> {
                     ),
                     const SizedBox(width: 5),
                     Text(
-                      has ? '已编码 ${list.length}' : '未编码',
+                      has
+                          ? context.l10n.encodedN(list.length)
+                          : context.l10n.notEncoded,
                       style: context.texts.labelMedium!.copyWith(
                         color: has ? _encOkColor : scheme.onSurfaceVariant,
                         fontWeight: FontWeight.w700,

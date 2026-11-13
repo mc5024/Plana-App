@@ -159,7 +159,13 @@ void main() {
     });
 
     test('预设色都有中文名,非预设回落十六进制', () {
-      for (final (c, name) in kCensorColors) {
+      for (final (c, name) in [
+        (0xFF000000, '黑'),
+        (0xFF444444, '深灰'),
+        (0xFFBBBBBB, '浅灰'),
+        (0xFFFFFFFF, '白'),
+      ]) {
+        expect(kCensorColors, contains(c));
         expect(censorColorLabel(c), name);
       }
       expect(censorColorLabel(0xFF123456), '#123456');

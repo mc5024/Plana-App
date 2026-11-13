@@ -7,10 +7,11 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/editor_theme.dart';
-import '../../generate/widgets/common.dart' show hintSnack;
+import '../../generate/widgets/common.dart' show hintSnack, measureText;
 import '../data/suggestions.dart' show translationOf;
 import '../editor_models.dart';
 import '../../../core/util/haptics.dart';
+import '../../../l10n/l10n.dart';
 
 /// 词条栏 / 权重面板 —— 光标右邻是本标签正文时吸在键盘上方。
 /// 头部(名字·热度·翻译·维基·复制·收藏·关闭)+ 权重(括号快捷键 · 数值加减,长按持续)
@@ -232,8 +233,10 @@ class _TagPanelState extends State<TagPanel> {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        '处于权重组 ×${fmtMult(tok.groupMult)} · '
-                        '合计 ×${fmtMult(tok.effMult)}',
+                        context.l10n.weightGroupInfo(
+                          fmtMult(tok.groupMult),
+                          fmtMult(tok.effMult),
+                        ),
                         style: context.texts.labelSmall!.copyWith(
                           color: scheme.onSurfaceVariant,
                         ),
@@ -252,7 +255,7 @@ class _TagPanelState extends State<TagPanel> {
                               vertical: 5,
                             ),
                             child: Text(
-                              '选中整组',
+                              context.l10n.selectWholeGroup,
                               style: TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w600,
@@ -289,7 +292,7 @@ class _TagPanelState extends State<TagPanel> {
                           const SizedBox(width: 7),
                           Expanded(
                             child: Text(
-                              'SD 权重语法 · 点击转换为 NAI 格式',
+                              context.l10n.sdWeightConvert,
                               style: context.texts.labelMedium!.copyWith(
                                 color: scheme.onTertiaryContainer,
                                 fontWeight: FontWeight.w600,
@@ -312,7 +315,7 @@ class _TagPanelState extends State<TagPanel> {
             Row(
               children: [
                 Text(
-                  '权重',
+                  context.l10n.weight,
                   style: context.texts.bodyMedium!.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
@@ -369,71 +372,87 @@ class _TagPanelState extends State<TagPanel> {
             ),
             const SizedBox(height: 10),
             // 操作:清除权重 · 关联(点开展开)· 禁用 · 删除
-            Row(
-              children: [
-                Expanded(
-                  child: _action(
-                    context,
-                    '清除权重',
-                    enabled:
-                        on &&
-                        (tok.braceLevel != 0 ||
-                            (tok.numWeight - 1.0).abs() >= 0.005),
-                    onTap: widget.onClear,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _action(
-                    context,
-                    '关联',
-                    icon: widget.relatedLoading
-                        ? null
-                        : (_relatedOpen
-                              ? Icons.expand_less
-                              : Icons.expand_more),
-                    // 加载中:左侧转圈,按钮不置灰(点击暂无动作)
-                    leading: widget.relatedLoading
-                        ? SizedBox(
-                            width: 15,
-                            height: 15,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          )
-                        : null,
-                    enabled: widget.relatedLoading || hasRelated,
-                    selected: _relatedOpen,
-                    onTap: widget.relatedLoading
-                        ? () {}
-                        : () => setState(() => _relatedOpen = !_relatedOpen),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _action(
-                    context,
-                    tok.disabled ? '启用' : '禁用',
-                    icon: tok.disabled
-                        ? Icons.visibility
-                        : Icons.visibility_off,
-                    enabled: true,
-                    onTap: widget.onToggleDisabled,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _action(
-                    context,
-                    '删除',
-                    icon: Icons.delete_outline,
-                    danger: true,
-                    enabled: true,
-                    onTap: widget.onDelete,
-                  ),
-                ),
-              ],
+            LayoutBuilder(
+              builder: (context, c) {
+                final icons = _actionIconsFit(context, c.maxWidth, [
+                  context.l10n.related,
+                  context.l10n.enable,
+                  context.l10n.disableTag,
+                  context.l10n.delete,
+                ]);
+                return Row(
+                  children: [
+                    Expanded(
+                      child: _action(
+                        context,
+                        context.l10n.clearWeightShort,
+                        enabled:
+                            on &&
+                            (tok.braceLevel != 0 ||
+                                (tok.numWeight - 1.0).abs() >= 0.005),
+                        onTap: widget.onClear,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _action(
+                        context,
+                        context.l10n.related,
+                        icon: widget.relatedLoading
+                            ? null
+                            : (_relatedOpen
+                                  ? Icons.expand_less
+                                  : Icons.expand_more),
+                        // 加载中:左侧转圈,按钮不置灰(点击暂无动作)
+                        leading: widget.relatedLoading
+                            ? SizedBox(
+                                width: 15,
+                                height: 15,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              )
+                            : null,
+                        showIcon: icons,
+                        enabled: widget.relatedLoading || hasRelated,
+                        selected: _relatedOpen,
+                        onTap: widget.relatedLoading
+                            ? () {}
+                            : () =>
+                                  setState(() => _relatedOpen = !_relatedOpen),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _action(
+                        context,
+                        tok.disabled
+                            ? context.l10n.enable
+                            : context.l10n.disableTag,
+                        icon: tok.disabled
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                        showIcon: icons,
+                        enabled: true,
+                        onTap: widget.onToggleDisabled,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _action(
+                        context,
+                        context.l10n.delete,
+                        icon: Icons.delete_outline,
+                        showIcon: icons,
+                        danger: true,
+                        enabled: true,
+                        onTap: widget.onDelete,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
             // 关联标签:点「关联」展开一行横向滚动(定高,再多也不溢出;
             // Wrap 多行版在词多时撑破 dock 区,弃用)
@@ -521,8 +540,10 @@ class _TagPanelState extends State<TagPanel> {
                 Haptics.selection();
                 hintSnack(
                   context,
-                  '处于权重组 ×${fmtMult(tok.groupMult)} · '
-                  '合计 ×${fmtMult(tok.effMult)}',
+                  context.l10n.weightGroupInfo(
+                    fmtMult(tok.groupMult),
+                    fmtMult(tok.effMult),
+                  ),
                   icon: Icons.layers_outlined,
                 );
               }
@@ -566,7 +587,7 @@ class _TagPanelState extends State<TagPanel> {
           context,
           Icons.autorenew,
           color: scheme.tertiary,
-          tooltip: 'SD 权重语法 · 转成 NAI',
+          tooltip: context.l10n.sdWeightConvertShort,
           onTap: widget.sdConvert!,
         ),
         const SizedBox(width: _kGap),
@@ -617,7 +638,7 @@ class _TagPanelState extends State<TagPanel> {
       _denseIcon(
         context,
         Icons.backspace_outlined,
-        tooltip: '清除权重',
+        tooltip: context.l10n.clearWeight,
         enabled: canClear,
         onTap: widget.onClear,
       ),
@@ -630,7 +651,7 @@ class _TagPanelState extends State<TagPanel> {
         // 变成什么**:禁着的时候给一只睁眼(点了就启用)。
         tok.disabled ? Icons.visibility : Icons.visibility_off,
         color: tok.disabled ? scheme.primary : null,
-        tooltip: tok.disabled ? '启用' : '禁用',
+        tooltip: tok.disabled ? context.l10n.enable : context.l10n.disableTag,
         onTap: widget.onToggleDisabled,
       ),
       const SizedBox(width: _kGap),
@@ -638,7 +659,7 @@ class _TagPanelState extends State<TagPanel> {
         context,
         Icons.delete_outline,
         color: scheme.error,
-        tooltip: '删除',
+        tooltip: context.l10n.delete,
         onTap: widget.onDelete,
       ),
     ];
@@ -795,7 +816,7 @@ class _Header extends StatelessWidget {
                   children: [
                     Flexible(
                       child: Text(
-                        tok.name.isEmpty ? '标签' : tok.name,
+                        tok.name.isEmpty ? context.l10n.tagLabel : tok.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: context.texts.titleMedium!.copyWith(
@@ -849,7 +870,7 @@ class _Header extends StatelessWidget {
           icon: Icons.content_copy,
           onTap: () {
             Clipboard.setData(ClipboardData(text: tok.name));
-            hintSnack(context, '已复制标签', icon: Icons.check);
+            hintSnack(context, context.l10n.tagCopied, icon: Icons.check);
           },
         ),
         if (onToggleFavorite != null && tok.name.isNotEmpty) ...[
@@ -921,7 +942,11 @@ class _Header extends StatelessWidget {
       ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {}
     if (!ok && context.mounted) {
-      hintSnack(context, '无法打开浏览器', icon: Icons.error_outline);
+      hintSnack(
+        context,
+        context.l10n.cantOpenBrowser,
+        icon: Icons.error_outline,
+      );
     }
   }
 
@@ -974,12 +999,24 @@ Widget _weightBtn(
   );
 }
 
+/// 一排四颗操作钮,[labels](带图标的各钮可能切到的文案)都放得下「图标 + 文案」才带图标。
+bool _actionIconsFit(
+  BuildContext context,
+  double rowWidth,
+  List<String> labels,
+) {
+  final room = (rowWidth - 8 * 3) / 4 - 12 - 22;
+  final style = context.texts.bodyMedium!.copyWith(fontWeight: FontWeight.w600);
+  return labels.every((l) => measureText(context, l, style) <= room);
+}
+
 /// 操作按钮(清除权重/禁用/删除等,危险=红调)。
 Widget _action(
   BuildContext context,
   String label, {
   IconData? icon,
   Widget? leading, // 覆盖 icon 的自定义前导(如加载转圈)
+  bool showIcon = true,
   bool danger = false,
   bool selected = false,
   required bool enabled,
@@ -1004,27 +1041,31 @@ Widget _action(
     clipBehavior: Clip.antiAlias,
     child: InkWell(
       onTap: enabled ? onTap : null,
-      child: SizedBox(
+      child: Container(
         height: _kPanelBtnH,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (leading != null) ...[
               leading,
               const SizedBox(width: 5),
-            ] else if (icon != null) ...[
+            ] else if (icon != null && showIcon) ...[
               Icon(icon, size: 17, color: fg),
               const SizedBox(width: 5),
             ],
             Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.clip,
-                softWrap: false,
-                style: context.texts.bodyMedium!.copyWith(
-                  color: fg,
-                  fontWeight: FontWeight.w600,
+              // 英文标签长,放不下时缩字号
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: context.texts.bodyMedium!.copyWith(
+                    color: fg,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
@@ -1206,7 +1247,11 @@ class BatchPanel extends StatelessWidget {
                 const SizedBox(width: 7),
                 Expanded(
                   child: Text(
-                    placing ? '点击加号移动' : (has ? '已选 $count 项' : '点词条可多选'),
+                    placing
+                        ? context.l10n.tapPlusToMove
+                        : (has
+                              ? context.l10n.selectedItems(count)
+                              : context.l10n.tapTagsToSelect),
                     style: context.texts.titleMedium!.copyWith(
                       fontWeight: FontWeight.w700,
                       color: has ? scheme.onSurface : scheme.outline,
@@ -1219,7 +1264,7 @@ class BatchPanel extends StatelessWidget {
                       context,
                       icon: Icons.playlist_add,
                       onTap: extract,
-                      tooltip: '提取为新分区',
+                      tooltip: context.l10n.extractAsSection,
                     ),
                     const SizedBox(width: 4),
                   ],
@@ -1244,7 +1289,7 @@ class BatchPanel extends StatelessWidget {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        '处于权重组 ×${fmtMult(groupMult ?? 1)}',
+                        context.l10n.weightGroupOnly(fmtMult(groupMult ?? 1)),
                         style: context.texts.labelSmall!.copyWith(
                           color: scheme.onSurfaceVariant,
                         ),
@@ -1262,7 +1307,7 @@ class BatchPanel extends StatelessWidget {
                             vertical: 5,
                           ),
                           child: Text(
-                            '选中整组',
+                            context.l10n.selectWholeGroup,
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w600,
@@ -1288,7 +1333,7 @@ class BatchPanel extends StatelessWidget {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        '折叠段 · $foldCount 个标签',
+                        context.l10n.foldSegment(foldCount),
                         style: context.texts.labelSmall!.copyWith(
                           color: scheme.onSurfaceVariant,
                         ),
@@ -1306,7 +1351,7 @@ class BatchPanel extends StatelessWidget {
                             vertical: 5,
                           ),
                           child: Text(
-                            '展开',
+                            context.l10n.expand,
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w600,
@@ -1324,7 +1369,7 @@ class BatchPanel extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  '整体',
+                  context.l10n.overall,
                   style: context.texts.bodyMedium!.copyWith(
                     color: weight ? scheme.onSurfaceVariant : scheme.outline,
                   ),
@@ -1375,51 +1420,64 @@ class BatchPanel extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: _action(
-                    context,
-                    '移动',
-                    icon: Icons.swap_horiz,
-                    // 亮着 = 落位阶段开着,再点一下退出。没有有效落点时这颗
-                    // 是灰的(判据见 chipValidGaps),免得点进一个空阶段。
-                    selected: placing,
-                    enabled: onTogglePlacing != null,
-                    onTap: onTogglePlacing ?? () {},
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _action(
-                    context,
-                    '清除权重',
-                    enabled: weight,
-                    onTap: onClearWeight,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _action(
-                    context,
-                    off ? '禁用' : '启用',
-                    icon: off ? Icons.visibility_off : Icons.visibility,
-                    enabled: has && canDisable,
-                    onTap: onToggleDisabled,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _action(
-                    context,
-                    '删除',
-                    icon: Icons.delete_outline,
-                    danger: true,
-                    enabled: has,
-                    onTap: onDelete,
-                  ),
-                ),
-              ],
+            LayoutBuilder(
+              builder: (context, c) {
+                final icons = _actionIconsFit(context, c.maxWidth, [
+                  context.l10n.move,
+                  context.l10n.enable,
+                  context.l10n.disableTag,
+                  context.l10n.delete,
+                ]);
+                return Row(
+                  children: [
+                    Expanded(
+                      child: _action(
+                        context,
+                        context.l10n.move,
+                        icon: Icons.swap_horiz,
+                        showIcon: icons,
+                        // 亮着 = 落位阶段开着,再点一下退出。没有有效落点时这颗
+                        // 是灰的(判据见 chipValidGaps),免得点进一个空阶段。
+                        selected: placing,
+                        enabled: onTogglePlacing != null,
+                        onTap: onTogglePlacing ?? () {},
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _action(
+                        context,
+                        context.l10n.clearWeightShort,
+                        enabled: weight,
+                        onTap: onClearWeight,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _action(
+                        context,
+                        off ? context.l10n.disableTag : context.l10n.enable,
+                        icon: off ? Icons.visibility_off : Icons.visibility,
+                        showIcon: icons,
+                        enabled: has && canDisable,
+                        onTap: onToggleDisabled,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _action(
+                        context,
+                        context.l10n.delete,
+                        icon: Icons.delete_outline,
+                        showIcon: icons,
+                        danger: true,
+                        enabled: has,
+                        onTap: onDelete,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ],
         ),

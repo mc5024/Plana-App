@@ -60,20 +60,41 @@ class SectionCard extends StatelessWidget {
             const SizedBox(height: 38),
             SkinIcon(icon),
             const SizedBox(width: 9),
-            Text(
-              title,
-              style: context.texts.bodyLarge!.copyWith(
-                fontWeight: FontWeight.w600,
-                color: titleColor,
-              ),
-            ),
-            if (badge != null) ...[const SizedBox(width: 8), badge!],
-            const SizedBox(width: 8),
+            // 标题放不下时省略,内联元素靠右不让
             Expanded(
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  for (final w in inline) ...[w, const SizedBox(width: 6)],
+                  Flexible(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.texts.bodyLarge!.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: titleColor,
+                            ),
+                          ),
+                        ),
+                        if (badge != null) ...[
+                          const SizedBox(width: 8),
+                          badge!,
+                        ],
+                      ],
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(width: 8),
+                      for (final w in inline) ...[w, const SizedBox(width: 6)],
+                    ],
+                  ),
                 ],
               ),
             ),

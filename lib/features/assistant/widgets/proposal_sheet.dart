@@ -24,6 +24,7 @@ import '../assistant_models.dart' show AssistantMsg;
 import '../prompt_diff.dart';
 import 'proposal_actions.dart';
 import 'tag_diff.dart';
+import '../../../l10n/l10n.dart';
 
 /// 弹层里列出来的角色。结果条上不列角色(收成了标题里的一句「AI 给了 2 个
 /// 角色」),所以站位也得在这儿显示 —— 不然「AI 把她挪到了 B3」就没地方看了。
@@ -113,7 +114,7 @@ class _ProposalSheet extends StatelessWidget {
                   if (added.isNotEmpty)
                     ..._diffGroup(
                       context,
-                      '新增',
+                      context.l10n.added,
                       added,
                       words.added,
                       diffAddColor,
@@ -123,13 +124,13 @@ class _ProposalSheet extends StatelessWidget {
                   if (removed.isNotEmpty)
                     ..._diffGroup(
                       context,
-                      '移除',
+                      context.l10n.remove,
                       removed,
                       words.removed,
                       diffDelColor,
                     ),
                   const SizedBox(height: 22),
-                  _label(context, scheme, '完整提示词'),
+                  _label(context, scheme, context.l10n.fullPrompt),
                   const SizedBox(height: 8),
                   _fullPrompt(context, scheme),
                   for (final c in characters) ...[
@@ -143,7 +144,9 @@ class _ProposalSheet extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     SelectableText(
-                      c.positive.trim().isEmpty ? '(空)' : c.positive,
+                      c.positive.trim().isEmpty
+                          ? context.l10n.emptyParen
+                          : c.positive,
                       style: context.texts.bodyMedium!.copyWith(
                         color: scheme.onSurfaceVariant,
                         height: 1.7,

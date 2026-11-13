@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart';
 
 import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../l10n/l10n.dart';
 
 /// 灵感页顶栏的分类页签:一条连续的横滚标签,选中项放大加深、下面一道与字同宽的主色线。
 /// [position] 是正文翻页的位置(可在两页之间),短线和字跟着它过渡,标签条跟着滚,
@@ -240,7 +241,7 @@ class _CategoryTabsState extends State<CategoryTabs> {
           Padding(
             padding: EdgeInsets.only(top: widget.capsule ? 0 : 4),
             child: IconButton(
-              tooltip: '类别管理',
+              tooltip: context.l10n.manageCategories,
               visualDensity: widget.capsule ? VisualDensity.compact : null,
               onPressed: widget.onManage,
               icon: Icon(

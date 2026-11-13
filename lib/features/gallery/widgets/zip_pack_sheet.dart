@@ -8,6 +8,7 @@ import '../gallery_store.dart';
 import '../models.dart';
 import '../save_settings.dart';
 import '../zip_pipeline.dart';
+import '../../../l10n/l10n.dart';
 
 /// 打好的包 + 用户定的文件名。`file` 为 null = 打包失败(提示由调用方给)。
 typedef ZipPacked = ({File? file, String fileName, int packed, int failed});
@@ -136,14 +137,14 @@ class _ZipPackSheetState extends State<_ZipPackSheet> {
                 child: Row(
                   children: [
                     Text(
-                      '打包 ZIP',
+                      context.l10n.packZip,
                       style: context.texts.titleMedium!.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const Spacer(),
                     Text(
-                      '$total 张',
+                      context.l10n.imagesN(total),
                       style: context.texts.bodyMedium!.copyWith(
                         color: scheme.onSurfaceVariant,
                       ),
@@ -160,7 +161,7 @@ class _ZipPackSheetState extends State<_ZipPackSheet> {
                   textInputAction: TextInputAction.next,
                   onChanged: (_) => setState(() {}),
                   decoration: field.copyWith(
-                    labelText: '压缩包名称',
+                    labelText: context.l10n.zipName,
                     suffixText: '.zip',
                   ),
                 ),
@@ -180,7 +181,7 @@ class _ZipPackSheetState extends State<_ZipPackSheet> {
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => _pack(),
                   decoration: field.copyWith(
-                    labelText: '压缩密码(可选)',
+                    labelText: context.l10n.zipPassword,
                     suffixIcon: IconButton(
                       onPressed: () => setState(() => _obscure = !_obscure),
                       icon: Icon(
@@ -202,7 +203,9 @@ class _ZipPackSheetState extends State<_ZipPackSheet> {
                       Row(
                         children: [
                           Text(
-                            _canceled ? '正在停下' : '打包中',
+                            _canceled
+                                ? context.l10n.stopping
+                                : context.l10n.zipping,
                             style: context.texts.bodySmall!.copyWith(
                               color: scheme.onSurfaceVariant,
                             ),
@@ -248,7 +251,7 @@ class _ZipPackSheetState extends State<_ZipPackSheet> {
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size.fromHeight(46),
                         ),
-                        child: const Text('取消'),
+                        child: Text(context.l10n.cancel),
                       ),
                     ),
                     if (!_busy) ...[
@@ -259,7 +262,7 @@ class _ZipPackSheetState extends State<_ZipPackSheet> {
                           style: FilledButton.styleFrom(
                             minimumSize: const Size.fromHeight(46),
                           ),
-                          child: const Text('打包'),
+                          child: Text(context.l10n.pack),
                         ),
                       ),
                     ],

@@ -9,17 +9,24 @@ import 'key_ledger.dart';
 import 'stats_providers.dart';
 import 'stats_widgets.dart';
 import 'wallet_page.dart' show WalletEntryRow;
+import '../../l10n/l10n.dart';
 
 enum DayDetailMode {
-  points('点数详情', '钱包流水'),
-  gens('生成详情', '生成详情');
+  points('钱包流水'),
+  gens('生成详情');
 
-  const DayDetailMode(this.title, this.botTitle);
-  final String title;
+  const DayDetailMode(this._botTitle);
+
+  String get title => switch (this) {
+    points => l10nNow.pointsDetails,
+    gens => l10nNow.genDetails,
+  };
+
+  final String _botTitle;
 
   /// Bot 下的叫法:服务端 2026-10-18 起改成钱包记账,这一格看的是当天钱包里
   /// 进出的钱,不再是点数。
-  final String botTitle;
+  String get botTitle => this == gens ? l10nNow.genDetails : _botTitle;
 }
 
 /// 某一天的逐笔明细。
@@ -323,12 +330,14 @@ class DayDetailPage extends ConsumerWidget {
             icon: g.inpaint ? Icons.brush_outlined : Icons.image_outlined,
             title:
                 '${g.width}×${g.height}'
-                '${g.steps > 0 ? ' · ${g.steps} 步' : ''}'
-                '${g.inpaint ? ' · 重绘' : ''}',
+                '${g.steps > 0 ? ' · ${context.l10n.stepsN(g.steps)}' : ''}'
+                '${g.inpaint ? ' · ${context.l10n.inpaint}' : ''}',
             sub:
                 '${_hhmm(DateTime.fromMillisecondsSinceEpoch(g.ts))}'
                 '${g.model.isEmpty ? '' : ' · ${modelName(g.model)}'}',
-            trailing: g.pts > 0 ? '-${fmtInt(g.pts)} 点' : '免费',
+            trailing: g.pts > 0
+                ? context.l10n.minusPts(fmtInt(g.pts))
+                : context.l10n.free,
             trailingColor: g.pts > 0 ? scheme.primary : scheme.tertiary,
           ),
         );
@@ -343,10 +352,10 @@ class DayDetailPage extends ConsumerWidget {
               row: LedgerRow(
                 icon: g.inpaint ? Icons.brush_outlined : Icons.image_outlined,
                 title:
-                    '生图 ${g.width}×${g.height}'
-                    '${g.steps > 0 ? ' · ${g.steps} 步' : ''}',
+                    '${context.l10n.genSize(g.width, g.height)}'
+                    '${g.steps > 0 ? ' · ${context.l10n.stepsN(g.steps)}' : ''}',
                 sub: _hhmm(DateTime.fromMillisecondsSinceEpoch(g.ts)),
-                trailing: '-${fmtInt(g.pts)} 点',
+                trailing: context.l10n.minusPts(fmtInt(g.pts)),
               ),
             ),
         for (final o in ops)
@@ -356,9 +365,11 @@ class DayDetailPage extends ConsumerWidget {
               icon: o.type == 'upscale'
                   ? Icons.zoom_in
                   : Icons.palette_outlined,
-              title: o.type == 'upscale' ? '超分 4x' : 'Vibe 编码',
+              title: o.type == 'upscale'
+                  ? context.l10n.upscale4x
+                  : context.l10n.vibeEncoding,
               sub: _hhmm(DateTime.fromMillisecondsSinceEpoch(o.ts)),
-              trailing: '-${fmtInt(o.pts)} 点',
+              trailing: context.l10n.minusPts(fmtInt(o.pts)),
             ),
           ),
       ]..sort((a, b) => b.ts.compareTo(a.ts));
@@ -376,15 +387,17 @@ class DayDetailPage extends ConsumerWidget {
             Expanded(
               child: StatTile(
                 icon: Icons.image_outlined,
-                label: '当日生图',
+                label: context.l10n.dayGens,
                 value: fmtInt(agg?.images ?? 0),
-                suffix: (agg?.free ?? 0) > 0 ? '免费 ${agg!.free}' : null,
+                suffix: (agg?.free ?? 0) > 0
+                    ? context.l10n.freeN(agg!.free)
+                    : null,
               ),
             ),
             Expanded(
               child: StatTile(
                 icon: Icons.toll_outlined,
-                label: '估算消耗',
+                label: context.l10n.estimatedSpend,
                 value: fmtInt((agg?.pts ?? 0) + opsPts),
               ),
             ),
@@ -397,7 +410,9 @@ class DayDetailPage extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              mode == DayDetailMode.points ? '逐笔消耗' : '逐笔生成',
+              mode == DayDetailMode.points
+                  ? context.l10n.perItemSpend
+                  : context.l10n.perItemGens,
               style: context.texts.bodyMedium!.copyWith(
                 fontWeight: FontWeight.w600,
               ),
@@ -407,7 +422,9 @@ class DayDetailPage extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Text(
-                  rolled ? '该日明细已超出保留窗口,仅剩汇总' : '该日无记录',
+                  rolled
+                      ? context.l10n.detailsRolledOff
+                      : context.l10n.noRecordsDay,
                   style: context.texts.bodySmall!.copyWith(
                     color: scheme.outline,
                   ),

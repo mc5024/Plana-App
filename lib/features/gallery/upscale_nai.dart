@@ -10,6 +10,7 @@ import '../../core/net/nai_client.dart';
 import '../../core/net/nai_gate.dart';
 import '../../core/store/app_stores.dart';
 import 'upscale_model.dart';
+import '../../l10n/l10n.dart';
 
 /// NAI 官方超分。按当前授权模式分发:
 ///  - bot:走后端 `/api/upscale`(Bearer 会话)。
@@ -28,7 +29,7 @@ Future<({Uint8List png, int width, int height})> upscaleNai(
   required int height,
   void Function(String stage)? onStage,
 }) async {
-  onStage?.call('编码图片…');
+  onStage?.call(l10nNow.encodingImage);
   final b64 = base64Encode(srcPng);
   final mode = ref.read(authModeProvider).value;
 
@@ -52,10 +53,10 @@ Future<({Uint8List png, int width, int height})> upscaleNai(
     if (!r.success || r.imageBase64 == null || r.imageBase64!.isEmpty) {
       throw Exception(r.message.isNotEmpty ? r.message : 'NAI 超分失败');
     }
-    onStage?.call('接收结果…');
+    onStage?.call(l10nNow.receivingResult);
     out = base64Decode(r.imageBase64!);
   } else {
-    onStage?.call('上传 NAI…');
+    onStage?.call(l10nNow.uploadingNai);
     // 占一个直连槽再打:超分和生成花的是同一个账号、撞的是同一个限流桶。
     // 不占的话「生成中顺手点一次超分」必 429(NAI 同 Key 不许并发)。
     //
@@ -64,13 +65,13 @@ Future<({Uint8List png, int width, int height})> upscaleNai(
     // 打哪台机器跟着闸门给的那把 Key 走(第三方的 key 只在它自己那台上有效)。
     out = await ref.read(naiGateProvider).run(paid: true, (token, base) {
       if (token == null || token.isEmpty) {
-        throw Exception('没有可用于付费操作的 NAI Token');
+        throw Exception(l10nNow.noPaidToken);
       }
       return ref
           .read(naiClientProvider(base))
           .upscaleV5(token: token, imageBase64: b64);
     });
-    onStage?.call('接收结果…');
+    onStage?.call(l10nNow.receivingResult);
     // 本机记账(bot 模式由服务端记):按**源图**像素查表 1–4 点。
     try {
       final pts = naiV5UpscalePrice(width, height) ?? 4;

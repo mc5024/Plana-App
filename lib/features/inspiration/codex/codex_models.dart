@@ -7,6 +7,8 @@
 /// 拼错就会整片裂图,故用 [codex_test.dart] 把两模式与编码/版本号钉死。
 library;
 
+import '../../../l10n/l10n.dart';
+
 /// 图床配置(取自原站 data/media.json)。字段缺失时退回已知常量,
 /// 保证即使 media.json 拉不到也能出图。
 class CodexMedia {
@@ -58,10 +60,10 @@ enum CodexType {
   };
 
   String get label => switch (this) {
-    CodexType.codex => '法典',
-    CodexType.string => '词典',
-    CodexType.composition => '构图',
-    CodexType.pack => '合集',
+    CodexType.codex => l10nNow.sectionCodex,
+    CodexType.string => l10nNow.codexTypeDict,
+    CodexType.composition => l10nNow.codexTypeComposition,
+    CodexType.pack => l10nNow.codexTypePack,
     CodexType.unknown => '',
   };
 }
@@ -230,7 +232,9 @@ class CodexCharacter {
       r'^char\s*(\d+(?:\s*-\s*\d+)?)$',
       caseSensitive: false,
     ).firstMatch(label.trim());
-    return m == null ? label : '角色 ${m.group(1)!.replaceAll(' ', '')}';
+    return m == null
+        ? label
+        : l10nNow.charRangeLabel(m.group(1)!.replaceAll(' ', ''));
   }
 
   /// 这段管哪几个角色位(1 起)。`char2-4` → [2,3,4];`char` → [1];认不出 → 空。

@@ -7,6 +7,7 @@ import '../chrome_scroll.dart';
 import '../editor_models.dart';
 import 'rich_tag_controller.dart';
 import '../../../core/util/haptics.dart';
+import '../../../l10n/l10n.dart';
 
 /// 尾部输入框的定宽(有词条时)。约五个汉字宽,够看清正在打的词,
 /// 又不至于自己独占一行把芯片流顶开。
@@ -503,7 +504,7 @@ class _ChipFlowViewState extends State<ChipFlowView>
                 ? Padding(
                     padding: pad,
                     child: Text(
-                      empty ? '输入标签,可输入中文自动翻译' : '继续添加…',
+                      empty ? context.l10n.chipInputHint : context.l10n.addMore,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: hintStyle,

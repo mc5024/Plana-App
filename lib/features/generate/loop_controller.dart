@@ -10,6 +10,7 @@ import 'canvas_state.dart';
 import 'gen_modules.dart';
 import 'generation_controller.dart';
 import '../gallery/albums/album_state.dart';
+import '../../l10n/l10n.dart';
 
 /// 循环生成状态。batch 为当前第几张(1-based);total 0 表示无限;
 /// stopping 表示已请求停止,本张跑完后不再续。
@@ -102,10 +103,13 @@ class LoopNotifier extends Notifier<LoopStatus> {
 
     // 循环期间单张不撤/不留通知(见 generation_controller._inLoop),
     // 统一在此收尾:岛上先显示完成态;前台不留通知,后台留一条汇总可点回应用。
+    final l = l10nNow;
     await LiveProgress.instance.finish(
-      title: ok ? '循环完成' : (done > 0 ? '循环中止' : '生成失败'),
-      text: _appForeground ? '' : (done > 0 ? '已出 $done 张 · 点按查看' : '点按回到应用'),
-      short: ok ? '完成' : '中止',
+      title: ok ? l.loopDone : (done > 0 ? l.loopAborted : l.generationFailed),
+      text: _appForeground
+          ? ''
+          : (done > 0 ? l.loopDoneText(done) : l.tapToReturn),
+      short: ok ? l.shortDone : l.shortStopped,
       keep: !_appForeground,
     );
     // 循环收尾后放行排队任务(失败中止时不放行,先让用户处理错误)

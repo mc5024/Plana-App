@@ -7,6 +7,7 @@ import '../../generate/generation_controller.dart';
 import '../gallery_state.dart';
 import '../models.dart';
 import 'album_models.dart';
+import '../../../l10n/l10n.dart';
 
 final albumsProvider = NotifierProvider<AlbumsNotifier, AlbumsData>(
   AlbumsNotifier.new,
@@ -105,13 +106,13 @@ class AlbumsNotifier extends Notifier<AlbumsData> {
 
   void _validateName(String name, {String? except}) {
     if (name.isEmpty || name.characters.length > 40) {
-      throw StateError('请输入 1–40 个字符的相册名称');
+      throw StateError(l10nNow.albumNameInvalid);
     }
     if (name == allPhotosName ||
         name == favoritesName ||
         name == trashName ||
         state.albums.any((a) => a.id != except && a.name == name)) {
-      throw StateError('这个相册名称已存在');
+      throw StateError(l10nNow.albumNameExists);
     }
   }
 
@@ -120,7 +121,9 @@ class AlbumsNotifier extends Notifier<AlbumsData> {
     _validateName(name);
     final id = ref.read(appStoresProvider).albums.newId();
     await _edit((d) {
-      if (d.albums.any((a) => a.name == name)) throw StateError('这个相册名称已存在');
+      if (d.albums.any((a) => a.name == name)) {
+        throw StateError(l10nNow.albumNameExists);
+      }
       return d.copyWith(
         albums: [
           GalleryAlbum(
@@ -136,13 +139,15 @@ class AlbumsNotifier extends Notifier<AlbumsData> {
   }
 
   Future<void> rename(String id, String name) async {
-    if (id == favoritesId) throw StateError('「收藏」不能改名');
+    if (id == favoritesId) {
+      throw StateError(l10nNow.cantRenameFav(favoritesName));
+    }
     name = name.trim();
     _validateName(name, except: id);
     await _edit((d) {
-      if (!d.exists(id)) throw StateError('相册已被删除');
+      if (!d.exists(id)) throw StateError(l10nNow.albumDeleted);
       if (d.albums.any((a) => a.id != id && a.name == name)) {
-        throw StateError('这个相册名称已存在');
+        throw StateError(l10nNow.albumNameExists);
       }
       return d.copyWith(
         albums: [
@@ -153,7 +158,9 @@ class AlbumsNotifier extends Notifier<AlbumsData> {
   }
 
   Future<void> delete(String id) async {
-    if (id == favoritesId) throw StateError('「收藏」不能删除');
+    if (id == favoritesId) {
+      throw StateError(l10nNow.cantDeleteFav(favoritesName));
+    }
     await _edit((d) => d.deleteAlbum(id));
     if (!ref.mounted) return;
     final prefs = ref.read(uiPrefsProvider);
@@ -171,8 +178,10 @@ class AlbumsNotifier extends Notifier<AlbumsData> {
     bool alsoSave = false,
     bool keepGeneration = false,
   }) {
-    if (id == favoritesId) throw StateError('「收藏」不能作为浏览相册');
-    if (!state.exists(id)) throw StateError('相册已被删除');
+    if (id == favoritesId) {
+      throw StateError(l10nNow.cantBrowseFav(favoritesName));
+    }
+    if (!state.exists(id)) throw StateError(l10nNow.albumDeleted);
     final old = _scopeOf(state, ref.read(uiPrefsProvider).galleryBrowseAlbum);
     final all = ref.read(galleryProvider);
     final oldImages = all.results.where((r) => state.contains(old, r.id));
@@ -205,8 +214,8 @@ class AlbumsNotifier extends Notifier<AlbumsData> {
   }
 
   void setSave(String? id) {
-    if (id == favoritesId) throw StateError('「收藏」不能设为保存相册');
-    if (!state.exists(id)) throw StateError('相册已被删除');
+    if (id == favoritesId) throw StateError(l10nNow.cantSaveFav(favoritesName));
+    if (!state.exists(id)) throw StateError(l10nNow.albumDeleted);
     browse(id, alsoSave: true, keepGeneration: true);
   }
 
@@ -214,11 +223,11 @@ class AlbumsNotifier extends Notifier<AlbumsData> {
   /// 展示时按 sourceImageId 取原图。[imageId] 为 null 即取消,回到最新一张。
   Future<void> setCover(String? albumId, String? imageId) {
     if (imageId != null && !_live.contains(imageId)) {
-      throw StateError('图片已被删除');
+      throw StateError(l10nNow.imageWasDeleted);
     }
     final key = ref.read(appStoresProvider).albums.newId();
     return _edit((d) {
-      if (!d.exists(albumId)) throw StateError('相册已被删除');
+      if (!d.exists(albumId)) throw StateError(l10nNow.albumDeleted);
       return d.withCover(
         albumId,
         imageId == null ? null : AlbumCover(key, sourceImageId: imageId),
@@ -250,7 +259,7 @@ class AlbumsNotifier extends Notifier<AlbumsData> {
   }
 
   Future<void> setFavorite(String imageId, bool on) async {
-    if (!_live.contains(imageId)) throw StateError('图片已被删除');
+    if (!_live.contains(imageId)) throw StateError(l10nNow.imageWasDeleted);
     await _edit((d) => d.favorite({imageId}, on));
   }
 

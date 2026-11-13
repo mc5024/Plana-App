@@ -12,6 +12,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/ui/setting_row.dart';
 import '../../generate/widgets/common.dart' show dropFocusSoon;
 import '../assistant_mode.dart';
+import '../../../l10n/l10n.dart';
 
 IconData assistantModeIcon(AssistantMode m, {bool on = false}) => switch (m) {
   AssistantMode.normal => Icons.layers_clear_outlined,
@@ -48,7 +49,7 @@ class _ModeSheet extends StatelessWidget {
     final solid = context.skin.float;
     final selFg = solid ? scheme.onPrimary : scheme.primary;
     return SettingSheet(
-      title: '对话模式',
+      title: context.l10n.chatMode,
       children: [
         for (final m in AssistantMode.values)
           ListTile(

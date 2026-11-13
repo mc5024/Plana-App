@@ -16,6 +16,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'nai_client.dart' show NaiException;
+import '../../l10n/l10n.dart';
 
 /// 官方请求体(`buildNaiPayload` 那份)→ chat 请求体。
 ///
@@ -134,13 +135,13 @@ Uint8List naiChatImage(String responseBody) {
     final msg = first is Map ? first['message'] : null;
     content = msg is Map ? msg['content'] : null;
   } catch (_) {
-    throw NaiException('接口返回的不是 JSON');
+    throw NaiException(l10nNow.notJsonResponse);
   }
-  if (content is! String) throw NaiException('未收到图片数据');
+  if (content is! String) throw NaiException(l10nNow.noImageData);
   final m = _dataImage.firstMatch(content);
   if (m == null) {
     final text = content.trim();
-    throw NaiException(text.isEmpty ? '未收到图片数据' : text);
+    throw NaiException(text.isEmpty ? l10nNow.noImageData : text);
   }
   return base64Decode(m.group(1)!);
 }

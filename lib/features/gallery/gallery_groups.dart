@@ -2,14 +2,19 @@
 ///
 /// 三个维度,归属各有各的出处,但都**全程离线**、不联网也不看登录态:
 ///   - 按时间 —— 沿用 [galleryDayKey];
-///   - 按角色 —— 灵感库的角色条目(自建的 + 收藏的 OC)按加权覆盖率匹配(见 [OcMatcher]),
-///     再并上离线词库 `assets/danbooru.tsv` 第 5 列标出的角色标签(见 [galleryCharTagsProvider]);
-///   - 按画风 —— 灵感库的画风条目,判据是画师整组都在(见 [StyleMatcher])。
+///   - 按角色 —— 灵感库的角色条目(自建的 + 收藏的 OC,见 [OcMatcher]),再并上离线词库
+///     `assets/danbooru.tsv` 第 5 列标出的角色标签(见 [galleryCharTagsProvider]);
+///   - 按画风 —— 灵感库的画风条目(见 [StyleMatcher])。
+///
+/// 灵感库条目先认**来源**:出图时记下的条目 id(从库里加的分区、角色卡)、启用的
+/// 角色卡名、草稿里的折叠组名(见 [GallerySearchMeta]),对上就算,不看图里的词
+/// 改成了什么样。没有来源的图(手打、粘贴、读图导入、AI 写的)才按文本匹配,
+/// 门槛偏严:宁可留在「未归类」,也不归错。
 ///
 /// 分组本身是纯函数(可测);归属计算各由一个 provider 现算,**不烤进检索索引**
 /// —— 词库和灵感库都是活的,今天新建一个画风条目,老图该立刻归进去。
 ///
-/// 两张命中表的判据和门槛是拿真实数据量出来的(公共 OC 库、画师串库、社区法典;
+/// 文本匹配的判据和门槛是拿真实数据量出来的(公共 OC 库、画师串库、社区法典;
 /// 评测脚本 `test/eval/match_eval_test.dart`),动之前先重跑一遍。
 library;
 
@@ -19,21 +24,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/util/prompt_tokens.dart';
 import '../editor/data/local_tag_db.dart';
+import '../editor/editor_models.dart' show sanitizeFoldName;
 import '../inspiration/public_tags.dart';
 import '../inspiration/tag_library.dart';
 import '../inspiration/tag_models.dart';
 import 'gallery_dates.dart';
 import 'gallery_search.dart';
 import 'models.dart';
+import '../../l10n/l10n.dart';
 
 /// 分组维度。存进 UiPrefs 的是 [name],加成员不会动到已存的值。
 enum GalleryGroupBy { day, character, style }
 
 extension GalleryGroupByX on GalleryGroupBy {
   String get label => switch (this) {
-    GalleryGroupBy.day => '按时间',
-    GalleryGroupBy.character => '按角色',
-    GalleryGroupBy.style => '按画风',
+    GalleryGroupBy.day => l10nNow.groupByTime,
+    GalleryGroupBy.character => l10nNow.groupByCharacter,
+    GalleryGroupBy.style => l10nNow.groupByStyle,
   };
 
   /// 时间是分段列表(和以前一样),归属类的是堆叠封面墙。
@@ -51,23 +58,26 @@ const kGalleryUngroupedKey = '';
 
 /// OC 命中门槛:图里对上的词的**分量**占条目总分量的比例(分量见 [ocTokenWeight])。
 ///
-/// 按枚数算两头都漏:OC 的标签组里服装配饰中位占四分之一强,缺四分之一就不认的话,
-/// 换身衣服基本必掉;而「长发、红瞳」和独有特征一样算一票,只和 OC 共享大众词的
-/// 别的角色又会被错归进来。按分量算,换装后剩下的独有特征撑得住,大众词凑得再多
-/// 也凑不够。0.55 是拿真实数据扫出来的平衡点。
-const kOcMatchCover = .55;
+/// 按分量算而不按枚数:「长发、红瞳」和独有特征一样算一票的话,只和 OC 共享大众词的
+/// 别的角色会被错归进来。文本匹配只管没记下来源的图,门槛取偏严的 0.7:粘贴、小改
+/// 照样认,大改(整套换装、换掉三成)留在未归类;长得像的另一个角色在评测里不再误归。
+const kOcMatchCover = .7;
 
 /// 至少要对上这么多枚(条目本身不足这么多枚时要求全中)。挡住「几枚的小条目蹭上
 /// 一两个独有词就归类」。
 const kOcMinKeep = 4;
 
 /// 同一张图命中的几个 OC 条目彼此重合过这个比例(标签集的 Jaccard 相似度),
-/// 就当成同一个角色的几个版本,只留覆盖最全的那个。
+/// 就当成同一个角色的几个版本,只留一个(见 [OcMatcher])。
 const kOcOverlap = .5;
 
 /// 画风条目里帖子数到这个量级的词算通用词,不参与判定。画师里最高产的也就几千帖,
 /// 画师串里夹带的 `realistic`、`monochrome` 这类词动辄上万到几百万。
 const kStyleGenericPosts = 10000;
+
+/// 画风文本匹配:条目的画师至少占图里画师的这个比例。一两个画师的小条目夹在
+/// 别的组合里时,那张图是另一个画风。
+const kStyleArtistShare = .6;
 
 /// OC 条目里一个词的分量:`(1 / log10(10 + 帖子数))²`。
 ///
@@ -131,7 +141,7 @@ List<GalleryGroup> groupByTags(
     (a, b) => b.items.first.createdAt.compareTo(a.items.first.createdAt),
   );
   if (rest.isNotEmpty) {
-    out.add((key: kGalleryUngroupedKey, label: '未归类', items: rest));
+    out.add((key: kGalleryUngroupedKey, label: l10nNow.ungrouped, items: rest));
   }
   return out;
 }
@@ -156,8 +166,9 @@ List<TagEntry> _entriesOf(Ref ref, TagCategory cat) => [
 /// 图库角色归属:id → 该图命中的角色。两个来源并起来:
 ///
 ///   1. **灵感库的角色条目**(`TagCategory.character`)—— 自建的、以及从公共库
-///      **收藏**的 OC 都在这里,判据见 [OcMatcher]。OC 的 tag_group 是一串外观
-///      标签,Danbooru 词库里根本没有这号角色,不走这一路就永远归不了类。
+///      **收藏**的 OC 都在这里,判据见 [OcMatcher];条目 id、角色卡名、折叠组名
+///      都算来源。OC 的 tag_group 是一串外观标签,Danbooru 词库里根本没有这号角色,
+///      不走这一路就永远归不了类。
 ///   2. **离线 Danbooru 词库**里标了角色类目的标签(见 [LocalTagDb.charactersIn])。
 ///
 /// 同名的只留一条:一个叫「甘雨」的条目,其正向里往往就带着 `ganyu_(genshin_impact)`,
@@ -191,9 +202,16 @@ class GalleryCharTags extends AsyncNotifier<Map<String, List<GroupTag>>> {
     final out = <String, List<GroupTag>>{};
     var since = 0;
     for (final e in byId.entries) {
-      final toks = tokenizeSet(e.value.text);
+      final m = e.value;
+      final toks = tokenizeSet(m.text);
       // 拷一份再往里加:一个 OC 条目都没有时 match 回的是常量空表,直接加会抛
-      final hits = [...matcher.match(toks)];
+      final hits = [
+        ...matcher.match(
+          toks,
+          ids: m.ids.toSet(),
+          names: {...m.cards, ...m.folds},
+        ),
+      ];
       final seen = {for (final h in hits) h.label};
       for (final h in await db.charactersIn(toks)) {
         final label = h.zh ?? h.tag.replaceAll('_', ' ');
@@ -210,10 +228,8 @@ class GalleryCharTags extends AsyncNotifier<Map<String, List<GroupTag>>> {
 }
 
 /// 图库画风归属:id → 用到的画风条目(灵感库 [TagCategory.artist])。判据见
-/// [StyleMatcher] —— 只比对画师标签,不拿画师串里夹带的质量词/构图词参与判定。
-///
-/// 不认折叠名。折叠 `<#名字: …>` 是**仅编辑期**语法,提示词被编辑器之外改过一次
-/// (导入、清空、权重工具)草稿就判过期,名字跟着没;而标签本身跑不掉。
+/// [StyleMatcher]:条目 id、折叠组名算来源;文本匹配只比对画师标签,不拿画师串里
+/// 夹带的质量词/构图词参与判定。
 ///
 /// **不做增量**:这里依赖的是活的灵感库,用户改一次条目全库归属都要重算,
 /// 留 memo 只会给出过期答案。
@@ -242,7 +258,14 @@ class GalleryStyleTags extends AsyncNotifier<Map<String, List<GroupTag>>> {
     final out = <String, List<GroupTag>>{};
     var since = 0;
     for (final e in byId.entries) {
-      final hits = matcher.match(tokenizeSet(e.value.text));
+      final m = e.value;
+      final toks = tokenizeSet(m.text);
+      final hits = matcher.match(
+        toks,
+        artists: {...await db.artistsIn(toks), ...taggedArtists(m.text)},
+        ids: m.ids.toSet(),
+        names: m.folds.toSet(),
+      );
       if (hits.isNotEmpty) out[e.key] = hits;
       if (++since >= _sliceSize) {
         since = 0;
@@ -278,23 +301,36 @@ class _Inverted {
   }
 }
 
+/// 这一行条目是不是图里记下的来源:条目 id 对上,或名字对上角色卡名 / 折叠组名
+/// (折叠组名清洗过,见 [sanitizeFoldName],两种写法都比)。
+bool _declared(
+  String id,
+  String name,
+  String fold,
+  Set<String> ids,
+  Set<String> names,
+) => ids.contains(id) || names.contains(name) || names.contains(fold);
+
 /// 灵感库 OC / 角色条目的命中表:一组条目建一次,逐图查。
 ///
-/// 判据是**加权覆盖率**:条目里每个词按 [ocTokenWeight] 定分量,图里对上的分量
-/// 占条目总分量过 [kOcMatchCover]、且至少对上 [kOcMinKeep] 枚,就算用了这个 OC。
+/// 图里记下了来源([match] 的 `ids` / `names`)的条目直接算。其余按**加权覆盖率**:
+/// 条目里每个词按 [ocTokenWeight] 定分量,图里对上的分量占条目总分量过
+/// [kOcMatchCover]、且至少对上 [kOcMinKeep] 枚,就算用了这个 OC。
 ///
 ///   - **不看顺序**。按序比过,顺序几乎没挡住误判,却让两种常见写法直接归零:
 ///     外观放角色槽、服装留主提示词(检索文本是主提示词在前、角色槽在后拼起来的),
 ///     以及出图前把几枚标签挪了位置。
 ///   - **同一个角色的几个版本只留一个**:几个命中条目彼此重合过 [kOcOverlap],
-///     只留覆盖最全的。「小夜」和「小夜·泳装」都在库里时,泳装图只进后者、
-///     日常图只进前者。覆盖一样时排前面的赢 —— 调用方把本地条目排在前面。
-///   - 同名的(本地一份 + 收藏的公共副本)只出一条,取覆盖最全的那份。
+///     记下来源的那个优先,其次覆盖最全的。「小夜」和「小夜·泳装」都在库里时,
+///     泳装图只进后者、日常图只进前者。覆盖一样时排前面的赢 —— 调用方把本地条目
+///     排在前面。
+///   - 同名的(本地一份 + 收藏的公共副本)只出一条。
 class OcMatcher {
   OcMatcher(
     Iterable<TagEntry> entries, {
     required int Function(String token) postCount,
     this.cover = kOcMatchCover,
+    this.minKeep = kOcMinKeep,
   }) {
     for (final e in entries) {
       final toks = tokenizeSet(e.positive);
@@ -303,11 +339,13 @@ class OcMatcher {
       if (toks.isEmpty || name.isEmpty) continue;
       final weight = {for (final t in toks) t: ocTokenWeight(postCount(t))};
       _rows.add((
+        id: e.id,
         name: name,
+        fold: sanitizeFoldName(name),
         toks: toks,
         weight: weight,
         total: weight.values.fold(0.0, (a, b) => a + b),
-        need: math.min(toks.length, kOcMinKeep),
+        need: math.min(toks.length, minKeep),
       ));
     }
     _inv = _Inverted([for (final r in _rows) r.toks]);
@@ -316,7 +354,9 @@ class OcMatcher {
   final _rows =
       <
         ({
+          String id,
           String name,
+          String fold,
           Set<String> toks,
           Map<String, double> weight,
           double total,
@@ -325,39 +365,56 @@ class OcMatcher {
       >[];
   late final _Inverted _inv;
 
-  /// 命中门槛,默认 [kOcMatchCover];评测脚本扫门槛时才传别的值。
+  /// 文本匹配的门槛,默认 [kOcMatchCover] / [kOcMinKeep];评测脚本扫门槛时才传别的值。
   final double cover;
+  final int minKeep;
 
   bool get isEmpty => _rows.isEmpty;
 
-  /// 一张图命中的条目;[img] 是这张图提示词的 [tokenizeSet]。
-  List<GroupTag> match(Set<String> img) {
-    if (_rows.isEmpty || img.isEmpty) return const [];
-    // 名字 → 这个名字下覆盖最全的那一行
+  /// 一张图命中的条目;[img] 是这张图提示词的 [tokenizeSet],[ids] / [names]
+  /// 是这张图记下的来源(条目 id;角色卡名、折叠组名)。
+  List<GroupTag> match(
+    Set<String> img, {
+    Set<String> ids = const {},
+    Set<String> names = const {},
+  }) {
+    if (_rows.isEmpty) return const [];
+    // 名字 → 这个名字下最该留的那一行;记下来源的覆盖记作 2,恒排在文本命中前面
     final best = <String, ({int row, double cover})>{};
-    _inv.shared(img).forEach((i, n) {
-      final r = _rows[i];
-      if (n < r.need) return;
-      var got = 0.0;
-      for (final t in r.toks) {
-        if (img.contains(t)) got += r.weight[t]!;
-      }
-      final share = got / r.total;
-      if (share < cover) return;
-      final prev = best[r.name];
+    void offer(int i, double share) {
+      final name = _rows[i].name;
+      final prev = best[name];
       if (prev == null || _ahead((row: i, cover: share), prev)) {
-        best[r.name] = (row: i, cover: share);
+        best[name] = (row: i, cover: share);
       }
-    });
+    }
+
+    for (var i = 0; i < _rows.length; i++) {
+      final r = _rows[i];
+      if (_declared(r.id, r.name, r.fold, ids, names)) offer(i, 2);
+    }
+    if (img.isNotEmpty) {
+      _inv.shared(img).forEach((i, n) {
+        final r = _rows[i];
+        if (n < r.need) return;
+        var got = 0.0;
+        for (final t in r.toks) {
+          if (img.contains(t)) got += r.weight[t]!;
+        }
+        final share = got / r.total;
+        if (share >= cover) offer(i, share);
+      });
+    }
     final hits = best.values.toList()..sort((a, b) => a.row - b.row);
     return [
       for (final a in hits)
-        if (!hits.any(
-          (b) =>
-              b.row != a.row &&
-              _ahead(b, a) &&
-              _jaccard(_rows[a.row].toks, _rows[b.row].toks) >= kOcOverlap,
-        ))
+        if (a.cover > 1 ||
+            !hits.any(
+              (b) =>
+                  b.row != a.row &&
+                  _ahead(b, a) &&
+                  _jaccard(_rows[a.row].toks, _rows[b.row].toks) >= kOcOverlap,
+            ))
           (key: _rows[a.row].name, label: _rows[a.row].name),
     ];
   }
@@ -384,16 +441,28 @@ final _styleExtraRe = RegExp(
   r'location|cinematic lighting|volumetric lighting|soft shadows)$',
 );
 
+final _artistTagRe = RegExp(r'artist:\s*([^,]+)');
+
+/// 提示词里带 `artist:` 前缀写的画师([cleanPromptToken] 口径)。词库没收的冷门
+/// 画师靠它数进图里的画师。[text] 是检索文本(见 normalizeSearchText)。
+Set<String> taggedArtists(String text) => {
+  for (final m in _artistTagRe.allMatches(text))
+    if (cleanPromptToken(m[1]!) case final t when t.isNotEmpty) t,
+};
+
 /// 灵感库画风条目的命中表:一组条目建一次,逐图查。
 ///
-/// 判据是**画师整组都在**,不看顺序,权重记号不算:
+/// 图里记下了来源([match] 的 `ids` / `names`)的条目直接算。其余按文本匹配,
+/// 判据是**画师整组都在、且占了图里画师的大头**,不看顺序,权重记号不算:
 ///   - **只认画师**。画师串里常夹着 `masterpiece`、`year 2025`、`no text`、
 ///     `realistic`,这些词出图时顺手就改,要求一枚不差的话改个年份整组就对不上。
 ///     NAI 专有的质量 / 年份词按名单剔,其余按词库帖子数,过 [kStyleGenericPosts]
-///     的算通用词。一个画师都没剩的条目(纯质量词串)退回全部标签。
+///     的算通用词。一个画师都没剩的条目(纯质量词串)不做文本匹配。
 ///   - **少一个画师就不算**:共用某个画师的两个画风不能互相串味。
-///   - **被包含的让位**:A 的画师是 B 的真子集、图里 B 整组都在时,那是 B,
-///     不是「A 加一个画师」。
+///   - **条目的画师不到图里画师的 [kStyleArtistShare] 不算**:图里的画师 = 调用方
+///     从词库认出的 + 各条目里出现过的。
+///   - **被包含的让位**:A 的画师是 B 的真子集、图里 B 整组都在(或 B 是记下的
+///     来源)时,那是 B,不是「A 加一个画师」。
 ///   - 带不带 `artist:` 前缀是同一个画师(见 [cleanPromptToken])。
 ///   - 同名的只出一条。只跳**已经命中过**的名字:先撞上的同名条目没过判定时,
 ///     后一个还要有机会。
@@ -401,6 +470,7 @@ class StyleMatcher {
   StyleMatcher(
     Iterable<TagEntry> entries, {
     required int Function(String token) postCount,
+    this.share = kStyleArtistShare,
   }) {
     for (final e in entries) {
       final all = tokenizeSet(e.positive);
@@ -412,34 +482,67 @@ class StyleMatcher {
           if (!_styleExtraRe.hasMatch(t) && postCount(t) < kStyleGenericPosts)
             t,
       };
-      _rows.add((name: name, toks: core.isEmpty ? all : core));
+      _rows.add((
+        id: e.id,
+        name: name,
+        fold: sanitizeFoldName(name),
+        toks: core,
+      ));
+      _known.addAll(core);
     }
     _inv = _Inverted([for (final r in _rows) r.toks]);
   }
 
-  final _rows = <({String name, Set<String> toks})>[];
+  final _rows = <({String id, String name, String fold, Set<String> toks})>[];
   late final _Inverted _inv;
+
+  /// 各条目里出现过的画师。
+  final _known = <String>{};
+
+  /// 文本匹配的画师占比门槛,默认 [kStyleArtistShare];评测脚本扫门槛时才传别的值。
+  final double share;
 
   bool get isEmpty => _rows.isEmpty;
 
-  /// 一张图命中的条目;[img] 是这张图提示词的 [tokenizeSet]。
-  List<GroupTag> match(Set<String> img) {
-    if (_rows.isEmpty || img.isEmpty) return const [];
-    final shared = _inv.shared(img);
-    final names = <String>{};
-    final hit = <int>[];
-    for (final i in shared.keys.toList()..sort()) {
+  /// 一张图命中的条目;[img] 是这张图提示词的 [tokenizeSet],[artists] 是调用方
+  /// 认出的图里的画师,[ids] / [names] 是这张图记下的来源(条目 id;折叠组名)。
+  List<GroupTag> match(
+    Set<String> img, {
+    Set<String> artists = const {},
+    Set<String> ids = const {},
+    Set<String> names = const {},
+  }) {
+    if (_rows.isEmpty) return const [];
+    final hitNames = <String>{};
+    final declared = <int>[];
+    for (var i = 0; i < _rows.length; i++) {
       final r = _rows[i];
-      if (shared[i] != r.toks.length || !names.add(r.name)) continue;
-      hit.add(i);
+      if (_declared(r.id, r.name, r.fold, ids, names) && hitNames.add(r.name)) {
+        declared.add(i);
+      }
     }
+    final matched = <int>[];
+    if (img.isNotEmpty) {
+      final shared = _inv.shared(img);
+      final inImg = {...artists, ...img.where(_known.contains)};
+      for (final i in shared.keys.toList()..sort()) {
+        final r = _rows[i];
+        if (r.toks.isEmpty ||
+            shared[i] != r.toks.length ||
+            r.toks.length < inImg.length * share ||
+            !hitNames.add(r.name)) {
+          continue;
+        }
+        matched.add(i);
+      }
+    }
+    final hits = [...declared, ...matched]..sort();
+    bool within(int a, int b) =>
+        _rows[b].toks.length > _rows[a].toks.length &&
+        _rows[b].toks.containsAll(_rows[a].toks);
     return [
-      for (final a in hit)
-        if (!hit.any(
-          (b) =>
-              _rows[b].toks.length > _rows[a].toks.length &&
-              _rows[b].toks.containsAll(_rows[a].toks),
-        ))
+      for (final a in hits)
+        if (declared.contains(a) || !hits.any((b) => within(a, b)))
           (key: _rows[a].name, label: _rows[a].name),
     ];
   }

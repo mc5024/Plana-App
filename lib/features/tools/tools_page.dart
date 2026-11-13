@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/store/ui_prefs.dart';
 import 'metadata_tool_page.dart';
 import 'weight_convert_page.dart';
+import '../../l10n/l10n.dart';
 
 /// 工具箱(对齐 web):权重转换 / 图片元数据 两个页签,
 /// IndexedStack 保活,切页签不丢已输入内容与已选图。
@@ -20,7 +21,7 @@ class _ToolsPageState extends ConsumerState<ToolsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('工具箱')),
+      appBar: AppBar(title: Text(context.l10n.toolbox)),
       body: Column(
         children: [
           Padding(
@@ -28,16 +29,22 @@ class _ToolsPageState extends ConsumerState<ToolsPage> {
             child: SizedBox(
               width: double.infinity,
               child: SegmentedButton<int>(
-                segments: const [
+                segments: [
                   ButtonSegment(
                     value: 0,
-                    label: Text('权重转换'),
-                    icon: Icon(Icons.swap_horiz, size: 17),
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(context.l10n.weightConverter, maxLines: 1),
+                    ),
+                    icon: const Icon(Icons.swap_horiz, size: 17),
                   ),
                   ButtonSegment(
                     value: 1,
-                    label: Text('图片元数据'),
-                    icon: Icon(Icons.document_scanner_outlined, size: 17),
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(context.l10n.imageMetadata, maxLines: 1),
+                    ),
+                    icon: const Icon(Icons.document_scanner_outlined, size: 17),
                   ),
                 ],
                 selected: {_tab},

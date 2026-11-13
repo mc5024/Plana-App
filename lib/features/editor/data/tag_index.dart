@@ -371,6 +371,19 @@ class TagIndex implements OfflineTagMeta {
     return out;
   }
 
+  /// 分词集合里词库标成画师(类目 1)的那些词。
+  Set<String> artistsIn(Iterable<String> tokens) => {
+    for (final t in tokens)
+      if (_postRowOf(t) case final row? when _rowCategory(row) == 1) t,
+  };
+
+  int? _postRowOf(String token) {
+    final p = _find(token);
+    if (p < 0) return null;
+    final row = _u32(p + 6);
+    return row == 0 ? null : row;
+  }
+
   /// 英文补全,匹配口径同后端 `tag_search/autocomplete.py`(仿 Danbooru tag_query)。
   /// 标签名和别名都参与,按命中强度分档,档高的排前、同档按热度:
   ///   4 与标签名或别名完全相同           `seifuku` → school uniform
@@ -554,6 +567,11 @@ class TagIndex implements OfflineTagMeta {
   int _rowCount(int row) {
     final zhAt = row + 2 + _u16(row);
     return _u32(zhAt + 2 + _u16(zhAt));
+  }
+
+  int _rowCategory(int row) {
+    final zhAt = row + 2 + _u16(row);
+    return _b[zhAt + 2 + _u16(zhAt) + 4];
   }
 
   CharacterTag _character(int row) {

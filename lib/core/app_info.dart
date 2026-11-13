@@ -4,10 +4,11 @@
 /// 不划算;漂移由 `test/app_info_test.dart` 盯着,对不上直接红。
 library;
 
+import '../l10n/l10n.dart';
+
 /// 显示名。改这里要连 `android/app/src/main/AndroidManifest.xml` 的
 /// `android:label` 一起改 —— 那个是桌面图标下的名字,读不到 Dart 常量。
 const kAppName = 'Plana App';
-const kAppTagline = 'NovelAI 移动创作端';
 const kAppVersion = '1.2.3';
 const kAppBuild = '23';
 
@@ -52,8 +53,5 @@ const kLicense = 'GPL-3.0';
 const kLicenseUrl = 'https://www.gnu.org/licenses/gpl-3.0.html';
 
 /// 版权与免责,用于 `showLicensePage` 的 legalese 区。
-const kLegalese =
-    'Copyright (C) 2026 Sora_Light\n\n'
-    '本程序是自由软件,依据 GNU GPL v3 或更新版本分发。'
-    '分发本程序是希望它有用,但不作任何担保。\n\n'
-    '$kAppName 是第三方客户端,与 NovelAI 官方无关联。';
+String legalese(AppLocalizations l) =>
+    'Copyright (C) 2026 Sora_Light\n\n${l.legaleseBody(kAppName)}';

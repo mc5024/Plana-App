@@ -47,17 +47,18 @@ import 'widgets/result_strip.dart';
 import 'widgets/settings_sheet.dart';
 import 'widgets/think_sheet.dart';
 import 'widgets/tool_trail.dart';
+import '../../l10n/l10n.dart';
 
 /// 对话列表里「正在跑」那一条的 key。消息 id 是时间戳拼的,撞不上。
 const _kLiveKey = '__live';
 
 /// 开场白。`canvas` = 这句话离了创作页那串词就没意义,点它等于顺手替用户勾上
 /// 「引用创作页」;创作页是空的时候这类开场白整条不出(点了也只能得到一句「你还没写」)。
-const _suggests = <({String text, bool canvas})>[
-  (text: '画一个白发红瞳的猫娘,站在樱花树下', canvas: false),
-  (text: '帮我抽一个好看的画风', canvas: false),
-  (text: '随机画一个蔚蓝档案的角色', canvas: false),
-  (text: '看看我现在这串 tag 有什么问题', canvas: true),
+List<({String text, bool canvas})> _suggests(AppLocalizations l) => [
+  (text: l.suggest1, canvas: false),
+  (text: l.suggest2, canvas: false),
+  (text: l.suggest3, canvas: false),
+  (text: l.suggest4, canvas: true),
 ];
 
 class AssistantPage extends ConsumerStatefulWidget {
@@ -217,10 +218,16 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        'AI 助手',
-                        style: context.texts.titleLarge!.copyWith(
-                          fontWeight: FontWeight.w700,
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            context.l10n.aiAssistant,
+                            style: context.texts.titleLarge!.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -233,7 +240,8 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
                       Flexible(
                         child: Text(
                           // 列表还没到货就先不报名字 —— 报错的名字比不报更糟。
-                          ref.watch(assistantModelProvider)?.name ?? '选择模型',
+                          ref.watch(assistantModelProvider)?.name ??
+                              context.l10n.selectModel,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: context.texts.labelMedium!.copyWith(
@@ -255,17 +263,17 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
           ),
         ),
         IconButton(
-          tooltip: '助手设置',
+          tooltip: context.l10n.assistantSettings,
           onPressed: () => showAssistantSettings(context),
           icon: const Icon(Icons.tune),
         ),
         IconButton(
-          tooltip: '历史会话',
+          tooltip: context.l10n.chatHistory,
           onPressed: () => showHistorySheet(context),
           icon: const Icon(Icons.history),
         ),
         IconButton(
-          tooltip: '新对话',
+          tooltip: context.l10n.newChat,
           onPressed: st.isEmpty ? null : _newChat,
           icon: const Icon(Icons.edit_square),
         ),
@@ -285,13 +293,13 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
             child: Text(
-              '想画什么,直接说',
+              context.l10n.askAnything,
               style: context.texts.titleSmall!.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
             ),
           ),
-          for (final s in _suggests)
+          for (final s in _suggests(context.l10n))
             if (!s.canvas || canvasHasContent(ref.watch(generateProvider)))
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -461,19 +469,23 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
           children: [
             ListTile(
               leading: const Icon(Icons.copy_outlined),
-              title: const Text('复制内容'),
+              title: Text(context.l10n.copyContent),
               onTap: () => Navigator.pop(context, 'copy'),
             ),
             if (isUser && idle)
               ListTile(
                 leading: const Icon(Icons.edit_outlined),
-                title: const Text('编辑该消息'),
+                title: Text(context.l10n.editMessage),
                 onTap: () => Navigator.pop(context, 'edit'),
               ),
             if (idle)
               ListTile(
                 leading: const Icon(Icons.refresh),
-                title: Text(isUser ? '从这里重新生成' : '重新生成'),
+                title: Text(
+                  isUser
+                      ? context.l10n.regenerateFromHere
+                      : context.l10n.regenerate,
+                ),
                 onTap: () => Navigator.pop(context, 'retry'),
               ),
           ],
@@ -521,17 +533,17 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
           children: [
             ListTile(
               leading: const Icon(Icons.copy_outlined),
-              title: const Text('复制内容'),
+              title: Text(context.l10n.copyContent),
               onTap: () => Navigator.pop(context, 'copy'),
             ),
             ListTile(
               leading: const Icon(Icons.edit_outlined),
-              title: const Text('编辑该消息'),
+              title: Text(context.l10n.editMessage),
               onTap: () => Navigator.pop(context, 'edit'),
             ),
             ListTile(
               leading: const Icon(Icons.close),
-              title: const Text('取消发送'),
+              title: Text(context.l10n.cancelSend),
               onTap: () => Navigator.pop(context, 'cancel'),
             ),
           ],
@@ -582,9 +594,9 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
     if (!mounted) return false;
     return confirmDialog(
       context,
-      title: '丢掉之后的对话?',
-      message: '这条之后的对话都会丢掉,已经写进创作页的改动不受影响。',
-      confirmLabel: '丢掉',
+      title: context.l10n.discardAfterQ,
+      message: context.l10n.discardAfterBody,
+      confirmLabel: context.l10n.discard,
     );
   }
 
@@ -636,7 +648,11 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
               //
               // 两态都不报「23 个 tag · 2 个角色」—— 那串数字读一遍才知道说的是
               // 什么,而这枚芯片要回答的只有「这条带不带」;想确认内容切过去看。
-              label: Text(_withCanvas ? '创作页' : '引用创作页'),
+              label: Text(
+                _withCanvas
+                    ? context.l10n.createPageShort
+                    : context.l10n.quoteCreatePage,
+              ),
               onDeleted: _withCanvas
                   ? () => setState(() => _withCanvas = false)
                   : null,
@@ -650,7 +666,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
                 if (!hasCanvas) {
                   hintSnack(
                     context,
-                    '创作页还没写提示词,没东西可引用',
+                    context.l10n.createPageEmpty,
                     icon: Icons.draw_outlined,
                   );
                   return;
@@ -699,7 +715,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
         color: context.chipIcon(on),
       ),
       // 开着就只写模式名;关着写「模式」,「模式 无」读着别扭
-      label: Text(on ? assistantModeLabel(shown) : '模式'),
+      label: Text(on ? assistantModeLabel(shown) : context.l10n.modeLabel),
       onSelected: (_) => _pickMode(family, shown, usable),
     );
   }
@@ -719,7 +735,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
       if (!latest.contains(picked)) {
         hintSnack(
           context,
-          '当前规则预设不支持「${assistantModeLabel(picked)}」',
+          context.l10n.rulesNoMode(assistantModeLabel(picked)),
           icon: assistantModeIcon(picked),
         );
         return;
@@ -750,7 +766,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
         size: 16,
         color: context.chipIcon(on),
       ),
-      label: Text('思考 ${thinkLevelLabel(level)}'),
+      label: Text(context.l10n.thinkChip(thinkLevelLabel(level))),
       onSelected: (_) => showThinkSheet(context),
     );
   }
@@ -791,7 +807,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   IconButton(
-                    tooltip: '带一张图',
+                    tooltip: context.l10n.attachImage,
                     onPressed: _pick,
                     icon: Icon(
                       Icons.image_outlined,
@@ -809,7 +825,8 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
                       onChanged: (_) => setState(() {}),
                       decoration: InputDecoration(
                         isDense: true,
-                        hintText: '想画什么、想改哪里…',
+                        hintText: context.l10n.inputHint,
+                        hintMaxLines: 1,
                         filled: true,
                         fillColor: context.skin.float
                             ? scheme.surfaceContainerHigh
@@ -832,14 +849,14 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
                     height: 44,
                     child: running && !hasDraft
                         ? IconButton.filledTonal(
-                            tooltip: '停止',
+                            tooltip: context.l10n.stop,
                             onPressed: ref
                                 .read(assistantProvider.notifier)
                                 .stop,
                             icon: const Icon(Icons.stop, size: 20),
                           )
                         : IconButton.filled(
-                            tooltip: '发送',
+                            tooltip: context.l10n.send,
                             onPressed: canSend ? () => _send() : null,
                             icon: const Icon(Icons.arrow_upward, size: 20),
                           ),
@@ -887,14 +904,14 @@ class _ModelGate extends ConsumerWidget {
             ),
             const SizedBox(height: 15),
             Text(
-              'AI 助手暂不支持这个模型',
+              context.l10n.assistantModelUnsupported,
               style: context.texts.titleSmall!.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 10),
             Text(
-              'Anima 与 Krea 的提示词体系和 NAI 是两套。\n去创作页换成 NAI 4.5 或 5 再来。',
+              context.l10n.assistantModelUnsupportedBody,
               textAlign: TextAlign.center,
               style: context.texts.bodySmall!.copyWith(
                 color: scheme.onSurfaceVariant,
@@ -905,7 +922,7 @@ class _ModelGate extends ConsumerWidget {
             FilledButton(
               onPressed: () =>
                   ref.read(shellIndexProvider.notifier).select(kTabCreate),
-              child: const Text('去换模型'),
+              child: Text(context.l10n.goChangeModel),
             ),
           ],
         ),
@@ -967,14 +984,14 @@ class _Gate extends StatelessWidget {
             ),
             const SizedBox(height: 15),
             Text(
-              '先选一个模型接口',
+              context.l10n.pickEndpointFirst,
               style: context.texts.titleSmall!.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 10),
             Text(
-              '内置模型暂未开放,可以先用你自己的模型接口,\n资料只用本地库。',
+              context.l10n.builtinUnavailableBody,
               textAlign: TextAlign.center,
               style: context.texts.bodySmall!.copyWith(
                 color: scheme.onSurfaceVariant,
@@ -984,7 +1001,7 @@ class _Gate extends StatelessWidget {
             const SizedBox(height: 18),
             FilledButton(
               onPressed: () => showModelSheet(context),
-              child: const Text('选择模型接口'),
+              child: Text(context.l10n.selectEndpoint),
             ),
           ],
         ),
@@ -1122,10 +1139,15 @@ class _MsgTile extends ConsumerWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (queued) ..._mark(context, Icons.schedule, '排队中'),
+              if (queued)
+                ..._mark(context, Icons.schedule, context.l10n.queued),
               if (queued && msg.withCanvas) const SizedBox(width: 10),
               if (msg.withCanvas)
-                ..._mark(context, Icons.draw_outlined, '引用了创作页'),
+                ..._mark(
+                  context,
+                  Icons.draw_outlined,
+                  context.l10n.quotedCreatePage,
+                ),
             ],
           ),
         ),
@@ -1282,7 +1304,7 @@ class _MsgTile extends ConsumerWidget {
               child: TextButton.icon(
                 onPressed: retry,
                 icon: const Icon(Icons.refresh, size: 17),
-                label: const Text('重试'),
+                label: Text(context.l10n.retry),
                 style: TextButton.styleFrom(
                   foregroundColor: fg,
                   visualDensity: VisualDensity.compact,
@@ -1611,7 +1633,7 @@ Widget pendingStatusRow(
           children: [...previous, ?current],
         ),
         child: Text(
-          stage.isEmpty ? '思考中' : stage,
+          stage.isEmpty ? l10nNow.thinking : stage,
           key: ValueKey(stage),
           style: style,
         ),
@@ -1620,8 +1642,11 @@ Widget pendingStatusRow(
         const SizedBox(width: 8),
         Text(
           secs < 60
-              ? '$secs 秒'
-              : '${secs ~/ 60} 分 ${(secs % 60).toString().padLeft(2, '0')} 秒',
+              ? l10nNow.durSecs(secs)
+              : l10nNow.durMinSecs(
+                  secs ~/ 60,
+                  (secs % 60).toString().padLeft(2, '0'),
+                ),
           style: style.copyWith(
             color: scheme.outline,
             fontFeatures: const [FontFeature.tabularFigures()],

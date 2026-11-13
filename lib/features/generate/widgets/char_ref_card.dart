@@ -13,6 +13,7 @@ import '../canvas_state.dart';
 import '../generate_state.dart';
 import '../models.dart';
 import 'common.dart';
+import '../display_names.dart';
 import 'section_card.dart';
 import '../../../l10n/l10n.dart';
 
@@ -73,8 +74,11 @@ class _CharRefCardState extends ConsumerState<CharRefCard> {
   }
 
   /// 互斥切换提示:启用/加入角色参考导致 Vibe 被暂停时,弹一次 toast。
-  void _mutexHint() =>
-      hintSnack(context, '与 Vibe 互斥,已暂停 Vibe 参考', icon: Icons.swap_horiz);
+  void _mutexHint() => hintSnack(
+    context,
+    context.l10n.refMutexVibePaused,
+    icon: Icons.swap_horiz,
+  );
 
   void _remove(String id) {
     final refs = ref.read(generateProvider).charRefs;
@@ -117,7 +121,7 @@ class _CharRefCardState extends ConsumerState<CharRefCard> {
       actions: [
         RoundIconBtn(
           Icons.grid_view,
-          tooltip: '参考图库',
+          tooltip: context.l10n.refLibrary,
           color: scheme.onSurfaceVariant,
           onTap: () => Navigator.of(
             context,
@@ -126,7 +130,7 @@ class _CharRefCardState extends ConsumerState<CharRefCard> {
         RoundIconBtn(
           Icons.add,
           // 与 Vibe 卡的同位按钮区分:两者互斥,tooltip 一样会让人分不清点了哪个
-          tooltip: '导入角色参考图',
+          tooltip: context.l10n.importCharRef,
           color: scheme.primary,
           onTap: _onAdd,
         ),
@@ -137,8 +141,8 @@ class _CharRefCardState extends ConsumerState<CharRefCard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (refs.isNotEmpty && !crSupportsModel(state.params.model)) ...[
-            const InfoNote(
-              '角色参考仅 4.5 模型支持,当前模型生成时不会发送。',
+            InfoNote(
+              context.l10n.charRefOnly45,
               icon: Icons.warning_amber_rounded,
             ),
             const SizedBox(height: 12),
@@ -204,7 +208,7 @@ class _CharRefDetail extends ConsumerWidget {
       children: [
         RefDetailHeader(
           index: index,
-          name: item.name,
+          name: refDisplayName(context.l10n, item.name),
           onRemove: onRemove,
           enableToggle: RefEnableToggle(enabled: item.enabled, onTap: onToggle),
           leadingAction: _ModeToggle(
@@ -215,6 +219,7 @@ class _CharRefDetail extends ConsumerWidget {
               notifier.updateCharRef(item.id, mode: next);
             },
           ),
+          leadingActionWidth: _ModeToggle.maxWidthOf(context),
         ),
         const SizedBox(height: 14),
         // 保持最低 0(非负,不采用 web 的 −10..+1);step 0.01。
@@ -245,6 +250,27 @@ class _ModeToggle extends StatelessWidget {
   final CharRefMode mode;
   final VoidCallback onTap;
 
+  static String _label(BuildContext context, CharRefMode mode) =>
+      switch (mode) {
+        CharRefMode.character => context.l10n.refCharacter,
+        CharRefMode.style => context.l10n.refStyle,
+        CharRefMode.both => context.l10n.refCharacterStyle,
+      };
+
+  static TextStyle _style(BuildContext context) => context.texts.bodyMedium!
+      .copyWith(color: context.scheme.primary, fontWeight: FontWeight.w600);
+
+  static double widthOf(BuildContext context, CharRefMode mode) =>
+      28 +
+      15 +
+      5 +
+      measureText(context, _label(context, mode), _style(context));
+
+  /// 三档里最宽的一档:卡头按它判「移除」缩不缩,切档时不跟着变。
+  static double maxWidthOf(BuildContext context) => [
+    for (final m in CharRefMode.values) widthOf(context, m),
+  ].reduce((a, b) => a > b ? a : b);
+
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
@@ -261,17 +287,7 @@ class _ModeToggle extends StatelessWidget {
             children: [
               Icon(Icons.cached, size: 15, color: scheme.primary),
               const SizedBox(width: 5),
-              Text(
-                switch (mode) {
-                  CharRefMode.character => context.l10n.refCharacter,
-                  CharRefMode.style => context.l10n.refStyle,
-                  CharRefMode.both => context.l10n.refCharacterStyle,
-                },
-                style: context.texts.bodyMedium!.copyWith(
-                  color: scheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              Text(_label(context, mode), style: _style(context)),
             ],
           ),
         ),

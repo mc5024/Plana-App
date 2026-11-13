@@ -108,18 +108,18 @@ final List<({double x, double y})> kSpawnCenters = List.unmodifiable([
     for (final y in const [0.1, 0.3, 0.7, 0.9])
       for (final x in kGridCenters) (x: x, y: y),
   ]..sort((a, b) {
-      double d(({double x, double y}) p) {
-        final dx = p.x - .5, dy = p.y - .5;
-        return dx * dx + dy * dy; // 比距离不用开方，同序
-      }
+    double d(({double x, double y}) p) {
+      final dx = p.x - .5, dy = p.y - .5;
+      return dx * dx + dy * dy; // 比距离不用开方，同序
+    }
 
-      final c = d(a).compareTo(d(b));
-      if (c != 0) return c;
-      final h = (a.y - .5).abs().compareTo((b.y - .5).abs());
-      if (h != 0) return h;
-      final x = a.x.compareTo(b.x);
-      return x != 0 ? x : a.y.compareTo(b.y);
-    }),
+    final c = d(a).compareTo(d(b));
+    if (c != 0) return c;
+    final h = (a.y - .5).abs().compareTo((b.y - .5).abs());
+    if (h != 0) return h;
+    final x = a.x.compareTo(b.x);
+    return x != 0 ? x : a.y.compareTo(b.y);
+  }),
 ]);
 
 /// 这个候选格心算不算已被占用。
@@ -155,10 +155,7 @@ bool _spawnTaken(
 }
 
 /// [nextSpawnCenter] 的 `position` 版:传现有角色的 position 串,回新角色该用的那个。
-String nextSpawnPosition(
-  Iterable<String?> existing, {
-  required bool freeform,
-}) {
+String nextSpawnPosition(Iterable<String?> existing, {required bool freeform}) {
   final taken = <({double x, double y})>[];
   for (final p in existing) {
     final c = resolveCharacterCenter(p);

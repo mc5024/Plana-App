@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/ui/setting_row.dart';
 import '../editor_settings.dart';
+import '../../../l10n/l10n.dart';
 
 /// 编辑器设置弹层:行为开关 + 档位选择 + 加减调节,改动即时生效并持久化。
 /// 按模块分组;子项跟随所属功能开关置灰(补全关了实体/逗号无意义)。
@@ -72,14 +73,14 @@ class EditorSettingsSheet extends ConsumerWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      '编辑器设置',
+                      context.l10n.editorSettings,
                       style: context.texts.titleMedium!.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
                   IconButton(
-                    tooltip: '关闭',
+                    tooltip: context.l10n.close,
                     visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.close, size: 20),
                     onPressed: () => Navigator.of(context).maybePop(),
@@ -96,27 +97,27 @@ class EditorSettingsSheet extends ConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    settingSection(context, '显示'),
+                    settingSection(context, context.l10n.settingDisplay),
                     SettingRow(
                       icon: Icons.translate,
-                      title: '显示注释翻译',
-                      desc: '在词条下方以小字标注中文翻译',
+                      title: context.l10n.showTranslations,
+                      desc: context.l10n.showTranslationsDesc,
                       value: s.showTranslation,
                       onChanged: (v) =>
                           notifier.patch((c) => c.copyWith(showTranslation: v)),
                     ),
                     SettingRow(
                       icon: Icons.format_color_fill,
-                      title: '权重高亮',
-                      desc: '加权 / 降权词条按强度显示红 / 蓝色',
+                      title: context.l10n.weightHighlight,
+                      desc: context.l10n.weightHighlightDesc,
                       value: s.showWeightWash,
                       onChanged: (v) =>
                           notifier.patch((c) => c.copyWith(showWeightWash: v)),
                     ),
                     SettingStepperRow(
                       icon: Icons.format_size,
-                      title: '文本字号',
-                      desc: '文本模式下的文本显示大小',
+                      title: context.l10n.textFontSize,
+                      desc: context.l10n.textFontSizeDesc,
                       value: s.fontSize,
                       min: EditorSettings.fontSizeMin,
                       max: EditorSettings.fontSizeMax,
@@ -127,8 +128,8 @@ class EditorSettingsSheet extends ConsumerWidget {
                     ),
                     SettingStepperRow(
                       icon: Icons.label_outline,
-                      title: '芯片字号',
-                      desc: '芯片模式下的芯片显示大小',
+                      title: context.l10n.chipFontSize,
+                      desc: context.l10n.chipFontSizeDesc,
                       value: s.chipFontSize,
                       min: EditorSettings.fontSizeMin,
                       max: EditorSettings.fontSizeMax,
@@ -137,11 +138,11 @@ class EditorSettingsSheet extends ConsumerWidget {
                       onChanged: (v) =>
                           notifier.patch((c) => c.copyWith(chipFontSize: v)),
                     ),
-                    settingSection(context, '补全'),
+                    settingSection(context, context.l10n.settingCompletion),
                     SettingRow(
                       icon: Icons.manage_search,
-                      title: '启用补全提示',
-                      desc: '输入时在底部给出标签补全建议',
+                      title: context.l10n.enableCompletion,
+                      desc: context.l10n.enableCompletionDesc,
                       value: s.enableCompletion,
                       onChanged: (v) => notifier.patch(
                         (c) => c.copyWith(enableCompletion: v),
@@ -149,8 +150,8 @@ class EditorSettingsSheet extends ConsumerWidget {
                     ),
                     SettingRow(
                       icon: Icons.category_outlined,
-                      title: '实体建议',
-                      desc: '补全中包含画师 / 角色 / OC / 作品',
+                      title: context.l10n.entitySuggestions,
+                      desc: context.l10n.entitySuggestionsDesc,
                       value: s.entitySuggest,
                       enabled: s.enableCompletion,
                       onChanged: (v) =>
@@ -158,26 +159,26 @@ class EditorSettingsSheet extends ConsumerWidget {
                     ),
                     SettingRow(
                       icon: Icons.auto_fix_high,
-                      title: '选词自动补逗号',
-                      desc: '选中补全后自动加「, 」,方便连打下一枚',
+                      title: context.l10n.autoComma,
+                      desc: context.l10n.autoCommaDesc,
                       value: s.autoComma,
                       enabled: s.enableCompletion,
                       onChanged: (v) =>
                           notifier.patch((c) => c.copyWith(autoComma: v)),
                     ),
-                    settingSection(context, '词条栏'),
+                    settingSection(context, context.l10n.settingTagBar),
                     SettingRow(
                       icon: Icons.sell_outlined,
-                      title: '启用标签面板',
-                      desc: '光标停在词条上时显示权重与操作栏',
+                      title: context.l10n.enableTagPanel,
+                      desc: context.l10n.enableTagPanelDesc,
                       value: s.enableTagPanel,
                       onChanged: (v) =>
                           notifier.patch((c) => c.copyWith(enableTagPanel: v)),
                     ),
                     SettingRow(
                       icon: Icons.density_small,
-                      title: '精简词条栏',
-                      desc: '压成一行,只留权重与删除,正文多露两行',
+                      title: context.l10n.compactTagBar,
+                      desc: context.l10n.compactTagBarDesc,
                       value: s.compactTagPanel,
                       enabled: s.enableTagPanel,
                       onChanged: (v) =>
@@ -185,8 +186,8 @@ class EditorSettingsSheet extends ConsumerWidget {
                     ),
                     SettingStepperRow(
                       icon: Icons.exposure,
-                      title: '权重步进',
-                      desc: '数值 +/− 每步的调整量',
+                      title: context.l10n.weightStep,
+                      desc: context.l10n.weightStepDesc,
                       value: s.weightStep,
                       min: EditorSettings.weightStepMin,
                       max: EditorSettings.weightStepMax,
