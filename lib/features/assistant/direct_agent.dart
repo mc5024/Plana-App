@@ -241,7 +241,6 @@ Stream<AgentEvent> streamDirectPrompt({
 
   /// 逐字显示(助手设置里的开关)。关掉就是老样子:整段收完再一次出。
   bool stream = true,
-  Duration timeout = const Duration(seconds: 120),
 
   /// 调试记录:系统提示、消息、每一跳的模型原话和工具结果都记进去。
   AgentTrace? trace,
@@ -350,7 +349,6 @@ Stream<AgentEvent> streamDirectPrompt({
         msgs: msgs,
         think: think,
         stream: stream,
-        timeout: timeout,
         out: buf,
       )) {
         yield d;
@@ -697,8 +695,7 @@ const _liveFrameMs = 60;
 /// 整段原文写进 [out] —— 这条链路的产出是「一段回复 + 一个围栏」,围栏收完才解析
 /// 得了,所以**流只管显示**,解析照旧在 [parseDirectReply] / [parseToolCalls]。
 ///
-/// [timeout] 不再是整轮上限,而是「等响应头」和「两帧之间」各自的静默上限:
-/// 长回复本来就写得过一分钟,按整轮掐必然误杀;而只要还在吐字就说明活着。
+/// [timeout] 是「等响应头」「两帧之间」「等整段」各自的上限;null = 不限,等到用户取消。
 ///
 /// 中转不认流式(回的不是 `text/event-stream`)时,收完整个 body 按老路解析,
 /// 只是没有逐字效果 —— 不能因为这个就让人用不了。
@@ -708,8 +705,8 @@ Stream<AgentDelta> directModelStream(
   required String system,
   required List<DirectMsg> msgs,
   required ThinkLevel think,
-  required Duration timeout,
   required StringBuffer out,
+  Duration? timeout,
 
   /// 关掉就是老样子:一个 POST 收完整段,一帧都不推。
   bool stream = true,
@@ -734,17 +731,30 @@ Stream<AgentDelta> directModelStream(
     )
     ..bodyBytes = utf8.encode(jsonEncode(body));
 
+  final noReply = BackendException('模型 ${timeout?.inSeconds} 秒内没有回复');
+  Future<T> limited<T>(Future<T> f) async {
+    if (timeout == null) return f;
+    try {
+      return await f.timeout(timeout);
+    } on TimeoutException {
+      throw noReply;
+    }
+  }
+
+  Future<String> readAll(http.StreamedResponse r) =>
+      limited(r.stream.bytesToString());
+
   final http.StreamedResponse resp;
   try {
-    resp = await c.send(req).timeout(timeout);
-  } on TimeoutException {
-    throw BackendException('模型没在时限内回复');
+    resp = await limited(c.send(req));
+  } on BackendException {
+    rethrow;
   } catch (_) {
     throw BackendException('连不上 ${uri.host}');
   }
 
   if (resp.statusCode < 200 || resp.statusCode >= 300) {
-    final raw = await resp.stream.bytesToString().timeout(timeout);
+    final raw = await readAll(resp);
     throw BackendException(_errorOf(_tryJson(raw), resp.statusCode));
   }
   final Stream<String> lines;
@@ -752,15 +762,14 @@ Stream<AgentDelta> directModelStream(
       (resp.headers['content-type'] ?? '').toLowerCase().contains(
         'event-stream',
       )) {
-    lines = resp.stream
+    final all = resp.stream
         .transform(utf8.decoder)
-        .transform(const LineSplitter())
-        .timeout(
-          timeout,
-          onTimeout: (sink) => sink.addError(BackendException('模型写到一半没声了')),
-        );
+        .transform(const LineSplitter());
+    lines = timeout == null
+        ? all
+        : all.timeout(timeout, onTimeout: (sink) => sink.addError(noReply));
   } else {
-    final raw = await resp.stream.bytesToString().timeout(timeout);
+    final raw = await readAll(resp);
     final text = extractReplyText(e.format, _tryJson(raw));
     if (text.isNotEmpty || !stream || !raw.contains('data:')) {
       out.write(text); // 空的话由调用方报「模型回了一段空的」
@@ -979,7 +988,7 @@ Object? _tryJson(String s) {
               ],
             },
         ],
-        ...thinkFields(AgentApiFormat.google, think),
+        ...thinkFields(AgentApiFormat.google, think, model: e.model),
       },
     ),
     AgentApiFormat.anthropic => (
@@ -1026,12 +1035,56 @@ int _anthropicBudget(ThinkLevel l) => switch (l) {
   ThinkLevel.ultra => 16384,
 };
 
+/// Gemini 的思考旋钮按代分两种:2.x 及更早给 token 预算(`thinkingBudget`),
+/// 3 及以后(含 Gemini 4 的 Argon / Carbon / Hydrogen)给档位(`thinkingLevel`)。
+/// 发错一种会被 400 拒掉,两种一起发也拒。
+enum GeminiThinking { budget, level }
+
+/// 按模型名认是哪一种。不带 gemini 字样的(中转挂的别家模型)按预算发。
+GeminiThinking geminiThinkingOf(String model) {
+  final m = model.trim().toLowerCase();
+  if (RegExp(r'gemini-[12](?:[.\-]|$)').hasMatch(m)) {
+    return GeminiThinking.budget;
+  }
+  if (RegExp(r'gemini|argon|carbon|hydrogen').hasMatch(m)) {
+    return GeminiThinking.level;
+  }
+  return GeminiThinking.budget;
+}
+
+/// 只有 Gemini 4 Hydrogen 有 XHIGH。
+bool _geminiHasXHigh(String model) => model.toLowerCase().contains('hydrogen');
+
 /// 思考等级 → 各家请求体里的那几个字段。
 ///
-/// 三家的旋钮完全不是一回事:OpenAI 给的是档位字符串,另外两家要的是 **token 预算**。
-/// [ThinkLevel.auto] 一律返回空表 —— 不发这个字段,让模型/服务方用自己的默认。
+/// 三家的旋钮完全不是一回事:OpenAI 给的是档位字符串,Claude 要 **token 预算**,
+/// Gemini 按代分预算和档位(见 [geminiThinkingOf])。
+/// [ThinkLevel.auto] 不发档位,让模型/服务方用自己的默认;Gemini 3 及以后照样带
+/// `includeThoughts`,让流里有思考摘要可显示。
 /// 中转不认这些字段时通常直接忽略,所以发了也不至于把请求打死。
-Map<String, dynamic> thinkFields(AgentApiFormat format, ThinkLevel level) {
+Map<String, dynamic> thinkFields(
+  AgentApiFormat format,
+  ThinkLevel level, {
+  String model = '',
+}) {
+  if (format == AgentApiFormat.google &&
+      geminiThinkingOf(model) == GeminiThinking.level) {
+    return {
+      'generationConfig': {
+        'thinkingConfig': {
+          'includeThoughts': true,
+          if (level != ThinkLevel.auto)
+            // 没有「关」:MINIMAL Gemini 4 不收,3.x 上多轮还要带思考签名,统一落到 LOW
+            'thinkingLevel': switch (level) {
+              ThinkLevel.medium => 'MEDIUM',
+              ThinkLevel.high => 'HIGH',
+              ThinkLevel.ultra => _geminiHasXHigh(model) ? 'XHIGH' : 'HIGH',
+              _ => 'LOW',
+            },
+        },
+      },
+    };
+  }
   if (level == ThinkLevel.auto) return const {};
   switch (format) {
     case AgentApiFormat.openai:
@@ -1056,6 +1109,7 @@ Map<String, dynamic> thinkFields(AgentApiFormat format, ThinkLevel level) {
               ThinkLevel.ultra => 24576,
               _ => 8192,
             },
+            if (level != ThinkLevel.off) 'includeThoughts': true,
           },
         },
       };
@@ -1066,6 +1120,54 @@ Map<String, dynamic> thinkFields(AgentApiFormat format, ThinkLevel level) {
       return {
         'thinking': {'type': 'enabled', 'budget_tokens': budget},
       };
+  }
+}
+
+/// 选的档位在这个接口上没有、发送时换成了别的档,说一句换成了什么;原样发的返回 null。
+String? thinkLevelNote(CustomEndpoint e, ThinkLevel level) {
+  switch (e.format) {
+    case AgentApiFormat.openai:
+      return switch (level) {
+        ThinkLevel.off => '该格式没有「关闭」档,按最低档发送',
+        ThinkLevel.ultra => '该格式没有「超高」档,按「高」发送',
+        _ => null,
+      };
+    case AgentApiFormat.google:
+      if (geminiThinkingOf(e.model) != GeminiThinking.level) return null;
+      return switch (level) {
+        ThinkLevel.off => '该模型不能关闭思考,按「低」发送',
+        ThinkLevel.ultra when !_geminiHasXHigh(e.model) => '该模型没有「超高」档,按「高」发送',
+        _ => null,
+      };
+    case AgentApiFormat.anthropic:
+      return null;
+  }
+}
+
+/// 发一条最短的对话,确认地址、Key、模型、格式对得上。成功返回用时;
+/// 失败抛 [BackendException],消息是给用户看的原话。测试等两分钟为止。
+Future<Duration> testEndpoint(CustomEndpoint e, {http.Client? client}) async {
+  final own = client == null;
+  final c = client ?? http.Client();
+  final sw = Stopwatch()..start();
+  try {
+    final out = StringBuffer();
+    await directModelStream(
+      c,
+      e,
+      system: 'Reply with the single word OK.',
+      msgs: const [(role: 'user', content: 'ping', image: null)],
+      think: ThinkLevel.auto,
+      timeout: const Duration(seconds: 120),
+      out: out,
+      stream: false,
+    ).drain<void>();
+    if (out.toString().trim().isEmpty) {
+      throw BackendException('接口有响应,但没读出回复内容,检查格式是否选对');
+    }
+    return sw.elapsed;
+  } finally {
+    if (own) c.close();
   }
 }
 
@@ -1091,7 +1193,9 @@ String extractReplyText(AgentApiFormat format, Object? body) {
       if (parts is! List) return '';
       return [
         for (final p in parts)
-          if (p is Map && p['text'] != null) p['text'].toString(),
+          // 思考摘要(thought: true)不算正文
+          if (p is Map && p['text'] != null && p['thought'] != true)
+            p['text'].toString(),
       ].join();
     case AgentApiFormat.anthropic:
       final content = body['content'];

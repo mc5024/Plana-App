@@ -2156,10 +2156,25 @@ void main() {
       ]);
     });
 
-    test('自动档一个字段都不发', () {
+    test('自动档不发档位;Gemini 3 及以后只要思考摘要', () {
       for (final f in AgentApiFormat.values) {
-        expect(thinkFields(f, ThinkLevel.auto), isEmpty);
+        expect(
+          thinkFields(f, ThinkLevel.auto, model: 'gemini-2.5-flash'),
+          isEmpty,
+        );
       }
+      expect(
+        thinkFields(
+          AgentApiFormat.google,
+          ThinkLevel.auto,
+          model: 'gemini-4-carbon',
+        ),
+        {
+          'generationConfig': {
+            'thinkingConfig': {'includeThoughts': true},
+          },
+        },
+      );
     });
 
     test('OpenAI:reasoning_effort 档位字符串,两头各自封顶', () {
@@ -2176,18 +2191,104 @@ void main() {
       );
     });
 
-    test('Gemini:thinkingBudget,关掉是 0 而不是不发', () {
-      int budget(ThinkLevel l) {
-        final f = thinkFields(AgentApiFormat.google, l);
-        final cfg = (f['generationConfig'] as Map)['thinkingConfig'] as Map;
-        return cfg['thinkingBudget'] as int;
+    test('Gemini 2.x:thinkingBudget,关掉是 0 而不是不发', () {
+      Map cfg(ThinkLevel l) {
+        final f = thinkFields(
+          AgentApiFormat.google,
+          l,
+          model: 'gemini-2.5-flash',
+        );
+        return (f['generationConfig'] as Map)['thinkingConfig'] as Map;
       }
 
+      int budget(ThinkLevel l) => cfg(l)['thinkingBudget'] as int;
+
       expect(budget(ThinkLevel.off), 0);
+      expect(cfg(ThinkLevel.off).containsKey('thinkingLevel'), isFalse);
+      expect(cfg(ThinkLevel.off).containsKey('includeThoughts'), isFalse);
+      expect(cfg(ThinkLevel.high)['includeThoughts'], isTrue);
       // 越往上给得越多,而且真的要递增 —— 两档撞在一起等于白给一档
       expect(budget(ThinkLevel.low), lessThan(budget(ThinkLevel.medium)));
       expect(budget(ThinkLevel.medium), lessThan(budget(ThinkLevel.high)));
       expect(budget(ThinkLevel.high), lessThan(budget(ThinkLevel.ultra)));
+    });
+
+    test('Gemini 3 / 4:thinkingLevel,不发预算,没有的档就近落', () {
+      String? level(String model, ThinkLevel l) {
+        final f = thinkFields(AgentApiFormat.google, l, model: model);
+        final cfg = (f['generationConfig'] as Map)['thinkingConfig'] as Map;
+        // 两种一起发会被拒
+        expect(cfg.containsKey('thinkingBudget'), isFalse);
+        expect(cfg['includeThoughts'], isTrue);
+        return cfg['thinkingLevel'] as String?;
+      }
+
+      for (final m in [
+        'gemini-4-argon',
+        'models/gemini-4-carbon',
+        'gemini-3.7-flash',
+        'gemini-flash-latest',
+      ]) {
+        expect(level(m, ThinkLevel.low), 'LOW', reason: m);
+        expect(level(m, ThinkLevel.medium), 'MEDIUM', reason: m);
+        expect(level(m, ThinkLevel.high), 'HIGH', reason: m);
+        // 没有「关」也不用 MINIMAL,落到 LOW;没有 XHIGH,落到 HIGH
+        expect(level(m, ThinkLevel.off), 'LOW', reason: m);
+        expect(level(m, ThinkLevel.ultra), 'HIGH', reason: m);
+      }
+      expect(level('gemini-4-hydrogen', ThinkLevel.ultra), 'XHIGH');
+    });
+
+    test('认代:2.x 及更早给预算,3 及以后给档位,认不出的按预算', () {
+      expect(geminiThinkingOf('gemini-2.5-pro'), GeminiThinking.budget);
+      expect(geminiThinkingOf('gemini-2.0-flash'), GeminiThinking.budget);
+      expect(geminiThinkingOf('models/gemini-1.5-pro'), GeminiThinking.budget);
+      expect(geminiThinkingOf('gemini-3.1-pro-preview'), GeminiThinking.level);
+      expect(geminiThinkingOf('gemini-4-argon'), GeminiThinking.level);
+      expect(geminiThinkingOf('Gemini-4-Carbon'), GeminiThinking.level);
+      expect(geminiThinkingOf('deepseek-chat'), GeminiThinking.budget);
+    });
+
+    test('档位被换掉时才有提示', () {
+      CustomEndpoint ep(AgentApiFormat f, String model) => CustomEndpoint(
+        id: 'x',
+        name: '',
+        format: f,
+        baseUrl: '',
+        apiKey: 'k',
+        model: model,
+      );
+      final carbon = ep(AgentApiFormat.google, 'gemini-4-carbon');
+      expect(thinkLevelNote(carbon, ThinkLevel.off), isNotNull);
+      expect(thinkLevelNote(carbon, ThinkLevel.ultra), isNotNull);
+      expect(thinkLevelNote(carbon, ThinkLevel.high), isNull);
+      expect(thinkLevelNote(carbon, ThinkLevel.auto), isNull);
+      final hydrogen = ep(AgentApiFormat.google, 'gemini-4-hydrogen');
+      expect(thinkLevelNote(hydrogen, ThinkLevel.ultra), isNull);
+      final old = ep(AgentApiFormat.google, 'gemini-2.5-flash');
+      expect(thinkLevelNote(old, ThinkLevel.off), isNull);
+      final gpt = ep(AgentApiFormat.openai, 'gpt-5');
+      expect(thinkLevelNote(gpt, ThinkLevel.ultra), isNotNull);
+      final claude = ep(AgentApiFormat.anthropic, 'claude');
+      expect(thinkLevelNote(claude, ThinkLevel.off), isNull);
+    });
+
+    test('Gemini 的思考摘要不算正文', () {
+      expect(
+        extractReplyText(AgentApiFormat.google, const {
+          'candidates': [
+            {
+              'content': {
+                'parts': [
+                  {'text': '先想想', 'thought': true},
+                  {'text': '好的'},
+                ],
+              },
+            },
+          ],
+        }),
+        '好的',
+      );
     });
 
     test('Claude:关 = 不带 thinking 字段;开着预算不低于 1024 且递增', () {
@@ -2225,6 +2326,111 @@ void main() {
   });
 
   group('自定义接口', () {
+    test('多个模型:存得下读得回,老存档的单个模型读成一个', () {
+      const e = CustomEndpoint(
+        id: 'x',
+        name: '',
+        format: AgentApiFormat.openai,
+        baseUrl: 'https://api.deepseek.com/v1',
+        apiKey: 'k',
+        model: 'deepseek-chat',
+        models: ['deepseek-chat', 'deepseek-reasoner'],
+      );
+      final back = CustomEndpoint.fromJson(e.toJson())!;
+      expect(back.models, ['deepseek-chat', 'deepseek-reasoner']);
+      expect(back.model, 'deepseek-chat');
+      final old = CustomEndpoint.fromJson({'id': 'y', 'model': 'gpt-4o'})!;
+      expect(old.allModels, ['gpt-4o']);
+      expect(old.model, 'gpt-4o');
+      expect(CustomEndpoint.fromJson({'id': 'z'})!.usable, isFalse);
+    });
+
+    test('选择键:带模型的认模型,旧键和不在了的模型按第一个', () {
+      const e = CustomEndpoint(
+        id: 'ep1_0',
+        name: '',
+        format: AgentApiFormat.openai,
+        baseUrl: 'https://openrouter.ai/api/v1',
+        apiKey: 'k',
+        model: 'a',
+        models: ['a', 'openai/gpt-4o'],
+      );
+      final k = customModelKey('ep1_0', 'openai/gpt-4o');
+      expect(customEndpointIdOf(k), 'ep1_0');
+      expect(customModelOf(k), 'openai/gpt-4o');
+      expect(resolveCustomChoice(e, k)!.model, 'openai/gpt-4o');
+      expect(resolveCustomChoice(e, customModelKey('ep1_0'))!.model, 'a');
+      expect(
+        resolveCustomChoice(e, customModelKey('ep1_0', 'gone'))!.model,
+        'a',
+      );
+      expect(resolveCustomChoice(e, customModelKey('ep2_0', 'a')), isNull);
+      expect(customEndpointIdOf('glm-4'), isNull);
+    });
+
+    test('认服务:格式 + 地址对上才算,地址留空按官方', () {
+      expect(
+        endpointPresetOf(
+          AgentApiFormat.openai,
+          'https://api.deepseek.com/v1/',
+        )?.label,
+        'DeepSeek',
+      );
+      for (final f in AgentApiFormat.values) {
+        final p = endpointPresetOf(f, '');
+        expect(p?.official, isTrue);
+        expect(p?.format, f);
+      }
+      // 每个格式恰好一个官方
+      for (final f in AgentApiFormat.values) {
+        expect(
+          kEndpointPresets.where((p) => p.format == f && p.official).length,
+          1,
+        );
+      }
+      // 地址对上、格式不对,不是那一家
+      expect(
+        endpointPresetOf(AgentApiFormat.google, 'https://api.openai.com/v1'),
+        isNull,
+      );
+      expect(
+        endpointPresetOf(AgentApiFormat.openai, 'https://relay.example.com/v1'),
+        isNull,
+      );
+    });
+
+    test('地址连对话路径一起贴进来时切掉路径', () {
+      expect(
+        normalizeEndpointBase(
+          ' https://r.example.com/v1/chat/completions/ ',
+          AgentApiFormat.openai,
+        ),
+        'https://r.example.com/v1',
+      );
+      expect(
+        normalizeEndpointBase(
+          'https://r.example.com/v1/messages',
+          AgentApiFormat.anthropic,
+        ),
+        'https://r.example.com/v1',
+      );
+      expect(
+        normalizeEndpointBase(
+          'https://r.example.com/v1beta/models/gemini-4-carbon:streamGenerateContent?alt=sse',
+          AgentApiFormat.google,
+        ),
+        'https://r.example.com/v1beta',
+      );
+      // 只切和格式对应的那段
+      expect(
+        normalizeEndpointBase(
+          'https://r.example.com/v1/messages',
+          AgentApiFormat.openai,
+        ),
+        'https://r.example.com/v1/messages',
+      );
+    });
+
     // 三家的模型列表字段各不相同,而**认错字段的表现是「列表空着」**,
     // 和网络失败长得一模一样 —— 不钉住的话根本分不出是哪一头的问题。
     test('OpenAI:data[].id', () {
@@ -2303,8 +2509,12 @@ void main() {
         e.copyWith(baseUrl: 'http://localhost:8080/v1//').effectiveBase,
         'http://localhost:8080/v1',
       );
-      // 名字留空就显示模型名 —— 列表里一行空白最难认
-      expect(e.displayName, 'gpt-4o');
+      // 名字留空就显示认出的服务名,认不出显示主机名
+      expect(e.displayName, 'OpenAI');
+      expect(
+        e.copyWith(baseUrl: 'https://relay.example.com/v1').displayName,
+        'relay.example.com',
+      );
       expect(e.copyWith(name: '我的中转').displayName, '我的中转');
     });
 

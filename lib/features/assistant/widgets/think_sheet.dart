@@ -5,6 +5,7 @@
 ///
 /// 副标题那句必须留着:三家的旋钮各不相同,不会思考的模型收到这些字段通常直接
 /// 忽略,但也有中转会因此报错 —— 事先说清楚比事后查错便宜。
+/// 当前接口没有选中的那一档时,档位名下面说一句实际按哪档发(见 [thinkLevelNote])。
 library;
 
 import 'package:flutter/material.dart';
@@ -14,7 +15,9 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/ui/setting_row.dart';
 import '../../../core/util/haptics.dart';
 import '../../generate/widgets/common.dart' show dropFocusSoon;
+import '../agent_model.dart' show assistantEndpointProvider;
 import '../assistant_settings.dart';
+import '../direct_agent.dart' show thinkLevelNote;
 
 Future<void> showThinkSheet(BuildContext context) async {
   await showModalBottomSheet<void>(
@@ -40,6 +43,8 @@ class _ThinkSheet extends ConsumerWidget {
         ThinkLevel.auto;
     final levels = ThinkLevel.values;
     final i = levels.indexOf(level);
+    final endpoint = ref.watch(assistantEndpointProvider);
+    final note = endpoint == null ? null : thinkLevelNote(endpoint, level);
 
     void set(ThinkLevel l) {
       if (l == level) return;
@@ -75,7 +80,18 @@ class _ThinkSheet extends ConsumerWidget {
             fontWeight: FontWeight.w700,
           ),
         ),
-        const SizedBox(height: 10),
+        // 占住一行高度:有没有这句话时滑杆都不上下跳
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+          child: Text(
+            note ?? '',
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.texts.labelSmall!.copyWith(color: scheme.outline),
+          ),
+        ),
+        const SizedBox(height: 6),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Slider(

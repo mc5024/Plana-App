@@ -22,7 +22,7 @@ import '../../../core/ui/setting_row.dart';
 import '../../generate/widgets/common.dart' show dropFocusSoon;
 import '../agent_model.dart';
 import '../custom_endpoint.dart';
-import 'endpoint_sheet.dart';
+import '../endpoints_page.dart';
 
 Future<void> showModelSheet(BuildContext context) async {
   await showModalBottomSheet<void>(
@@ -90,27 +90,34 @@ class _ModelSheet extends ConsumerWidget {
         ],
         settingSection(context, '我的接口'),
         for (final e in endpoints)
-          _row(
-            context,
-            icon: Icons.bolt_outlined,
-            title: e.displayName,
-            // 副行写格式和模型,不写地址 —— 地址又长又不是你要确认的东西
-            subtitle: e.usable
-                ? '${agentApiFormatLabel(e.format)} · ${e.model}'
-                : '还没填全,点一下去补',
-            dim: !e.usable,
-            selected: e.usable && customModelKey(e.id) == currentKey,
-            onTap: () => e.usable
-                ? _pick(context, ref, customModelKey(e.id))
-                : showEndpointSheet(context, source: e),
-            onEdit: () => showEndpointSheet(context, source: e),
-          ),
+          // 一个接口下的每个模型各一行,副行写是哪个接口
+          if (e.usable)
+            for (final m in e.allModels)
+              _row(
+                context,
+                icon: Icons.bolt_outlined,
+                title: m,
+                subtitle: e.displayName,
+                selected: customModelKey(e.id, m) == currentKey,
+                onTap: () => _pick(context, ref, customModelKey(e.id, m)),
+                onEdit: () => openEndpointsPage(context, editId: e.id),
+              )
+          else
+            _row(
+              context,
+              icon: Icons.bolt_outlined,
+              title: e.displayName,
+              subtitle: '还没填全,点一下去补',
+              dim: true,
+              onTap: () => openEndpointsPage(context, editId: e.id),
+              onEdit: () => openEndpointsPage(context, editId: e.id),
+            ),
         _row(
           context,
           icon: Icons.add,
           title: '添加接口',
           accent: true,
-          onTap: () => showEndpointSheet(context),
+          onTap: () => openEndpointsPage(context),
         ),
       ],
     );

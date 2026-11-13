@@ -158,18 +158,38 @@ final agentModelsProvider = FutureProvider<AgentModelList>((ref) async {
   return parseAgentModels(j);
 });
 
-/// 选中自定义接口时,存的是这个前缀加接口 id。
+/// 选中自定义接口时,存的是这个前缀加接口 id,再加 `/模型`。没带模型的(旧存档)按
+/// 那个接口的第一个模型算。接口 id 里没有 `/`,模型名里可能有(`openai/gpt-4o`)。
 ///
 /// 与后端渠道共用一个偏好键:两者是**互斥的一次选择**,分两个键存就会出现
 /// 「都选着」这种表达不出来的状态,界面还得再判一次谁优先。
 const kCustomKeyPrefix = 'custom:';
 
-String customModelKey(String endpointId) => '$kCustomKeyPrefix$endpointId';
+String customModelKey(String endpointId, [String model = '']) =>
+    '$kCustomKeyPrefix$endpointId${model.isEmpty ? '' : '/$model'}';
 
 /// 选中的是不是自定义接口;是就给出接口 id。
-String? customEndpointIdOf(String key) => key.startsWith(kCustomKeyPrefix)
-    ? key.substring(kCustomKeyPrefix.length)
-    : null;
+String? customEndpointIdOf(String key) {
+  if (!key.startsWith(kCustomKeyPrefix)) return null;
+  final rest = key.substring(kCustomKeyPrefix.length);
+  final i = rest.indexOf('/');
+  return i < 0 ? rest : rest.substring(0, i);
+}
+
+/// 自定义接口这一条选的模型;没带模型或不是自定义接口为 null。
+String? customModelOf(String key) {
+  if (!key.startsWith(kCustomKeyPrefix)) return null;
+  final rest = key.substring(kCustomKeyPrefix.length);
+  final i = rest.indexOf('/');
+  return i < 0 ? null : rest.substring(i + 1);
+}
+
+/// [key] 落在 [e] 上就给出用哪个模型发的那份,模型不在了的按第一个算;不是它为 null。
+CustomEndpoint? resolveCustomChoice(CustomEndpoint e, String key) {
+  if (customEndpointIdOf(key) != e.id) return null;
+  final m = customModelOf(key);
+  return m != null && e.allModels.contains(m) ? e.forModel(m) : e;
+}
 
 const _key = 'assistant_model';
 
@@ -239,11 +259,13 @@ final assistantBackendAvailableProvider = Provider<bool>((ref) {
 final assistantModelProvider = Provider<AgentModelChoice?>((ref) {
   final pinned = ref.watch(assistantModelPrefProvider).value ?? '';
   // 自定义接口不在后端那张表里,名字从本机的接口列表取
-  final custom = customEndpointIdOf(pinned);
-  if (custom != null) {
+  if (customEndpointIdOf(pinned) != null) {
     for (final e in ref.watch(customEndpointsProvider).value ?? const []) {
-      if (e.id == custom) {
-        return AgentModelChoice(key: pinned, name: e.displayName);
+      if (resolveCustomChoice(e, pinned) case final r?) {
+        return AgentModelChoice(
+          key: customModelKey(r.id, r.model),
+          name: r.model.isEmpty ? r.displayName : r.model,
+        );
       }
     }
   }
@@ -255,13 +277,11 @@ final assistantModelProvider = Provider<AgentModelChoice?>((ref) {
 
 /// 这一轮该走哪条路:非 null = 直连这个自定义接口,null = 走 Plana 后端。
 final assistantEndpointProvider = Provider<CustomEndpoint?>((ref) {
-  final id = customEndpointIdOf(
-    ref.watch(assistantModelPrefProvider).value ?? '',
-  );
-  if (id == null) return null;
+  final key = ref.watch(assistantModelPrefProvider).value ?? '';
+  if (customEndpointIdOf(key) == null) return null;
   for (final e in ref.watch(customEndpointsProvider).value ?? const []) {
     // 填不全的不算数:发出去必然失败,不如当没选,回落后端那条
-    if (e.id == id && e.usable) return e;
+    if (resolveCustomChoice(e, key) case final r? when r.usable) return r;
   }
   return null;
 });

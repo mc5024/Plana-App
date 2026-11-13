@@ -1619,7 +1619,9 @@ Widget pendingStatusRow(
       if (secs != null) ...[
         const SizedBox(width: 8),
         Text(
-          '$secs 秒',
+          secs < 60
+              ? '$secs 秒'
+              : '${secs ~/ 60} 分 ${(secs % 60).toString().padLeft(2, '0')} 秒',
           style: style.copyWith(
             color: scheme.outline,
             fontFeatures: const [FontFeature.tabularFigures()],

@@ -54,6 +54,84 @@ String agentApiDefaultPath(AgentApiFormat f) => switch (f) {
   AgentApiFormat.anthropic => '/messages',
 };
 
+/// 添加接口时可以直接选的服务:格式和地址都带好。不在表里的走「自定义」自己填。
+class EndpointPreset {
+  const EndpointPreset(this.label, this.format, this.base, this.keyUrl);
+
+  final String label;
+  final AgentApiFormat format;
+  final String base;
+
+  /// 创建 API Key 的页面。
+  final String keyUrl;
+
+  /// 这个格式的官方服务;选择页分在「官方」一组。
+  bool get official => base == agentApiDefaultBase(format);
+}
+
+const kEndpointPresets = [
+  EndpointPreset(
+    'OpenAI',
+    AgentApiFormat.openai,
+    'https://api.openai.com/v1',
+    'https://platform.openai.com/api-keys',
+  ),
+  EndpointPreset(
+    'Gemini',
+    AgentApiFormat.google,
+    'https://generativelanguage.googleapis.com/v1beta',
+    'https://aistudio.google.com/apikey',
+  ),
+  EndpointPreset(
+    'Claude',
+    AgentApiFormat.anthropic,
+    'https://api.anthropic.com/v1',
+    'https://console.anthropic.com/settings/keys',
+  ),
+  EndpointPreset(
+    'DeepSeek',
+    AgentApiFormat.openai,
+    'https://api.deepseek.com/v1',
+    'https://platform.deepseek.com/api_keys',
+  ),
+  EndpointPreset(
+    'OpenRouter',
+    AgentApiFormat.openai,
+    'https://openrouter.ai/api/v1',
+    'https://openrouter.ai/keys',
+  ),
+];
+
+/// 按格式 + 地址认出是哪一家;认不出(中转、自建)返回 null。地址留空的按该格式的官方地址算。
+EndpointPreset? endpointPresetOf(AgentApiFormat format, String baseUrl) {
+  String norm(String u) =>
+      u.trim().toLowerCase().replaceAll(RegExp(r'/+$'), '');
+  final b = norm(baseUrl.isEmpty ? agentApiDefaultBase(format) : baseUrl);
+  for (final p in kEndpointPresets) {
+    if (p.format == format && norm(p.base) == b) return p;
+  }
+  return null;
+}
+
+/// 填进来的地址 → 基址:去掉末尾斜杠,连对话路径一起贴进来的把路径切掉
+/// (`…/v1/chat/completions` → `…/v1`),不然发请求时路径会拼两遍。
+String normalizeEndpointBase(String raw, AgentApiFormat format) {
+  var b = raw.trim().replaceAll(RegExp(r'/+$'), '');
+  final tail = switch (format) {
+    AgentApiFormat.openai => RegExp(
+      r'/chat/completions$',
+      caseSensitive: false,
+    ),
+    AgentApiFormat.anthropic => RegExp(r'/messages$', caseSensitive: false),
+    AgentApiFormat.google => RegExp(
+      r'/models/[^/]+:(?:stream)?generateContent.*$',
+      caseSensitive: false,
+    ),
+  };
+  b = b.replaceFirst(tail, '');
+  return b.replaceAll(RegExp(r'/+$'), '');
+}
+
 class CustomEndpoint {
   const CustomEndpoint({
     required this.id,
@@ -62,13 +140,14 @@ class CustomEndpoint {
     required this.baseUrl,
     required this.apiKey,
     required this.model,
+    this.models = const [],
     this.apiPath = '',
     this.headers = const {},
   });
 
   final String id;
 
-  /// 界面上显示的名字。空的话拿模型名顶上。
+  /// 界面上显示的名字。空的话按地址认出的服务名或主机名。
   final String name;
 
   final AgentApiFormat format;
@@ -78,8 +157,19 @@ class CustomEndpoint {
 
   final String apiKey;
 
-  /// 模型 id,如 `gpt-5.6-luna` / `gemini-3.7-flash` / `claude-sonnet-4-6`。
+  /// 这一次请求用的模型 id,如 `gpt-5.6-luna` / `gemini-3.7-flash` / `claude-sonnet-4-6`。
+  /// 读存档时是 [models] 的第一个,选了别的用 [forModel] 换。
   final String model;
+
+  /// 这个接口下存的全部模型。
+  final List<String> models;
+
+  /// [models] 为空时(只给了 [model] 的)按 [model] 一个算。
+  List<String> get allModels =>
+      models.isNotEmpty ? models : [if (model.isNotEmpty) model];
+
+  /// 换成用 [m] 发请求。
+  CustomEndpoint forModel(String m) => copyWith(model: m);
 
   /// 对话接口路径。空 = 用 [agentApiDefaultPath]。`{model}` 会被替换成模型名。
   final String apiPath;
@@ -98,7 +188,14 @@ class CustomEndpoint {
     };
   }
 
-  String get displayName => name.trim().isNotEmpty ? name.trim() : model;
+  String get displayName =>
+      name.trim().isNotEmpty ? name.trim() : providerLabel;
+
+  /// 地址认得出是哪家就写那家,认不出写主机名。
+  String get providerLabel =>
+      endpointPresetOf(format, baseUrl)?.label ??
+      Uri.tryParse(effectiveBase)?.host ??
+      effectiveBase;
 
   String get effectiveBase {
     final b = baseUrl.trim();
@@ -143,6 +240,7 @@ class CustomEndpoint {
     String? baseUrl,
     String? apiKey,
     String? model,
+    List<String>? models,
     String? apiPath,
     Map<String, String>? headers,
   }) => CustomEndpoint(
@@ -152,6 +250,7 @@ class CustomEndpoint {
     baseUrl: baseUrl ?? this.baseUrl,
     apiKey: apiKey ?? this.apiKey,
     model: model ?? this.model,
+    models: models ?? this.models,
     apiPath: apiPath ?? this.apiPath,
     headers: headers ?? this.headers,
   );
@@ -162,7 +261,8 @@ class CustomEndpoint {
     'format': format.name,
     'baseUrl': baseUrl,
     'apiKey': apiKey,
-    'model': model,
+    'model': allModels.firstOrNull ?? '',
+    'models': allModels,
     if (apiPath.isNotEmpty) 'apiPath': apiPath,
     if (headers.isNotEmpty) 'headers': headers,
   };
@@ -171,6 +271,14 @@ class CustomEndpoint {
     if (e is! Map) return null;
     final id = e['id']?.toString() ?? '';
     if (id.isEmpty) return null;
+    final single = e['model']?.toString() ?? '';
+    final models = switch (e['models']) {
+      final List l => [
+        for (final m in l)
+          if ('$m'.trim().isNotEmpty) '$m'.trim(),
+      ],
+      _ => [if (single.isNotEmpty) single],
+    };
     return CustomEndpoint(
       id: id,
       name: e['name']?.toString() ?? '',
@@ -179,7 +287,8 @@ class CustomEndpoint {
           AgentApiFormat.openai,
       baseUrl: e['baseUrl']?.toString() ?? '',
       apiKey: e['apiKey']?.toString() ?? '',
-      model: e['model']?.toString() ?? '',
+      model: models.firstOrNull ?? '',
+      models: models,
       apiPath: e['apiPath']?.toString() ?? '',
       headers: switch (e['headers']) {
         final Map h => {
@@ -277,6 +386,15 @@ class CustomEndpointsNotifier extends AsyncNotifier<List<CustomEndpoint>> {
       for (final e in state.value ?? const <CustomEndpoint>[])
         if (e.id != id) e,
     ];
+    await _save(list);
+  }
+
+  /// [to] 按 `onReorderItem` 语义,已经是移除 [from] 之后的位置。
+  Future<void> reorder(int from, int to) async {
+    final list = [...state.value ?? const <CustomEndpoint>[]];
+    if (from == to || from < 0 || from >= list.length) return;
+    if (to < 0 || to >= list.length) return;
+    list.insert(to, list.removeAt(from));
     await _save(list);
   }
 }
