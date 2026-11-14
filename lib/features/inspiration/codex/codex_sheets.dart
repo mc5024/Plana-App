@@ -16,7 +16,7 @@ import '../../generate/generate_state.dart';
 import '../../generate/models.dart'
     show GenProvider, GenerateState, providerOfModel;
 import '../../generate/widgets/common.dart'
-    show RoundIconBtn, confirmDialog, hintSnack, sharedAxisRoute;
+    show RoundIconBtn, confirmDialog, hintSnack, measureText, sharedAxisRoute;
 import '../../import/import_panel.dart' show ImportImagePanel;
 import '../../shell/shell_state.dart';
 import '../tag_models.dart'
@@ -620,18 +620,30 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
           // 说得清,那四个字省下的宽度正是带字两枚摆得开所需的 —— 「加入提示词」
           // 五个汉字加图标本来就顶格,谁多占一点它就换行,而这条操作栏一变高
           // 就把上面的内容挤走。
-          Row(
-            children: [
-              _favButton(scheme, e),
-              const SizedBox(width: 8),
-              _copyButton(e),
-              const SizedBox(width: 8),
-              // 2:3 差不多就是「导入」与「加入提示词」各自最小宽之比;
-              // 五五开等于把富余全给短的那枚,长的先换行
-              Expanded(flex: 2, child: _importButton()),
-              const SizedBox(width: 8),
-              Expanded(flex: 3, child: _addButton(e)),
-            ],
+          LayoutBuilder(
+            builder: (context, c) {
+              // 带字两枚都放得下「图标 + 文案」才带图标,否则两枚都只留文案
+              final room = c.maxWidth - 46 * 2 - 8 * 3;
+              final style = context.texts.labelLarge!;
+              final icons =
+                  measureText(context, context.l10n.importLabel, style) <=
+                      room * 2 / 5 - 42 &&
+                  measureText(context, context.l10n.addToPrompt, style) <=
+                      room * 3 / 5 - 42;
+              return Row(
+                children: [
+                  _favButton(scheme, e),
+                  const SizedBox(width: 8),
+                  _copyButton(e),
+                  const SizedBox(width: 8),
+                  // 2:3 差不多就是「导入」与「加入提示词」各自最小宽之比;
+                  // 五五开等于把富余全给短的那枚,长的先换行
+                  Expanded(flex: 2, child: _importButton(icons: icons)),
+                  const SizedBox(width: 8),
+                  Expanded(flex: 3, child: _addButton(e, icons: icons)),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -680,25 +692,33 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
   ///
   /// 无图词条按**停用**摆着而不是撤掉 —— 一摞牌里翻过去少一枚按钮,
   /// 整条操作栏会跟着变形。下载期间也停用,同一张不让点两遍。
-  Widget _importButton() => OutlinedButton.icon(
-    onPressed: _imgCount > 0 && !_importing ? _importOriginal : null,
-    style: _labeledStyle,
-    icon: _importing
-        ? ValueListenableBuilder<double?>(
-            valueListenable: _importAt,
-            builder: (_, v, _) => SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2, value: v),
+  /// 不带图标时,下载中的转圈顶替文案。
+  Widget _importButton({required bool icons}) {
+    final progress = ValueListenableBuilder<double?>(
+      valueListenable: _importAt,
+      builder: (_, v, _) => SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(strokeWidth: 2, value: v),
+      ),
+    );
+    return OutlinedButton.icon(
+      onPressed: _imgCount > 0 && !_importing ? _importOriginal : null,
+      style: _labeledStyle,
+      icon: !icons
+          ? null
+          : _importing
+          ? progress
+          : const Icon(Icons.input, size: 18),
+      label: !icons && _importing
+          ? progress
+          : Text(
+              context.l10n.importLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-          )
-        : const Icon(Icons.input, size: 18),
-    label: Text(
-      context.l10n.importLabel,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    ),
-  );
+    );
+  }
 
   /// 下当前这张的原图 → 关弹层 → 推导入面板(与相册 / 画布同一个面板:
   /// 参数逐项挑着导,或整张用作图生图 / 风格 / 角色参考)。
@@ -777,7 +797,7 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
     label: Text(context.l10n.shuffleAnother),
   );
 
-  Widget _addButton(CodexEntry e) => FilledButton.icon(
+  Widget _addButton(CodexEntry e, {required bool icons}) => FilledButton.icon(
     onPressed: () {
       final r = codexAddToPrompt(ref, e);
       Navigator.pop(context);
@@ -797,7 +817,7 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
       );
     },
     style: _labeledStyle,
-    icon: const Icon(Icons.add, size: 18),
+    icon: icons ? const Icon(Icons.add, size: 18) : null,
     // 兜底:系统字号调得很大时宁可省略号,也不能换行 —— 这条操作栏是钉在
     // 底部的,它一变高就把上面的内容挤走
     label: Text(
