@@ -4737,21 +4737,6 @@ class AppLocalizationsJa extends AppLocalizations {
   String get thinkUltra => '超高';
 
   @override
-  String get scopeNone => '不使用';
-
-  @override
-  String get scopeLocalPublic => '本地库 + 公共库';
-
-  @override
-  String get scopeNoneDesc => '完全不使用你的灵感库内容';
-
-  @override
-  String get scopeLocalDesc => '使用你在灵感库中创建和收藏的内容';
-
-  @override
-  String get scopeAllDesc => '使用本地和公共库的所有内容';
-
-  @override
   String get importReplaceMain => '替换主体';
 
   @override
@@ -4770,9 +4755,6 @@ class AppLocalizationsJa extends AppLocalizations {
   String get lookingUp => '查资料中';
 
   @override
-  String get degradedToSafe => '已降级到安全模式';
-
-  @override
   String get turnInterrupted => 'AI 这轮没跑完就断了,再试一次';
 
   @override
@@ -4780,27 +4762,6 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get replyEmptyFallback => '这轮没什么可说的喵…';
-
-  @override
-  String get replyHereFallback => '本喵在喵~';
-
-  @override
-  String epCantConnect(String host) {
-    return '连不上 $host,检查地址与网络';
-  }
-
-  @override
-  String epBadKey(int code) {
-    return 'API Key 不对($code)';
-  }
-
-  @override
-  String get epNoModelList => '这个地址没有模型列表接口,手填模型名也能用';
-
-  @override
-  String epFetchFailed(int code) {
-    return '拉取失败($code)';
-  }
 
   @override
   String get epNoModels => '拿到了,但一个模型都没有';
@@ -4835,11 +4796,6 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
-  String cantConnectHost(String host) {
-    return '连不上 $host';
-  }
-
-  @override
   String get thinkNoOffFormat => '该格式没有「关闭」档,按最低档发送';
 
   @override
@@ -4853,11 +4809,6 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get replyUnreadable => '接口有响应,但没读出回复内容,检查格式是否选对';
-
-  @override
-  String modelReturned(String status) {
-    return '模型返回 $status';
-  }
 
   @override
   String get suggest1 => '画一个白发红瞳的猫娘,站在樱花树下';
@@ -5039,11 +4990,6 @@ class AppLocalizationsJa extends AppLocalizations {
   @override
   String linkCopied(String url) {
     return '已复制链接:$url';
-  }
-
-  @override
-  String fetchFailedWith(String error) {
-    return '拉取失败:$error';
   }
 
   @override
@@ -5369,16 +5315,10 @@ class AppLocalizationsJa extends AppLocalizations {
   String get settingLibrary => '资料';
 
   @override
-  String get libraryScopeDesc => '查询画师串与角色时使用的资料来源';
-
-  @override
   String get ocPlaceholder => 'OC 使用占位符';
 
   @override
   String get ocPlaceholderDesc => 'OC 只给 AI 占位符，出图时还原；调整原设时请关闭';
-
-  @override
-  String get customEndpointOnly => '仅自定义接口渠道可用';
 
   @override
   String get modelUnsupported => '当前模型不支持';

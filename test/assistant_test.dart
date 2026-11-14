@@ -1336,43 +1336,6 @@ void main() {
     });
   });
 
-  group('画师串标记', () {
-    // 发了 web_artists 的那些轮,服务端会把正向词里认出来的画师串包成
-    // <<artist:名字:内容>> 给 web 渲染芯片。app 不渲染芯片,不剥就把尖括号
-    // 原样写进用户的提示词。
-    test('剥掉包装只留内容', () {
-      expect(
-        stripArtistMarkers('1girl, <<artist:A1:wlop, as109>>, smile'),
-        '1girl, wlop, as109, smile',
-      );
-    });
-
-    test('一行里多颗都要剥', () {
-      expect(
-        stripArtistMarkers('<<artist:A1:aaa>>, <<artist:B2:bbb>>'),
-        'aaa, bbb',
-      );
-    });
-
-    test('内容里带权重语法也不能吃掉', () {
-      // 画师串里 `1.2::tag::` 这种写法很常见,冒号不能把正则截断
-      expect(
-        stripArtistMarkers('<<artist:A1:1.2::wlop::, as109>>'),
-        '1.2::wlop::, as109',
-      );
-    });
-
-    test('没有标记就原样返回', () {
-      const raw = '1girl, solo, looking at viewer';
-      expect(stripArtistMarkers(raw), raw);
-    });
-
-    test('用户自己写的尖括号不能被当成标记吃掉', () {
-      const raw = 'a << b, c >> d';
-      expect(stripArtistMarkers(raw), raw);
-    });
-  });
-
   group('工具:预取资料块', () {
     const a1 = '[[artist:as109]],{{artist:wlop}},1.3::artist:hiten::';
     const d11 =

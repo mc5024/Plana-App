@@ -5,7 +5,8 @@ library;
 
 import '../../../l10n/l10n.dart';
 
-/// 与服务端 `schemas.PRESET_RULES_MAX_*` 一致。导入时就卡住,别等发出去才被拒。
+/// 规则主体的上限,加上工具层、工具清单、出图格式后仍在后端模型通道的 system 上限
+/// (`CHANNEL_SYSTEM_MAX`)以内。导入时就卡住,别等发出去才被拒。
 const kRulesMaxSections = 40;
 const kRulesMaxChars = 60000;
 

@@ -5146,22 +5146,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get thinkUltra => 'Ultra';
 
   @override
-  String get scopeNone => 'None';
-
-  @override
-  String get scopeLocalPublic => 'Local + Public';
-
-  @override
-  String get scopeNoneDesc => 'Don\'t use your Inspiration Library at all';
-
-  @override
-  String get scopeLocalDesc =>
-      'Use what you\'ve created and saved in the Inspiration Library';
-
-  @override
-  String get scopeAllDesc => 'Use everything in the local and public libraries';
-
-  @override
   String get importReplaceMain => 'Replace Main';
 
   @override
@@ -5182,9 +5166,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get lookingUp => 'Looking things up';
 
   @override
-  String get degradedToSafe => 'Fell back to Safe Mode';
-
-  @override
   String get turnInterrupted =>
       'The AI stopped before finishing this turn; try again';
 
@@ -5193,28 +5174,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get replyEmptyFallback => 'Nothing to add this time…';
-
-  @override
-  String get replyHereFallback => 'I\'m here~';
-
-  @override
-  String epCantConnect(String host) {
-    return 'Can\'t connect to $host; check the URL and network';
-  }
-
-  @override
-  String epBadKey(int code) {
-    return 'Wrong API key ($code)';
-  }
-
-  @override
-  String get epNoModelList =>
-      'This endpoint has no model list; you can still type the model name';
-
-  @override
-  String epFetchFailed(int code) {
-    return 'Fetch failed ($code)';
-  }
 
   @override
   String get epNoModels => 'Got a response, but no models in it';
@@ -5250,11 +5209,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String cantConnectHost(String host) {
-    return 'Can\'t connect to $host';
-  }
-
-  @override
   String get thinkNoOffFormat =>
       'This format has no “Off” level; sending the lowest';
 
@@ -5273,11 +5227,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get replyUnreadable =>
       'The endpoint responded, but no reply could be read; check that the format is right';
-
-  @override
-  String modelReturned(String status) {
-    return 'The model returned $status';
-  }
 
   @override
   String get suggest1 =>
@@ -5467,11 +5416,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String linkCopied(String url) {
     return 'Link copied: $url';
-  }
-
-  @override
-  String fetchFailedWith(String error) {
-    return 'Fetch failed: $error';
   }
 
   @override
@@ -5840,18 +5784,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingLibrary => 'Library';
 
   @override
-  String get libraryScopeDesc =>
-      'Sources used to look up artists and characters';
-
-  @override
   String get ocPlaceholder => 'OC Placeholders';
 
   @override
   String get ocPlaceholderDesc =>
       'The AI only sees placeholders for OCs, restored when drawing; turn off when editing an OC\'s design';
-
-  @override
-  String get customEndpointOnly => 'Custom endpoints only';
 
   @override
   String get modelUnsupported => 'Not supported by this model';

@@ -7,7 +7,8 @@ library;
 
 import 'dart:convert';
 
-import '../../generate/models.dart' show CharacterPrompt, CharTab, PromptSection;
+import '../../generate/models.dart'
+    show CharacterPrompt, CharTab, PromptSection;
 import '../../generate/state_codec.dart' show decodeSections, encodeSections;
 import '../../../l10n/l10n.dart';
 import '../assistant_mode.dart';
@@ -29,7 +30,7 @@ class ToolTrace {
   /// 而这已经是用户想知道的全部。
   final String subject;
 
-  /// 服务端写的结果计数(「OC 0 个 + 通用 3/12 个 = 3 个」)。
+  /// 工具回的结果计数。
   ///
   /// **不显示** —— 试过一版摆在行尾,又长又没用:用户要的是「查了什么」,
   /// 不是「命中几条」。留着是因为它同时是**完成信号**([done] 就看它非空),
@@ -54,7 +55,7 @@ class ToolTrace {
   );
 }
 
-/// 降级那条合成轨迹用的工具名。不是真工具,但走同一条展示链路。
+/// 旧版后端软降级时合成的那条轨迹的工具名,只在旧会话里还有。不是真工具,但走同一条展示链路。
 const kDegradedTool = 'degraded';
 
 /// 工具名 → 界面上的中文。与灵感页的分类名对齐(那边叫「画风」,不叫画师串)。
@@ -308,19 +309,6 @@ Set<String> historyFenceIds(List<AssistantMsg> msgs, int keep) {
   return out;
 }
 
-/// 剥掉服务端包给 web 芯片渲染器的画师串标记:`<<artist:名字:内容>>` → `内容`。
-///
-/// 只要这一轮发了 `web_artists`,服务端就会在正向词里把认得出的画师串包起来
-/// (`_wrap_web_artist_markers`)。web 前端拿它渲染成一颗芯片、发给 NAI 之前再剥掉;
-/// app 不渲染芯片,不剥的话尖括号会原样写进用户的提示词。
-///
-/// 只认这一种标记,不做通配 —— 把 `<<…>>` 一律当标记剥,遇上用户自己写的
-/// 尖括号就把内容吃了。
-String stripArtistMarkers(String s) => s.replaceAllMapped(
-  RegExp(r'<<artist:[^:>]*:(.*?)>>', dotAll: true),
-  (m) => m.group(1) ?? '',
-);
-
 /// AI 这一轮**提议**的画面。**它不会自己写进创作页** —— 用户点「导入」才写
 /// (或者不导入、直接拿它生成)。
 ///
@@ -469,8 +457,8 @@ class AssistantMsg {
 
   /// 这一轮结束时的**沿用资源账本**(画师串 / OC)。仅 [MsgRole.ai]。
   ///
-  /// 服务端记这本账、按「还在不在这幅画里」筛,但**不存**它 —— 这条链路没有
-  /// 服务端会话。所以账本随结果回来,下一轮原样发回去。
+  /// 每轮收尾时在本机按「还在不在这幅画里」筛(见 `mergeLedger`),随结果挂在这条消息上,
+  /// 下一轮原样带回去。
   ///
   /// 挂在消息上而不是单存一份:这样它跟着会话一起落盘、一起归档,
   /// 「从这里重新开始」也天然把账本退回那一轮 —— 单存一份的话这三件事

@@ -8332,36 +8332,6 @@ abstract class AppLocalizations {
   /// **'超高'**
   String get thinkUltra;
 
-  /// No description provided for @scopeNone.
-  ///
-  /// In zh, this message translates to:
-  /// **'不使用'**
-  String get scopeNone;
-
-  /// No description provided for @scopeLocalPublic.
-  ///
-  /// In zh, this message translates to:
-  /// **'本地库 + 公共库'**
-  String get scopeLocalPublic;
-
-  /// No description provided for @scopeNoneDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'完全不使用你的灵感库内容'**
-  String get scopeNoneDesc;
-
-  /// No description provided for @scopeLocalDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'使用你在灵感库中创建和收藏的内容'**
-  String get scopeLocalDesc;
-
-  /// No description provided for @scopeAllDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'使用本地和公共库的所有内容'**
-  String get scopeAllDesc;
-
   /// No description provided for @importReplaceMain.
   ///
   /// In zh, this message translates to:
@@ -8398,12 +8368,6 @@ abstract class AppLocalizations {
   /// **'查资料中'**
   String get lookingUp;
 
-  /// No description provided for @degradedToSafe.
-  ///
-  /// In zh, this message translates to:
-  /// **'已降级到安全模式'**
-  String get degradedToSafe;
-
   /// No description provided for @turnInterrupted.
   ///
   /// In zh, this message translates to:
@@ -8421,36 +8385,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'这轮没什么可说的喵…'**
   String get replyEmptyFallback;
-
-  /// No description provided for @replyHereFallback.
-  ///
-  /// In zh, this message translates to:
-  /// **'本喵在喵~'**
-  String get replyHereFallback;
-
-  /// No description provided for @epCantConnect.
-  ///
-  /// In zh, this message translates to:
-  /// **'连不上 {host},检查地址与网络'**
-  String epCantConnect(String host);
-
-  /// No description provided for @epBadKey.
-  ///
-  /// In zh, this message translates to:
-  /// **'API Key 不对({code})'**
-  String epBadKey(int code);
-
-  /// No description provided for @epNoModelList.
-  ///
-  /// In zh, this message translates to:
-  /// **'这个地址没有模型列表接口,手填模型名也能用'**
-  String get epNoModelList;
-
-  /// No description provided for @epFetchFailed.
-  ///
-  /// In zh, this message translates to:
-  /// **'拉取失败({code})'**
-  String epFetchFailed(int code);
 
   /// No description provided for @epNoModels.
   ///
@@ -8500,12 +8434,6 @@ abstract class AppLocalizations {
   /// **'模型 {secs} 秒内没有回复'**
   String modelNoReplyIn(String secs);
 
-  /// No description provided for @cantConnectHost.
-  ///
-  /// In zh, this message translates to:
-  /// **'连不上 {host}'**
-  String cantConnectHost(String host);
-
   /// No description provided for @thinkNoOffFormat.
   ///
   /// In zh, this message translates to:
@@ -8535,12 +8463,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'接口有响应,但没读出回复内容,检查格式是否选对'**
   String get replyUnreadable;
-
-  /// No description provided for @modelReturned.
-  ///
-  /// In zh, this message translates to:
-  /// **'模型返回 {status}'**
-  String modelReturned(String status);
 
   /// No description provided for @suggest1.
   ///
@@ -8871,12 +8793,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已复制链接:{url}'**
   String linkCopied(String url);
-
-  /// No description provided for @fetchFailedWith.
-  ///
-  /// In zh, this message translates to:
-  /// **'拉取失败:{error}'**
-  String fetchFailedWith(String error);
 
   /// No description provided for @modelConnOk.
   ///
@@ -9424,12 +9340,6 @@ abstract class AppLocalizations {
   /// **'资料'**
   String get settingLibrary;
 
-  /// No description provided for @libraryScopeDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'查询画师串与角色时使用的资料来源'**
-  String get libraryScopeDesc;
-
   /// No description provided for @ocPlaceholder.
   ///
   /// In zh, this message translates to:
@@ -9441,12 +9351,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'OC 只给 AI 占位符，出图时还原；调整原设时请关闭'**
   String get ocPlaceholderDesc;
-
-  /// No description provided for @customEndpointOnly.
-  ///
-  /// In zh, this message translates to:
-  /// **'仅自定义接口渠道可用'**
-  String get customEndpointOnly;
 
   /// No description provided for @modelUnsupported.
   ///

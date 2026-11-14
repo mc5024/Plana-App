@@ -44,7 +44,6 @@ String thinkLevelLabel(ThinkLevel l) => switch (l) {
   ThinkLevel.ultra => l10nNow.thinkUltra,
 };
 
-
 String sectionImportLabel(SectionImport m) => switch (m) {
   SectionImport.main => l10nNow.importReplaceMain,
   SectionImport.newSection => l10nNow.importNewSection,
@@ -70,10 +69,9 @@ class AssistantSettings {
 
   /// 上下文轮数的默认值、可调范围与步长。
   ///
-  /// 默认 20 与服务端原先写死的窗口一样(`history_adapter.WEB_HISTORY_MAX_TURNS`)。
-  /// 上界 200 对齐服务端肯收的上限(`WEB_HISTORY_TURNS_MAX`):走后端渠道时 token 是
-  /// 服务端付的,拉满一个请求光历史就三万多;老版服务端封顶更低,要多了照样截回去。
-  /// 自定义接口那条没人替它截,也按同一个上限走。
+  /// 默认 20 与 bot 的历史窗口一样。上界 200 落在后端模型通道收的消息条数以内
+  /// (`CHANNEL_MESSAGES_MAX`):走后端渠道时 token 是服务端付的,拉满一个请求光历史
+  /// 就三万多。自定义接口那条也按同一个上限走。
   ///
   /// 十轮一档:两百轮的范围,一轮一轮地按太碎。
   static const historyTurnsDefault = 20;
