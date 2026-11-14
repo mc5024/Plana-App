@@ -11,6 +11,9 @@ final toolFence = RegExp(
   caseSensitive: false,
 );
 
+/// 写坏的调用回灌时原文最多带这么多字。
+const _maxBrokenBody = 200;
+
 /// 文本围栏:模型在正文里写 ```tool_call 代码块,结果以一条 user 消息回灌。
 class FencedToolProtocol implements ToolProtocol {
   const FencedToolProtocol();
@@ -40,32 +43,55 @@ class FencedToolProtocol implements ToolProtocol {
   @override
   ParsedToolCalls parse(String reply) {
     final calls = <ToolCall>[];
-    final broken = <String>[];
+    final broken = <BrokenToolCall>[];
     for (final m in toolFence.allMatches(reply)) {
-      final body = m.group(1)!.trim();
+      final body = m[1]!.trim();
+      Object? j;
       try {
-        final j = jsonDecode(body);
-        final name = j is Map ? j['name']?.toString().trim() ?? '' : '';
-        if (name.isEmpty) {
-          broken.add(body);
-          continue;
-        }
-        final args = (j as Map)['arguments'];
-        calls.add(ToolCall(name, args is Map<String, dynamic> ? args : const {}));
-      } catch (_) {
-        broken.add(body);
+        j = jsonDecode(body);
+      } on FormatException catch (e) {
+        broken.add(BrokenToolCall(body, e.message));
+        continue;
+      }
+      if (j is! Map) {
+        broken.add(BrokenToolCall(body, '顶层不是对象'));
+        continue;
+      }
+      final name = '${j['name'] ?? ''}'.trim();
+      final args = j['arguments'] ?? const <String, dynamic>{};
+      if (name.isEmpty) {
+        broken.add(BrokenToolCall(body, '缺 name'));
+      } else if (args is! Map<String, dynamic>) {
+        broken.add(BrokenToolCall(body, 'arguments 不是对象'));
+      } else {
+        calls.add(ToolCall(name, args));
       }
     }
     return ParsedToolCalls(calls, broken: broken);
   }
 
   @override
-  String resultMessage(List<ToolCallResult> results, PromptTexts texts) =>
-      texts.get('tool_results', {
-        'count': '${results.length}',
-        'results': [
-          for (final r in results)
-            '[${r.call.name}] ${r.error != null ? texts.get('tool_failed', {'error': r.error!}) : jsonEncode(r.data)}',
-        ].join('\n\n'),
-      });
+  String resultMessage(
+    List<ToolCallResult> results,
+    List<BrokenToolCall> broken,
+    PromptTexts texts,
+  ) => texts.get('tool_results', {
+    'count': '${results.length + broken.length}',
+    'results': [
+      for (final r in results) '[${r.call.name}] ${_resultText(r, texts)}',
+      for (final b in broken)
+        texts.get('tool_bad_json', {
+          'error': b.error,
+          'body': b.body.length > _maxBrokenBody
+              ? '${b.body.substring(0, _maxBrokenBody)}…'
+              : b.body,
+        }),
+    ].join('\n\n'),
+  });
+
+  static String _resultText(ToolCallResult r, PromptTexts texts) {
+    if (r.error case final e?) return texts.get('tool_failed', {'error': e});
+    final data = jsonEncode(r.data);
+    return r.repeat ? '${texts.get('tool_repeat')}\n$data' : data;
+  }
 }

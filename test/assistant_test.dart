@@ -3,6 +3,7 @@
 // 一是 tag 差集:整套「看得出改了什么」的设计全靠它,算错了回执就是假的。
 // 二是站位继承:AI 只在用户明说方位时才给坐标,其余留空 —— 空的当成「放正中」
 // 会让「让她笑一下」这种无关改动把用户摆好的构图重排掉。
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -41,7 +42,8 @@ import 'package:plana_app/features/assistant/tools/my_library.dart';
 import 'package:plana_app/features/assistant/tools/oc_tool.dart';
 import 'package:plana_app/features/assistant/tools/tool_context.dart';
 import 'package:plana_app/features/assistant/tools/tool_registry.dart';
-import 'package:plana_app/features/assistant/tools/tool_settings.dart';import 'package:plana_app/features/assistant/prompt_diff.dart';
+import 'package:plana_app/features/assistant/tools/tool_settings.dart';
+import 'package:plana_app/features/assistant/prompt_diff.dart';
 import 'package:plana_app/features/assistant/application/assistant_controller.dart';
 import 'package:plana_app/features/assistant/application/proposal_service.dart';
 import 'package:plana_app/features/assistant/application/session_repository.dart';
@@ -120,6 +122,26 @@ class _FakeOnline implements OnlineTags {
   Future<List<SemanticHit>> characters(String query, {int limit = 10}) async {
     asked.add(query);
     return hits;
+  }
+
+  @override
+  Future<String?> wiki(String tag) async => null;
+}
+
+/// 第一次查询一直等到第二次查询开始:两个调用串着跑就会卡死。
+class _GatedOnline implements OnlineTags {
+  final _second = Completer<void>();
+  final asked = <String>[];
+
+  @override
+  Future<List<SemanticHit>> characters(String query, {int limit = 10}) async {
+    asked.add(query);
+    if (asked.length == 1) {
+      await _second.future;
+    } else if (!_second.isCompleted) {
+      _second.complete();
+    }
+    return const [];
   }
 
   @override
@@ -1414,7 +1436,9 @@ void main() {
 
     test('开着 OC 占位符:只给占位符,这轮没点到就补账本里记着的', () async {
       const on = ToolSettings(enabledOptions: {kOcPlaceholdersOption});
-      final first = await const SearchOcTool().prefetch(ctx('画小小纺', settings: on));
+      final first = await const SearchOcTool().prefetch(
+        ctx('画小小纺', settings: on),
+      );
       expect(first!.text, contains('小小纺 → __OC_小小纺__'));
       expect(first.text, isNot(contains('twin braids')));
       final later = ctx(
@@ -1462,7 +1486,12 @@ void main() {
     test('[角色候选] 来自离线词库,出处取 tag 末尾的括号;离线来源关着就不预取', () async {
       final offline = _FakeOffline(
         roles: const [
-          (tag: 'shiroko_(blue_archive)', zh: '砂狼白子', count: 11429, category: 4),
+          (
+            tag: 'shiroko_(blue_archive)',
+            zh: '砂狼白子',
+            count: 11429,
+            category: 4,
+          ),
         ],
       );
       final b = await const SearchCharacterTool().prefetch(
@@ -1682,33 +1711,38 @@ void main() {
       OnlineTags? online,
       bool stream = true,
     }) => http.runWithClient(
-      () => DirectAgentRuntime(
-        provider: llmProviderFor(endpoint),
-        offline: offline,
-        online: online,
-      ).run(
-        AgentTurnRequest(
-          userText: userRequest,
-          imageModel: 'nai_v45_full',
-          customRules: const [PresetRule(name: 'role', content: '你是画师')],
-          canvas: const CanvasSnapshot(
-            positive: '$a1, 1girl',
-            negative: '',
-            characters: [],
-          ),
-          history: const [
-            {'role': 'user', 'content': '上一轮'},
-            {'role': 'assistant', 'content': 'positive: $a1'},
-          ],
-          tools: tools,
-          artists: library.artists,
-          ocs: library.ocs,
-          resources: const {
-            'artist': {'A1': a1},
-          },
-          stream: stream,
-        ),
-      ).toList(),
+      () =>
+          DirectAgentRuntime(
+                provider: llmProviderFor(endpoint),
+                offline: offline,
+                online: online,
+              )
+              .run(
+                AgentTurnRequest(
+                  userText: userRequest,
+                  imageModel: 'nai_v45_full',
+                  customRules: const [
+                    PresetRule(name: 'role', content: '你是画师'),
+                  ],
+                  canvas: const CanvasSnapshot(
+                    positive: '$a1, 1girl',
+                    negative: '',
+                    characters: [],
+                  ),
+                  history: const [
+                    {'role': 'user', 'content': '上一轮'},
+                    {'role': 'assistant', 'content': 'positive: $a1'},
+                  ],
+                  tools: tools,
+                  artists: library.artists,
+                  ocs: library.ocs,
+                  resources: const {
+                    'artist': {'A1': a1},
+                  },
+                  stream: stream,
+                ),
+              )
+              .toList(),
       () => mock,
     );
 
@@ -1845,7 +1879,9 @@ void main() {
       });
       await run(
         mock,
-        tools: ToolSettings(disabledTools: {for (final t in kAgentTools) t.name}),
+        tools: ToolSettings(
+          disabledTools: {for (final t in kAgentTools) t.name},
+        ),
       );
       expect(model.single, isNot(contains('[可用工具]')));
       expect(model.single, isNot(contains('<tool_usage>')));
@@ -1868,18 +1904,215 @@ void main() {
         tools: const ToolSettings(disabledTools: {'lookup_tag'}),
       );
       expect(model.last, contains('没有这个工具'));
+      expect(events.whereType<AgentDone>().single.result.replyText, '查不了,直接说喵');
+    });
+
+    test('写坏的 tool_call:回灌原文和原因,同一条里别的调用照常执行', () async {
+      final model = <String>[];
+      final mock = MockClient((req) async {
+        model.add(req.body);
+        return modelSays(
+          model.length == 1
+              ? '```tool_call\n{坏了\n```\n'
+                    '```tool_call\n{"name": "lookup_tag", "arguments": {"query": "halo"}}\n```'
+              : '好',
+        );
+      });
+      final events = await run(mock);
+      expect(model, hasLength(2));
+      expect(model.last, contains('[tool_result 共 2 条]'));
+      expect(model.last, contains('写坏了'));
+      expect(model.last, contains('{坏了'));
+      expect(events.whereType<AgentToolCall>().single.name, 'lookup_tag');
+    });
+
+    test('同工具同参数:只真跑一次,再调给上次结果和提醒', () async {
+      final model = <String>[];
+      final online = _FakeOnline();
+      const call =
+          '```tool_call\n{"name": "search_character", "arguments": {"query": "芙兰"}}\n```';
+      final mock = MockClient((req) async {
+        model.add(req.body);
+        return modelSays(model.length <= 2 ? call : '好');
+      });
+      await run(mock, online: online);
+      expect(online.asked, ['芙兰']);
+      expect(model[1], isNot(contains('完全相同')));
+      expect(model[2], contains('完全相同'));
+    });
+
+    test('同一跳的几个调用并行跑,结果按调用顺序回', () async {
+      final online = _GatedOnline();
+      var n = 0;
+      final mock = MockClient((req) async {
+        n++;
+        return modelSays(
+          n == 1
+              ? '```tool_call\n{"name": "search_character", "arguments": {"query": "芙兰"}}\n```\n'
+                    '```tool_call\n{"name": "search_character", "arguments": {"query": "蕾米"}}\n```'
+              : '好',
+        );
+      });
+      final events = await run(
+        mock,
+        online: online,
+      ).timeout(const Duration(seconds: 5));
+      expect(online.asked, ['芙兰', '蕾米']);
       expect(
-        events.whereType<AgentDone>().single.result.replyText,
-        '查不了,直接说喵',
+        [
+          for (final e in events)
+            if (e is AgentToolCall)
+              'call:${e.args['query']}'
+            else if (e is AgentToolResult)
+              'result',
+        ],
+        ['call:芙兰', 'call:蕾米', 'result', 'result'],
       );
+    });
+
+    test('工具轮数用完还在调:不执行,回灌让它直接收尾', () async {
+      final model = <String>[];
+      final mock = MockClient((req) async {
+        model.add(req.body);
+        return modelSays(
+          model.length <= 4
+              ? '```tool_call\n{"name": "lookup_tag", "arguments": {"query": "q${model.length}"}}\n```'
+              : '好',
+        );
+      });
+      final events = await run(mock);
+      expect(model, hasLength(5));
+      expect(model[4], contains('工具调用次数已经用完'));
+      expect(events.whereType<AgentToolCall>(), hasLength(3));
+      expect(events.whereType<AgentDone>().single.result.replyText, '好');
+    });
+
+    test('出图块没写完:回灌让模型重写', () async {
+      final model = <String>[];
+      final mock = MockClient((req) async {
+        model.add(req.body);
+        return modelSays(
+          model.length == 1
+              ? '画好了\n```nai_draw\n{"positive": "1gi'
+              : '画好了\n```nai_draw\n{"positive": "1girl"}\n```',
+        );
+      });
+      final events = await run(mock);
+      expect(model, hasLength(2));
+      expect(model.last, contains('没写完'));
+      final done = events.whereType<AgentDone>().single.result;
+      expect(done.positive, '1girl');
+      expect(done.replyText, '画好了');
+    });
+
+    test('回灌两次还写不对:换下一次尝试并剥掉预取资料块,都不行就报错带原文', () async {
+      final model = <String>[];
+      final mock = MockClient((req) async {
+        model.add(req.body);
+        return modelSays('画好了\n```nai_draw\n{"positive": ""}\n```');
+      });
+      await expectLater(
+        run(mock),
+        throwsA(
+          isA<AgentFailure>().having(
+            (e) => e.message,
+            'message',
+            contains('{"positive": ""}'),
+          ),
+        ),
+      );
+      expect(model, hasLength(6), reason: '两次尝试,各回灌两次');
+      expect(model[0], contains('D11 → __ARTIST_D11__'));
+      expect(model[3], isNot(contains('D11 → __ARTIST_D11__')));
+      expect(model[3], contains('已移除'));
+    });
+
+    test('空回、只有思考没有正文:换下一次尝试', () async {
+      for (final empty in ['', '<Think>想了想</Think>']) {
+        final model = <String>[];
+        final mock = MockClient((req) async {
+          model.add(req.body);
+          return modelSays(model.length == 1 ? empty : '好');
+        });
+        final events = await run(mock);
+        expect(model, hasLength(2));
+        expect(events.whereType<AgentDone>().single.result.replyText, '好');
+      }
+    });
+
+    test('密钥不对:不重试', () async {
+      var n = 0;
+      final mock = MockClient((req) async {
+        n++;
+        return http.Response('{"error": "bad key"}', 401);
+      });
+      await expectLater(run(mock), throwsA(isA<AgentFailure>()));
+      expect(n, 1);
+    });
+
+    test('回复像拒绝:原上下文原地重掷,什么都不回灌', () async {
+      final model = <String>[];
+      final mock = MockClient((req) async {
+        model.add(req.body);
+        return modelSays(model.length <= 2 ? '这个我画不了' : '好');
+      });
+      final events = await run(mock);
+      expect(model, hasLength(3));
+      expect(model[1], model[0]);
+      expect(model[2], model[0]);
+      expect(events.whereType<AgentDone>().single.result.replyText, '好');
+    });
+
+    test('重掷用完还像拒绝:报错收场,不再降级', () async {
+      var n = 0;
+      final mock = MockClient((req) async {
+        n++;
+        return modelSays('这个我画不了');
+      });
+      await expectLater(
+        run(mock),
+        throwsA(
+          isA<AgentFailure>().having(
+            (e) => e.message,
+            'message',
+            contains('画不了'),
+          ),
+        ),
+      );
+      expect(n, 3);
+    });
+
+    test('出图轮不判拒绝', () async {
+      var n = 0;
+      final mock = MockClient((req) async {
+        n++;
+        return modelSays(
+          '不能画太露骨的,换成这样\n```nai_draw\n{"positive": "1girl"}\n```',
+        );
+      });
+      final events = await run(mock);
+      expect(n, 1);
+      expect(events.whereType<AgentDone>().single.result.positive, '1girl');
     });
   });
 
   group('直连回复解析', () {
     // 模型写坏围栏的花样很多,而写坏的表现是「这轮没出图」——和「模型决定不出图」
     // 长得一模一样,不钉住根本分不出来。
+    final texts = _texts();
+    ParsedReply parse(String raw) => parseReply(raw, texts);
+    Matcher retry(String part) => throwsA(
+      isA<OutputFailure>().having(
+        (e) => e.instruction,
+        'instruction',
+        contains(part),
+      ),
+    );
+    String fence(Map<String, Object?> draw) =>
+        '```nai_draw\n${jsonEncode(draw)}\n```';
+
     test('正文 + nai_draw 围栏', () {
-      final r = parseReply(
+      final r = parse(
         '好耶,画一张芙兰喵~\n'
         '```nai_draw\n'
         '{"positive": "1girl, flandre_scarlet", "negative": "bad hands"}\n'
@@ -1887,32 +2120,178 @@ void main() {
       );
       expect(r.reply, '好耶,画一张芙兰喵~');
       expect(r.draw!['positive'], '1girl, flandre_scarlet');
+      expect(r.repairs, isEmpty);
     });
 
-    test('<Think> 段要剥掉,不能发给用户', () {
-      final r = parseReply('<Think>先查一下</Think>\n好的喵~');
+    test('思考类标签连内容剥掉,只写了半边的也剥', () {
+      final r = parse(
+        '<Think>先查一下</Think>\n<thinking_process>想想</thinking_process>'
+        '<Reference_Example>例子</Reference_Example>好的喵~</think>',
+      );
       expect(r.reply, '好的喵~');
     });
 
     test('写了两版围栏时以最后一版为准', () {
-      final r = parseReply(
+      final r = parse(
         '```nai_draw\n{"positive": "a"}\n```\n'
         '改一下\n'
         '```nai_draw\n{"positive": "b"}\n```',
       );
       expect(r.draw!['positive'], 'b');
+      expect(r.reply, '改一下');
+      expect(r.repairs, hasLength(1));
     });
 
-    test('围栏里不是合法 JSON:当这轮没出图,正文照发', () {
-      final r = parseReply('在想喵\n```nai_draw\n{坏了\n```');
-      expect(r.draw, isNull);
-      expect(r.reply, '在想喵');
+    test('围栏里不是合法 JSON:要模型重写,不能当这轮没出图', () {
+      expect(() => parse('在想喵\n```nai_draw\n{坏了\n```'), retry('不是合法 JSON'));
+      expect(() => parse('```nai_draw\n[1]\n```'), retry('顶层不是 JSON 对象'));
     });
 
     test('纯聊天轮没有围栏', () {
-      final r = parseReply('这串 tag 挺好的喵');
+      final r = parse('这串 tag 挺好的喵');
       expect(r.draw, isNull);
       expect(r.reply, '这串 tag 挺好的喵');
+    });
+
+    test('残留的 tool_call 围栏不进正文', () {
+      final r = parse(
+        '好的\n```tool_call\n{"name": "lookup_tag", "arguments": {}}\n```',
+      );
+      expect(r.reply, '好的');
+      expect(r.draw, isNull);
+    });
+
+    test('围栏名写错:按字段认出出图块', () {
+      final r = parse('画好了\n```json\n{"positive": "1girl"}\n```');
+      expect(r.draw!['positive'], '1girl');
+      expect(r.reply, '画好了');
+      expect(r.repairs, hasLength(1));
+    });
+
+    test('普通代码块里不是出图对象的照留', () {
+      const raw = '给你:\n```json\n{"tag": "1girl"}\n```';
+      expect(parse(raw).draw, isNull);
+      expect(parse(raw).reply, raw);
+    });
+
+    test('漏了收尾的 ```:JSON 完整就收下', () {
+      final r = parse('画好了\n```nai_draw\n{"positive": "1girl"}\n');
+      expect(r.draw!['positive'], '1girl');
+      expect(r.reply, '画好了');
+    });
+
+    test('开标记后面的 JSON 被截断:要模型重写', () {
+      expect(
+        () => parse('画好了\n```nai_draw\n{"positive": "1gi'),
+        retry('多半是被截断了'),
+      );
+      expect(
+        () => parse('画好了\n```nai_draw\n{"tag": "1girl"}'),
+        retry('不是出图用的 JSON 对象'),
+      );
+    });
+
+    test('忘了写围栏:正文里裸着的出图对象也认,加权语法的花括号不当真', () {
+      final r = parse(
+        '加了 {masterpiece} 权重\n{"positive": "{masterpiece}, 1girl"}',
+      );
+      expect(r.draw!['positive'], '{masterpiece}, 1girl');
+      expect(r.reply, '加了 {masterpiece} 权重');
+      expect(parse('{"positive": "1girl"}').draw!['positive'], '1girl');
+    });
+
+    test('写坏的出图对象里,单个角色分区不会被当成整块', () {
+      final r = parse(
+        '{"positive": "a", "characters": [{"name": "x", "positive": "b"}],}',
+      );
+      expect(r.draw, isNull);
+    });
+
+    test('出图块:数组拼成串、单个角色对象套成数组、多余字段剔掉', () {
+      final r = parse(
+        fence({
+          'positive': ['1girl', 'smile'],
+          'negative': ['bad'],
+          'characters': {'name': '芙兰', 'positive': 'flandre_scarlet', 'x': 1},
+        }),
+      );
+      expect(r.draw!['positive'], '1girl, smile');
+      expect(r.draw!['negative'], 'bad');
+      expect(r.draw!['characters'], [
+        {'name': '芙兰', 'positive': 'flandre_scarlet', 'negative': ''},
+      ]);
+      expect(r.repairs, hasLength(4));
+    });
+
+    test('出图块:positive 缺了、空了、角色分区没有 tag,都要模型重写', () {
+      expect(() => parse(fence({'negative': ''})), retry('没有 positive 字段'));
+      expect(() => parse(fence({'positive': 1})), retry('positive 是 number'));
+      expect(() => parse(fence({'positive': ' '})), retry('positive 是空的'));
+      expect(
+        () => parse(fence({'positive': 'a', 'characters': '芙兰'})),
+        retry('写成了字符串 "芙兰"'),
+      );
+      expect(
+        () => parse(
+          fence({
+            'positive': 'a',
+            'characters': ['芙兰'],
+          }),
+        ),
+        retry('有 1 项不是对象'),
+      );
+      expect(
+        () => parse(
+          fence({
+            'positive': 'a',
+            'characters': [
+              {'name': '芙兰'},
+            ],
+          }),
+        ),
+        retry('第 1 个角色（name: "芙兰"）没有 positive'),
+      );
+    });
+
+    test('出图块:characters 写成数字或空串,按单角色处理;negative 类型不对就置空', () {
+      final r = parse(fence({'positive': 'a', 'characters': 1, 'negative': 2}));
+      expect(r.draw!['characters'], isEmpty);
+      expect(r.draw!['negative'], '');
+    });
+
+    test('出图块:站位的几种写歪法就地救回,认不出的去掉交给自动排布', () {
+      final given = <Object?>[
+        '0.25, 0.75',
+        '25,75',
+        {'x': 0.25, 'y': 0.75},
+        [0.5, 0.5],
+        'c4',
+        '左下',
+        '',
+        1.5,
+      ];
+      final r = parse(
+        fence({
+          'positive': 'a',
+          'characters': [
+            for (final p in given)
+              {'name': 'x', 'positive': 'y', 'position': p},
+          ],
+        }),
+      );
+      expect(
+        [for (final c in r.draw!['characters'] as List) (c as Map)['position']],
+        [
+          '0.2500,0.7500',
+          '0.2500,0.7500',
+          '0.2500,0.7500',
+          '0.5000,0.5000',
+          'C4',
+          null,
+          null,
+          null,
+        ],
+      );
     });
   });
 
@@ -1934,19 +2313,25 @@ void main() {
       expect(calls.first.args['query'], '芙兰');
     });
 
-    test('坏掉的那一块跳过,别的照常执行', () {
-      final calls = _calls(
+    test('坏掉的那一块单独记下原文,别的照常执行', () {
+      final p = const FencedToolProtocol().parse(
         '```tool_call\n{坏了\n```\n'
         '```tool_call\n'
         '{"name": "lookup_tag", "arguments": {"query": "halo"}}\n'
         '```',
       );
-      expect(calls.length, 1);
-      expect(calls.single.name, 'lookup_tag');
+      expect(p.calls.single.name, 'lookup_tag');
+      expect(p.broken.single.body, '{坏了');
     });
 
-    test('没有 name 的不算一次调用', () {
-      expect(_calls('```tool_call\n{"arguments": {}}\n```'), isEmpty);
+    test('没有 name、arguments 不是对象的不算调用,记下哪里不对', () {
+      final p = const FencedToolProtocol().parse(
+        '```tool_call\n{"arguments": {}}\n```\n'
+        '```tool_call\n{"name": "lookup_tag", "arguments": "halo"}\n```\n'
+        '```tool_call\n{"name": "lookup_tag"}\n```',
+      );
+      expect([for (final b in p.broken) b.error], ['缺 name', 'arguments 不是对象']);
+      expect(p.calls.single.args, isEmpty, reason: '没写 arguments 当空参数');
     });
 
     test('没写围栏就是没调工具', () {
@@ -2017,8 +2402,9 @@ void main() {
       (role: 'assistant', content: '好的', image: null),
       (role: 'user', content: text, image: image),
     ];
-    Map<String, dynamic> body(AgentApiFormat f, List<LlmMessage> m) =>
-        _llm(f).requestBody(LlmRequest(system: 'sys', messages: m), stream: false);
+    Map<String, dynamic> body(AgentApiFormat f, List<LlmMessage> m) => _llm(
+      f,
+    ).requestBody(LlmRequest(system: 'sys', messages: m), stream: false);
 
     test('OpenAI:content 换成分段,图在前,data URL', () {
       final m =
@@ -2132,7 +2518,10 @@ void main() {
     });
 
     test('存得下也读得回来', () {
-      const s = AssistantSettings(autoGenerate: true, thinkLevel: ThinkLevel.high);
+      const s = AssistantSettings(
+        autoGenerate: true,
+        thinkLevel: ThinkLevel.high,
+      );
       final back = AssistantSettings.fromJson(s.toJson());
       expect(back.autoGenerate, isTrue);
       expect(back.thinkLevel, ThinkLevel.high);
@@ -2151,12 +2540,10 @@ void main() {
           expect(s.optionOn(t.name, o.id), isFalse);
         }
       }
-      expect([for (final t in enabledTools(s)) t.name], [
-        'search_artist',
-        'search_oc',
-        'search_character',
-        'lookup_tag',
-      ]);
+      expect(
+        [for (final t in enabledTools(s)) t.name],
+        ['search_artist', 'search_oc', 'search_character', 'lookup_tag'],
+      );
     });
 
     test('关掉的工具不算;来源全关的工具也不算', () {
@@ -2164,10 +2551,10 @@ void main() {
         disabledTools: {'search_oc'},
         disabledSources: {'lookup_tag/offline', 'lookup_tag/wiki'},
       );
-      expect([for (final t in enabledTools(s)) t.name], [
-        'search_artist',
-        'search_character',
-      ]);
+      expect(
+        [for (final t in enabledTools(s)) t.name],
+        ['search_artist', 'search_character'],
+      );
     });
 
     test('存得下也读得回来', () {
@@ -2233,7 +2620,10 @@ void main() {
         );
       }
       expect(
-        _llm(AgentApiFormat.google, 'gemini-4-carbon').thinkFields(ThinkLevel.auto),
+        _llm(
+          AgentApiFormat.google,
+          'gemini-4-carbon',
+        ).thinkFields(ThinkLevel.auto),
         {
           'generationConfig': {
             'thinkingConfig': {'includeThoughts': true},
@@ -2258,7 +2648,10 @@ void main() {
 
     test('Gemini 2.x:thinkingBudget,关掉是 0 而不是不发', () {
       Map cfg(ThinkLevel l) {
-        final f = _llm(AgentApiFormat.google, 'gemini-2.5-flash').thinkFields(l);
+        final f = _llm(
+          AgentApiFormat.google,
+          'gemini-2.5-flash',
+        ).thinkFields(l);
         return (f['generationConfig'] as Map)['thinkingConfig'] as Map;
       }
 
@@ -2353,7 +2746,10 @@ void main() {
     });
 
     test('Claude:关 = 不带 thinking 字段;开着预算不低于 1024 且递增', () {
-      expect(_llm(AgentApiFormat.anthropic).thinkFields(ThinkLevel.off), isEmpty);
+      expect(
+        _llm(AgentApiFormat.anthropic).thinkFields(ThinkLevel.off),
+        isEmpty,
+      );
       var prev = 0;
       for (final l in [
         ThinkLevel.low,
@@ -2361,7 +2757,8 @@ void main() {
         ThinkLevel.high,
         ThinkLevel.ultra,
       ]) {
-        final t = _llm(AgentApiFormat.anthropic).thinkFields(l)['thinking'] as Map;
+        final t =
+            _llm(AgentApiFormat.anthropic).thinkFields(l)['thinking'] as Map;
         expect(t['type'], 'enabled');
         final b = t['budget_tokens'] as int;
         // Anthropic 自己规定的下限

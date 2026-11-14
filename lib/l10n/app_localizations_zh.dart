@@ -4809,6 +4809,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get modelEmptyReply => '模型回了一段空的';
 
   @override
+  String modelBadDraw(String count) {
+    return '出图块重写 $count 次仍不对,模型最后一次的原文:';
+  }
+
+  @override
+  String assistantRefused(String count, String keyword) {
+    return '模型拒绝了这次请求(重试 $count 次仍命中「$keyword」)';
+  }
+
+  @override
   String modelNoReplyIn(String secs) {
     return '模型 $secs 秒内没有回复';
   }

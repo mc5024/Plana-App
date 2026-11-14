@@ -529,9 +529,8 @@ class AssistantController extends Notifier<AssistantState> {
                   persist: false,
                 );
               case AgentToolResult(:final name, :final summary):
-                final i = tools.lastIndexWhere(
-                  (t) => t.name == name && !t.done,
-                );
+                // 同一跳的结果按调用顺序回来,配最早那个还没结果的
+                final i = tools.indexWhere((t) => t.name == name && !t.done);
                 if (i >= 0) {
                   tools[i] = tools[i].copyWith(summary: summary);
                 } else {
@@ -559,14 +558,7 @@ class AssistantController extends Notifier<AssistantState> {
                 );
                 _set(state.copyWith(liveTools: List.of(tools)), persist: false);
               case AgentDone(:final result):
-                _finish(
-                  result,
-                  tools,
-                  canvas,
-                  picked,
-                  noDraw,
-                  sourceCanvasId,
-                );
+                _finish(result, tools, canvas, picked, noDraw, sourceCanvasId);
             }
           },
           onError: (Object e) {

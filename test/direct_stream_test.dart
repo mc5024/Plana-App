@@ -155,10 +155,7 @@ void main() {
       for (final f in AgentApiFormat.values) {
         expect(_delta(f, null), (text: '', reasoning: ''));
         expect(_delta(f, 'oops'), (text: '', reasoning: ''));
-        expect(_delta(f, const <String, Object?>{}), (
-          text: '',
-          reasoning: '',
-        ));
+        expect(_delta(f, const <String, Object?>{}), (text: '', reasoning: ''));
       }
     });
   });
@@ -194,6 +191,15 @@ void main() {
       expect(streamView('好的\n```nai_dr').body, '好的');
       // 光秃秃的反引号留着:多半是代码块/行内代码的收尾,切了反而拆了好好的块
       expect(streamView('给你 `1girl`').body, '给你 `1girl`');
+    });
+
+    test('thinking_process 划到思考,Reference_Example 不显示', () {
+      final v = streamView(
+        '<thinking_process>想</thinking_process>'
+        '<Reference_Example>例</Reference_Example>好的',
+      );
+      expect(v.body, '好的');
+      expect(v.think, '想');
     });
 
     test('多段 <Think> 合到一起', () {
@@ -411,7 +417,9 @@ void main() {
 
   group('模型列表与连通测试', () {
     test('HTTP 错误原样抛出,不改写成「Key 不对」之类', () async {
-      final c = MockClient((req) async => http.Response('{"error":"bad key"}', 401));
+      final c = MockClient(
+        (req) async => http.Response('{"error":"bad key"}', 401),
+      );
       await expectLater(
         llmProviderFor(_ep(AgentApiFormat.openai)).listModels(client: c),
         throwsA(

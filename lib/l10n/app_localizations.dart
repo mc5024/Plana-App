@@ -8464,6 +8464,18 @@ abstract class AppLocalizations {
   /// **'模型回了一段空的'**
   String get modelEmptyReply;
 
+  /// No description provided for @modelBadDraw.
+  ///
+  /// In zh, this message translates to:
+  /// **'出图块重写 {count} 次仍不对,模型最后一次的原文:'**
+  String modelBadDraw(String count);
+
+  /// No description provided for @assistantRefused.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型拒绝了这次请求(重试 {count} 次仍命中「{keyword}」)'**
+  String assistantRefused(String count, String keyword);
+
   /// No description provided for @modelNoReplyIn.
   ///
   /// In zh, this message translates to:

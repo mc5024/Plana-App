@@ -13,6 +13,47 @@ tool_failed: >-
   执行失败:{error}
 unknown_tool: >-
   没有这个工具:{name}
+tool_bad_json: >-
+  有一个 tool_call 写坏了，没有执行（{error}）。要写成单行合法 JSON：{"name": "工具名称", "arguments": {...}}。原文：{body}
+tool_repeat: >-
+  ⚠ 这次调用与本轮之前某次**完全相同**（同工具同参数），没有重新执行，下面是上次的结果。请直接用它继续，不要再重复调用。
+# 工具调用轮数用完后模型还在调
+tool_limit: >-
+  本轮的工具调用次数已经用完，刚才的调用没有执行。请不要再调用工具，直接根据已有结果给出最终回复。
+
+# 出图块读不出来、要模型重写时回灌的话
+draw_bad_json: >-
+  ```nai_draw 代码块里的内容不是合法 JSON（{detail}）。**正文照常写给用户**，只把代码块里的内容改成一个合法 JSON 对象：英文双引号、不要注释、不要多余字段。⚠ 不要把 JSON 写进正文，也不要删掉正文只留 JSON。
+draw_not_object: >-
+  顶层不是 JSON 对象
+draw_unfinished: >-
+  你的 ```nai_draw 代码块没写完（{detail}）。**正文照常写给用户**，然后重新写一个**完整**的代码块：```nai_draw 开头、单独一行 ``` 收尾，中间放一个合法 JSON 对象。内容长就写简短些，务必把收尾的 ``` 写出来。
+draw_truncated: >-
+  开标记在但围栏没有闭合，后面的 JSON 也不完整，多半是被截断了
+draw_no_payload: >-
+  开标记后面不是出图用的 JSON 对象
+draw_no_positive: >-
+  nai_draw 代码块里没有 positive 字段。它必须是英文 tag 组成的**字符串**（逗号分隔）。正文照常写给用户，只把这个字段改对。
+draw_positive_type: >-
+  nai_draw 代码块里的 positive 是 {type}，类型不对。它必须是英文 tag 组成的**字符串**（逗号分隔）。正文照常写给用户，只把这个字段改对。
+draw_positive_empty: >-
+  nai_draw 代码块里的 positive 是空的，这样画不出任何东西。请把这张图的正向 tag 补上（英文、逗号分隔）；正文照常写给用户。
+draw_characters_string: >-
+  nai_draw 代码块里的 characters 写成了字符串 {value}。它必须是数组，每项一个对象：[{"name": "角色名", "positive": "该角色的英文 tag", "negative": ""}]。单角色场景则留空数组 []。正文照常写给用户。
+draw_characters_not_object: >-
+  nai_draw 代码块里的 characters 有 {count} 项不是对象（{sample}）。每项都要写成 {"name": "角色名", "positive": "该角色的英文 tag", "negative": ""}——只给名字没有分区 tag 的话，那个角色画不出来。正文照常写给用户。
+draw_character_no_positive: >-
+  nai_draw 代码块里 characters 的第 {index} 个角色（name: {name}）没有 positive。分区必须带该角色自己的英文 tag，否则这个角色画不出来。补上，或者本来就是单角色就把 characters 留空数组 []。正文照常写给用户。
+
+# 降级重试时补在用户消息末尾
+retry_no_image: |-
+  [重试中]
+  上次可能因上下文过大失败，已剥去图片，请基于剩余文本简洁回复。
+retry_image_only: >-
+  （图片处理失败，请重新文字描述）
+retry_no_prefetch: |-
+  [重试中]
+  上次可能被预匹配的候选块带偏，已移除，请只按用户原话回复。
 
 # 预取资料块的块头说明
 artist_block_note: >-

@@ -55,8 +55,8 @@ class AgentTrace {
   /// 和工具结果,见 [hops]。
   List<Map<String, String>>? messages;
 
-  /// 自定义接口:每一跳 `{t, ms, reply, tool_calls?, tool_results?}`,
-  /// t 是距开始的毫秒数,ms 是这一跳模型调用花了多久。
+  /// 自定义接口:每一跳 `{t, ms, reply, tool_calls?, tool_results?, repairs?, feedback?,
+  /// refusal?}`,t 是距开始的毫秒数,ms 是这一跳模型调用花了多久。
   final List<Map<String, Object?>> hops = [];
 
   /// 收到的事件,按到达顺序 `{t, event, data}`。
@@ -235,6 +235,23 @@ String renderTraceExport({
           ..writeln()
           ..writeln('工具结果:')
           ..writeln(h['tool_results']);
+      }
+      if (h['repairs'] != null) {
+        b
+          ..writeln()
+          ..writeln('就地修好:')
+          ..writeln(_json(h['repairs']));
+      }
+      if (h['feedback'] != null) {
+        b
+          ..writeln()
+          ..writeln('回灌重写:')
+          ..writeln(h['feedback']);
+      }
+      if (h['refusal'] != null) {
+        b
+          ..writeln()
+          ..writeln('像拒绝:命中「${h['refusal']}」');
       }
     }
     if (t.events.isNotEmpty) {

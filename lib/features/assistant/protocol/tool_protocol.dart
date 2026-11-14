@@ -14,21 +14,33 @@ class ToolCall {
   final Map<String, dynamic> args;
 }
 
-/// 一条回复里认出的调用,以及写坏了认不出的那几块(原文)。
+/// 写坏了认不出的一块:原文 + 哪里不对。
+class BrokenToolCall {
+  const BrokenToolCall(this.body, this.error);
+
+  final String body;
+  final String error;
+}
+
+/// 一条回复里认出的调用,以及写坏了认不出的那几块。
 class ParsedToolCalls {
   const ParsedToolCalls(this.calls, {this.broken = const []});
 
   final List<ToolCall> calls;
-  final List<String> broken;
+  final List<BrokenToolCall> broken;
+
+  bool get isEmpty => calls.isEmpty && broken.isEmpty;
 }
 
-/// 一次调用的结果。[error] 非空 = 没执行成。
+/// 一次调用的结果。[error] 非空 = 没执行成;[repeat] = 和本轮之前某次同工具同参数,
+/// 给的是上次的结果。
 class ToolCallResult {
-  const ToolCallResult(this.call, {this.data, this.error});
+  const ToolCallResult(this.call, {this.data, this.error, this.repeat = false});
 
   final ToolCall call;
   final Object? data;
   final String? error;
+  final bool repeat;
 }
 
 abstract interface class ToolProtocol {
@@ -40,6 +52,10 @@ abstract interface class ToolProtocol {
 
   ParsedToolCalls parse(String reply);
 
-  /// 工具结果回灌给模型的那条消息。
-  String resultMessage(List<ToolCallResult> results, PromptTexts texts);
+  /// 工具结果回灌给模型的那条消息,写坏的调用一并说明。
+  String resultMessage(
+    List<ToolCallResult> results,
+    List<BrokenToolCall> broken,
+    PromptTexts texts,
+  );
 }

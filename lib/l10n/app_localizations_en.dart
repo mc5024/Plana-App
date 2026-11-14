@@ -5223,6 +5223,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get modelEmptyReply => 'The model returned an empty reply';
 
   @override
+  String modelBadDraw(String count) {
+    return 'The draw block was still malformed after $count rewrites. The model\'s last reply:';
+  }
+
+  @override
+  String assistantRefused(String count, String keyword) {
+    return 'The model declined this request (still matched “$keyword” after $count retries)';
+  }
+
+  @override
   String modelNoReplyIn(String secs) {
     return 'The model didn\'t reply within $secs s';
   }

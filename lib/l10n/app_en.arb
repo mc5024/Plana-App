@@ -1428,6 +1428,8 @@
   "epFetchFailed": "Fetch failed ({code})",
   "epNoModels": "Got a response, but no models in it",
   "modelEmptyReply": "The model returned an empty reply",
+  "modelBadDraw": "The draw block was still malformed after {count} rewrites. The model's last reply:",
+  "assistantRefused": "The model declined this request (still matched “{keyword}” after {count} retries)",
   "modelNoReplyIn": "The model didn't reply within {secs} s",
   "cantConnectHost": "Can't connect to {host}",
   "thinkNoOffFormat": "This format has no “Off” level; sending the lowest",
