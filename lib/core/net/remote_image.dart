@@ -76,6 +76,9 @@ abstract final class RemoteImageStore {
   static void bind(Directory supportRoot) =>
       _dir = Directory('${supportRoot.path}/img_cache');
 
+  /// 缓存目录;没挂上为 null。
+  static Directory? get dir => _dir;
+
   static File? _fileOf(String url) {
     final d = _dir;
     if (d == null) return null;
@@ -110,6 +113,20 @@ abstract final class RemoteImageStore {
     try {
       if (await f.exists()) await f.setLastModified(DateTime.now());
     } catch (_) {}
+  }
+
+  /// 已落盘的缓存文件路径;没有为 null。
+  static Future<String?> cachedPath(String url) async {
+    final f = _fileOf(url);
+    if (f == null) return null;
+    try {
+      final st = await f.stat();
+      return st.type == FileSystemEntityType.notFound || st.size == 0
+          ? null
+          : f.path;
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<Uint8List?> read(String url) async {
@@ -255,6 +272,10 @@ class RemoteImageProvider extends ImageProvider<RemoteImageProvider> {
   /// 不去重就是同一个 URL 并发问好几次。
   static final _validating = <String>{};
 
+  /// 正在首次下载的 URL。同一张图按不同解码宽解析是不同的缓存键,
+  /// 各自走一遍 [_load],不去重就是同一个 URL 并发下好几份。
+  static final _downloading = <String, Future<Uint8List>>{};
+
   @override
   Future<RemoteImageProvider> obtainKey(ImageConfiguration configuration) =>
       SynchronousFuture<RemoteImageProvider>(this);
@@ -288,12 +309,7 @@ class RemoteImageProvider extends ImageProvider<RemoteImageProvider> {
         unawaited(_revalidate(key.url));
         return decode(await ui.ImmutableBuffer.fromUint8List(hit));
       }
-      final (:bytes, :etag) = await _download(
-        key.url,
-        chunks,
-      ).timeout(_timeout);
-      // 落盘是旁路:写失败只是下次还得重下,不该连累这一次显示
-      unawaited(RemoteImageStore.write(key.url, bytes, etag: etag));
+      final bytes = await _shared(key.url, chunks);
       return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
     } catch (_) {
       // 与 NetworkImage 同款:微任务里踢缓存,让下次 build 能真的重试
@@ -304,6 +320,36 @@ class RemoteImageProvider extends ImageProvider<RemoteImageProvider> {
     } finally {
       unawaited(chunks.close());
     }
+  }
+
+  /// 首次下载,同一个 URL 正在下(或刚下完还没落盘)就跟着那一份。
+  static Future<Uint8List> _shared(
+    String url, [
+    StreamController<ImageChunkEvent>? chunks,
+  ]) {
+    if (_downloading[url] case final f?) return f;
+    final f = _fetch(url, chunks);
+    _downloading[url] = f;
+    f.then((_) {}, onError: (_) => _downloading.remove(url));
+    return f;
+  }
+
+  /// 首次下载并落盘。进度只报给发起这次下载的那一路。
+  static Future<Uint8List> _fetch(
+    String url,
+    StreamController<ImageChunkEvent>? chunks,
+  ) async {
+    final (:bytes, :etag) = await _download(url, chunks).timeout(_timeout);
+    // 落盘是旁路:写失败只是下次还得重下,不该连累这一次显示。
+    // 落盘完成前别从 _downloading 里摘掉,这段时间里来要字节的直接拿这一份
+    unawaited(
+      RemoteImageStore.write(
+        url,
+        bytes,
+        etag: etag,
+      ).whenComplete(() => _downloading.remove(url)),
+    );
+    return bytes;
   }
 
   /// 回源验证:带 `If-None-Match` 问一次。
@@ -421,14 +467,14 @@ Future<Uint8List> fetchRemoteImageBytes(
 }) async {
   final hit = await RemoteImageStore.read(url);
   if (hit != null) return hit;
-  StreamController<ImageChunkEvent>? chunks;
-  StreamSubscription<ImageChunkEvent>? sub;
-  if (onProgress != null) {
-    chunks = StreamController<ImageChunkEvent>();
-    sub = chunks.stream.listen(
-      (e) => onProgress(e.cumulativeBytesLoaded, e.expectedTotalBytes),
-    );
+  // 不要进度就和正在显示这张图的那一路共用下载
+  if (onProgress == null) {
+    return RemoteImageProvider._shared(url).timeout(timeout);
   }
+  final chunks = StreamController<ImageChunkEvent>();
+  final sub = chunks.stream.listen(
+    (e) => onProgress(e.cumulativeBytesLoaded, e.expectedTotalBytes),
+  );
   try {
     final (:bytes, :etag) = await RemoteImageProvider._download(
       url,
@@ -438,8 +484,8 @@ Future<Uint8List> fetchRemoteImageBytes(
     unawaited(RemoteImageStore.write(url, bytes, etag: etag));
     return bytes;
   } finally {
-    unawaited(sub?.cancel());
-    unawaited(chunks?.close());
+    unawaited(sub.cancel());
+    unawaited(chunks.close());
   }
 }
 

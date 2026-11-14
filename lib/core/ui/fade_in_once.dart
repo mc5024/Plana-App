@@ -9,10 +9,22 @@ import '../theme/app_theme.dart';
 /// null —— gaplessPlayback 下旧图其实还挂着,可「帧号为 null 就透明」的
 /// frameBuilder 会让整屏卡片先暗下去再亮起来。
 class FadeInOnce extends StatefulWidget {
-  const FadeInOnce({super.key, required this.source, required this.builder});
+  const FadeInOnce({
+    super.key,
+    required this.source,
+    required this.builder,
+    this.hold = false,
+    this.onShown,
+  });
 
   /// 图的身份(URL / 路径)。变了就是换了一张图,照常淡入。
   final Object? source;
+
+  /// 出帧了也先不露面;放开时才淡入。
+  final bool hold;
+
+  /// 这张图头一回出帧时回调(排在这一帧之后,回调里可以直接 setState)。
+  final VoidCallback? onShown;
 
   /// 拿着 frameBuilder 造出 Image。
   final Widget Function(BuildContext context, ImageFrameBuilder frameBuilder)
@@ -33,10 +45,15 @@ class _FadeInOnceState extends State<FadeInOnce> {
   }
 
   Widget _frame(BuildContext context, Widget child, int? frame, bool wasSync) {
-    if (frame != null) _shown = true;
+    if (frame != null && !_shown) {
+      _shown = true;
+      if (widget.onShown case final cb?) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => cb());
+      }
+    }
     // 同步命中时首帧就带着帧号,opacity 从 1 起步,不会有动画
     return AnimatedOpacity(
-      opacity: _shown ? 1 : 0,
+      opacity: _shown && !widget.hold ? 1 : 0,
       duration: Motion.medium,
       curve: Curves.easeOut,
       child: child,

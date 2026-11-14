@@ -1401,22 +1401,12 @@ class _CategoryPageState extends ConsumerState<_CategoryPage>
                     previewUrl: preview,
                     decodeWidth: decodeW,
                     selected: _sel.contains(e.id),
-                    isPublic: isPublic,
+                    showCheck: _sel.isNotEmpty,
                     mosaic: masked,
-                    collected:
-                        isPublic &&
-                        ref
-                            .read(tagLibraryProvider.notifier)
-                            .isCollected(
-                              _cat,
-                              publicId: e.publicId,
-                              name: e.name,
-                            ),
                     onTap: masked
                         ? () => setState(() => _revealed.add(_revealKey(e)))
                         : () => widget.host._toggle(_cat, e),
                     onLift: (r) => _lift(e, r, preview, isPublic, masked),
-                    onCollect: isPublic ? () => widget.host._collect(e) : null,
                   );
                 }, childCount: g.items.length),
               ),

@@ -397,7 +397,6 @@ class _PickSheetState extends ConsumerState<_PickSheet> {
               previewUrl: preview,
               decodeWidth: cellW,
               selected: _picks.containsKey(_tagKey(e)),
-              isPublic: false,
               showCheck: _multi,
               onTap: () => _toggle(e, preview),
               onLongPress: () => showTagDetailSheet(context, e),
