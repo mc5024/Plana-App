@@ -47,7 +47,7 @@ const _bandCount = 3;
 ///
 /// 原来靠长按起手:按住不动到时才拿得起来,所以落点贴着条摆(10)也不怕误触。
 /// 改成直接上滑之后那道门没了,保险只能落在行程上:手指从缩略图中心算起要走
-/// 约 `10(条内衬) + 38(缩略图半高) + 64 ≈ 110` 才碰到分享,是一个明确的
+/// 约 `6(条内衬) + 38(缩略图半高) + 64 ≈ 108` 才碰到分享,是一个明确的
 /// 「往上甩一下」,横滑翻图或点选时的竖向抖动够不着。
 ///
 /// 删除排在**最远**那条(再过两条带加两道缝,约 240):松手早了落在分享或
@@ -514,7 +514,7 @@ class _FilmStripState extends State<FilmStrip>
       child: Material(
         color: context.raisedFill(scheme.surface),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 6),
           child: SizedBox(
             height: _thumbSlotH,
             child: Stack(

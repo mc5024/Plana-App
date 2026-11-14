@@ -120,8 +120,8 @@ class ResultChrome extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        Positioned(right: 12, bottom: 16, child: _ActionRail(result: result)),
-        const Positioned(left: 12, bottom: 16, child: _SaveAlbumChip()),
+        Positioned(right: 12, bottom: 4, child: _ActionRail(result: result)),
+        const Positioned(left: 12, bottom: 4, child: _SaveAlbumChip()),
       ],
     );
   }
@@ -851,29 +851,27 @@ class _RailHandle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    return Lifted(
-      radius: BorderRadius.circular(14),
-      child: Material(
-        color: _glass(context),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: _glassEdge(context),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: SizedBox(
-            width: 48,
-            height: 28,
-            child: AnimatedRotation(
-              duration: Motion.medium,
-              curve: Motion.standard,
-              turns: collapsed ? 0 : .5,
-              child: Icon(
-                Icons.keyboard_arrow_up_rounded,
-                size: 22,
-                color: scheme.onSurface,
-              ),
+    final radius = BorderRadius.circular(14);
+    return Material(
+      color: _railFill(context),
+      shape: RoundedRectangleBorder(
+        borderRadius: radius,
+        side: _railEdge(context),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          width: 48,
+          height: 28,
+          child: AnimatedRotation(
+            duration: Motion.medium,
+            curve: Motion.standard,
+            turns: collapsed ? 0 : .5,
+            child: Icon(
+              Icons.keyboard_arrow_up_rounded,
+              size: 22,
+              color: scheme.onSurface,
             ),
           ),
         ),
@@ -882,8 +880,7 @@ class _RailHandle extends StatelessWidget {
   }
 }
 
-/// 画布上浮层控件共用的半透明底与细描边(操作轨、收起把手、「保存到」胶囊)。
-/// 浮卡样式改成实底白、不画描边,阴影由 [Lifted] 给。
+/// 「保存到」胶囊的底色与细描边。浮卡样式是实底白、不画描边,发丝边由 [Lifted] 给。
 Color _glass(BuildContext context) => context.skin.float
     ? context.scheme.surfaceContainerLow
     : context.scheme.surface.withValues(alpha: .84);
@@ -891,9 +888,11 @@ BorderSide _glassEdge(BuildContext context) => context.skin.float
     ? BorderSide.none
     : BorderSide(color: context.scheme.outlineVariant.withValues(alpha: .5));
 
-/// 次要圆钮在浮卡样式下描发丝边;主按钮自带投影。
-Widget _lift(bool primary, Widget child) =>
-    primary ? child : Lifted(child: child);
+/// 右侧操作轨的半透明底与细描边,各主题一致(浮卡样式也不换实底)。
+Color _railFill(BuildContext context) =>
+    context.scheme.surface.withValues(alpha: .84);
+BorderSide _railEdge(BuildContext context) =>
+    BorderSide(color: context.scheme.outlineVariant.withValues(alpha: .5));
 
 class _RailButton extends StatelessWidget {
   const _RailButton({
@@ -918,35 +917,31 @@ class _RailButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = context.scheme;
     final double d = primary ? 58 : 48;
-    // 次要按钮与左下「保存到」胶囊同一种半透明底 + 细描边,压在图上不显得
-    // 一坨灰;不给阴影 —— 半透明底会把底下的阴影透出来,发脏。主按钮照旧实心。
-    final Color circleColor = primary ? scheme.primary : _glass(context);
+    // 次要按钮是半透明底 + 细描边;不给阴影 —— 半透明底会把底下的阴影透出来,
+    // 发脏。主按钮照旧实心。
     final Color iconColor = primary ? scheme.onPrimary : scheme.onSurface;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _lift(
-          primary,
-          Material(
-            color: circleColor,
-            shape: primary
-                ? const CircleBorder()
-                : CircleBorder(side: _glassEdge(context)),
-            elevation: primary ? 3 : 0,
-            shadowColor: scheme.shadow,
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: onTap,
-              onLongPress: onLongPress,
-              // 按住类动作走 highlight 回调:onTapDown/Up 收不到「手指划走」,
-              // 划出去之后图就一直糊在那儿了。
-              onHighlightChanged: onHold,
-              child: SizedBox(
-                width: d,
-                height: d,
-                child: Icon(icon, size: primary ? 27 : 22, color: iconColor),
-              ),
+        Material(
+          color: primary ? scheme.primary : _railFill(context),
+          shape: primary
+              ? const CircleBorder()
+              : CircleBorder(side: _railEdge(context)),
+          elevation: primary ? 3 : 0,
+          shadowColor: scheme.shadow,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            onLongPress: onLongPress,
+            // 按住类动作走 highlight 回调:onTapDown/Up 收不到「手指划走」,
+            // 划出去之后图就一直糊在那儿了。
+            onHighlightChanged: onHold,
+            child: SizedBox(
+              width: d,
+              height: d,
+              child: Icon(icon, size: primary ? 27 : 22, color: iconColor),
             ),
           ),
         ),
@@ -954,7 +949,7 @@ class _RailButton extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
           decoration: BoxDecoration(
-            color: _glass(context),
+            color: _railFill(context),
             borderRadius: BorderRadius.circular(6),
           ),
           child: Text(
