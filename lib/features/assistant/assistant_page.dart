@@ -678,12 +678,8 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
             ),
             const SizedBox(width: 8),
             _modeChip(family, shown: shown, usable: usable),
-            // 思考等级只对自定义接口有意义:后端渠道的推理档位由服务端按渠道
-            // 定死,app 没有可下发的字段。摆一颗按了不生效的芯片比不摆更糟。
-            if (ref.watch(assistantEndpointProvider) != null) ...[
-              const SizedBox(width: 8),
-              _thinkChip(),
-            ],
+            const SizedBox(width: 8),
+            _thinkChip(),
           ],
         ),
       ),
@@ -752,11 +748,16 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
 
   /// 思考等级。点开是一张带滑杆的弹层([showThinkSheet])—— 六档是一条有序的轴,
   /// 循环点击要按五下才回得来,菜单又会让它看起来像六个并列选项。
+  ///
+  /// 当前模型调不了思考深度时置灰、显示生效的「自动」,点了说一句为什么。
   Widget _thinkChip() {
-    final level =
-        ref.watch(assistantSettingsProvider).value?.thinkLevel ??
-        ThinkLevel.auto;
+    final adjustable = ref.watch(assistantCapabilitiesProvider).thinking;
+    final level = adjustable
+        ? ref.watch(assistantSettingsProvider).value?.thinkLevel ??
+              ThinkLevel.auto
+        : ThinkLevel.auto;
     final on = level != ThinkLevel.auto;
+    final muted = context.scheme.outline;
     return FilterChip(
       // 「自动」不算开着:那一档压根不发字段
       selected: on,
@@ -766,10 +767,19 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
       avatar: Icon(
         level == ThinkLevel.off ? Icons.lightbulb_outline : Icons.lightbulb,
         size: 16,
-        color: context.chipIcon(on),
+        color: adjustable ? context.chipIcon(on) : muted,
       ),
-      label: Text(context.l10n.thinkChip(thinkLevelLabel(level))),
-      onSelected: (_) => showThinkSheet(context),
+      label: Text(
+        context.l10n.thinkChip(thinkLevelLabel(level)),
+        style: adjustable ? null : TextStyle(color: muted),
+      ),
+      onSelected: (_) => adjustable
+          ? showThinkSheet(context)
+          : hintSnack(
+              context,
+              context.l10n.modelUnsupported,
+              icon: Icons.lightbulb_outline,
+            ),
     );
   }
 

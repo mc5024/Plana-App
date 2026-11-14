@@ -22,7 +22,10 @@ import 'package:plana_app/features/assistant/assistant_mode.dart';
 import 'package:plana_app/features/assistant/domain/conversation.dart';
 import 'package:plana_app/features/assistant/assistant_settings.dart';
 import 'package:plana_app/features/assistant/custom_endpoint.dart';
-import 'package:plana_app/features/assistant/custom_endpoint_api.dart';
+import 'package:plana_app/features/assistant/llm/gemini_provider.dart';
+import 'package:plana_app/features/assistant/llm/http_provider.dart';
+import 'package:plana_app/features/assistant/llm/llm_image.dart';
+import 'package:plana_app/features/assistant/llm/llm_provider.dart';
 import 'package:plana_app/features/assistant/direct_agent.dart';
 import 'package:plana_app/features/assistant/local_library.dart';
 import 'package:plana_app/features/assistant/preset_rules.dart';
@@ -52,6 +55,17 @@ Directory _tempRoot() {
   });
   return root;
 }
+
+HttpLlmProvider _llm(AgentApiFormat f, [String model = 'm']) => llmProviderFor(
+  CustomEndpoint(
+    id: 'x',
+    name: '',
+    format: f,
+    baseUrl: '',
+    apiKey: 'k',
+    model: model,
+  ),
+);
 
 Future<GenerateNotifier> _notifier() async {
   final stores = await AppStores.open(rootOverride: _tempRoot());
@@ -1613,9 +1627,10 @@ void main() {
       required String scope,
       String userRequest = '用 D11 画小小纺',
       bool ocPlaceholders = false,
+      bool stream = true,
     }) => http.runWithClient(
       () => streamDirectPrompt(
-        endpoint: endpoint,
+        provider: llmProviderFor(endpoint),
         backendBase: 'https://plana.test',
         sessionId: '',
         userRequest: userRequest,
@@ -1632,6 +1647,7 @@ void main() {
           'artist': {'A1': a1},
         },
         libraryScope: scope,
+        stream: stream,
       ).toList(),
       () => mock,
     );
@@ -1810,6 +1826,16 @@ void main() {
       });
     });
 
+    test('关掉逐字显示:一帧 AgentDelta 都不推', () async {
+      final mock = MockClient((req) async {
+        if (req.url.host == 'llm.test') return modelSays('好');
+        return json({'block': ''});
+      });
+      final events = await run(mock, scope: 'none', stream: false);
+      expect(events.whereType<AgentDelta>(), isEmpty);
+      expect(events.whereType<AgentDone>().single.result.replyText, '好');
+    });
+
     test('「不使用」:连预匹配都不打', () async {
       final paths = <String>[];
       final mock = MockClient((req) async {
@@ -1906,7 +1932,7 @@ void main() {
     // 和真的空回长得一样。
     test('OpenAI:choices[0].message.content', () {
       expect(
-        extractReplyText(AgentApiFormat.openai, const {
+        _llm(AgentApiFormat.openai).parseResponse(const {
           'choices': [
             {
               'message': {'content': '喵'},
@@ -1919,7 +1945,7 @@ void main() {
 
     test('Google:candidates[0].content.parts[].text,要拼起来', () {
       expect(
-        extractReplyText(AgentApiFormat.google, const {
+        _llm(AgentApiFormat.google).parseResponse(const {
           'candidates': [
             {
               'content': {
@@ -1937,7 +1963,7 @@ void main() {
 
     test('Anthropic:content[] 里只取 type=text 那几段', () {
       expect(
-        extractReplyText(AgentApiFormat.anthropic, const {
+        _llm(AgentApiFormat.anthropic).parseResponse(const {
           'content': [
             {'type': 'thinking', 'thinking': '不该拿这段'},
             {'type': 'text', 'text': '喵'},
@@ -1949,8 +1975,8 @@ void main() {
 
     test('形状不对返回空串,不崩', () {
       for (final f in AgentApiFormat.values) {
-        expect(extractReplyText(f, null), '');
-        expect(extractReplyText(f, const {}), '');
+        expect(_llm(f).parseResponse(null), '');
+        expect(_llm(f).parseResponse(const {}), '');
       }
     });
   });
@@ -1958,22 +1984,14 @@ void main() {
   group('直连请求体:附图', () {
     // 三家的图片字段各不相同,写错的表现是「模型说没看到图」,
     // 和它自己看走眼分不出来。
-    CustomEndpoint ep(AgentApiFormat f) => CustomEndpoint(
-      id: 'e',
-      name: '',
-      format: f,
-      baseUrl: '',
-      apiKey: 'k',
-      model: 'm',
-    );
     const img = (mime: 'image/jpeg', data: 'QUJD');
-    List<DirectMsg> msgs({DirectImage? image, String text = '画个芙兰'}) => [
+    List<LlmMessage> msgs({LlmImage? image, String text = '画个芙兰'}) => [
       (role: 'user', content: '上一轮', image: null),
       (role: 'assistant', content: '好的', image: null),
       (role: 'user', content: text, image: image),
     ];
-    Map<String, dynamic> body(AgentApiFormat f, List<DirectMsg> m) =>
-        directRequest(ep(f), system: 'sys', msgs: m, think: ThinkLevel.auto).$2;
+    Map<String, dynamic> body(AgentApiFormat f, List<LlmMessage> m) =>
+        _llm(f).requestBody(LlmRequest(system: 'sys', messages: m), stream: false);
 
     test('OpenAI:content 换成分段,图在前,data URL', () {
       final m =
@@ -2060,7 +2078,7 @@ void main() {
 
     test('没超大小的图原样发,不转码', () async {
       final jpg = Uint8List.fromList([0xFF, 0xD8, 0xFF, 1, 2, 3]);
-      final r = await prepareDirectImage(jpg);
+      final r = await prepareLlmImage(jpg);
       expect(r.mime, 'image/jpeg');
       expect(base64Decode(r.data), jpg);
     });
@@ -2186,16 +2204,12 @@ void main() {
     test('自动档不发档位;Gemini 3 及以后只要思考摘要', () {
       for (final f in AgentApiFormat.values) {
         expect(
-          thinkFields(f, ThinkLevel.auto, model: 'gemini-2.5-flash'),
+          _llm(f, 'gemini-2.5-flash').thinkFields(ThinkLevel.auto),
           isEmpty,
         );
       }
       expect(
-        thinkFields(
-          AgentApiFormat.google,
-          ThinkLevel.auto,
-          model: 'gemini-4-carbon',
-        ),
+        _llm(AgentApiFormat.google, 'gemini-4-carbon').thinkFields(ThinkLevel.auto),
         {
           'generationConfig': {
             'thinkingConfig': {'includeThoughts': true},
@@ -2205,26 +2219,22 @@ void main() {
     });
 
     test('OpenAI:reasoning_effort 档位字符串,两头各自封顶', () {
-      expect(thinkFields(AgentApiFormat.openai, ThinkLevel.low), {
+      expect(_llm(AgentApiFormat.openai).thinkFields(ThinkLevel.low), {
         'reasoning_effort': 'low',
       });
       // 它没有「关」,minimal 是最低;也没有「超高」,high 是最高
-      expect(thinkFields(AgentApiFormat.openai, ThinkLevel.off), {
+      expect(_llm(AgentApiFormat.openai).thinkFields(ThinkLevel.off), {
         'reasoning_effort': 'minimal',
       });
       expect(
-        thinkFields(AgentApiFormat.openai, ThinkLevel.ultra),
-        thinkFields(AgentApiFormat.openai, ThinkLevel.high),
+        _llm(AgentApiFormat.openai).thinkFields(ThinkLevel.ultra),
+        _llm(AgentApiFormat.openai).thinkFields(ThinkLevel.high),
       );
     });
 
     test('Gemini 2.x:thinkingBudget,关掉是 0 而不是不发', () {
       Map cfg(ThinkLevel l) {
-        final f = thinkFields(
-          AgentApiFormat.google,
-          l,
-          model: 'gemini-2.5-flash',
-        );
+        final f = _llm(AgentApiFormat.google, 'gemini-2.5-flash').thinkFields(l);
         return (f['generationConfig'] as Map)['thinkingConfig'] as Map;
       }
 
@@ -2242,7 +2252,7 @@ void main() {
 
     test('Gemini 3 / 4:thinkingLevel,不发预算,没有的档就近落', () {
       String? level(String model, ThinkLevel l) {
-        final f = thinkFields(AgentApiFormat.google, l, model: model);
+        final f = _llm(AgentApiFormat.google, model).thinkFields(l);
         final cfg = (f['generationConfig'] as Map)['thinkingConfig'] as Map;
         // 两种一起发会被拒
         expect(cfg.containsKey('thinkingBudget'), isFalse);
@@ -2286,23 +2296,23 @@ void main() {
         model: model,
       );
       final carbon = ep(AgentApiFormat.google, 'gemini-4-carbon');
-      expect(thinkLevelNote(carbon, ThinkLevel.off), isNotNull);
-      expect(thinkLevelNote(carbon, ThinkLevel.ultra), isNotNull);
-      expect(thinkLevelNote(carbon, ThinkLevel.high), isNull);
-      expect(thinkLevelNote(carbon, ThinkLevel.auto), isNull);
+      expect(llmProviderFor(carbon).thinkNote(ThinkLevel.off), isNotNull);
+      expect(llmProviderFor(carbon).thinkNote(ThinkLevel.ultra), isNotNull);
+      expect(llmProviderFor(carbon).thinkNote(ThinkLevel.high), isNull);
+      expect(llmProviderFor(carbon).thinkNote(ThinkLevel.auto), isNull);
       final hydrogen = ep(AgentApiFormat.google, 'gemini-4-hydrogen');
-      expect(thinkLevelNote(hydrogen, ThinkLevel.ultra), isNull);
+      expect(llmProviderFor(hydrogen).thinkNote(ThinkLevel.ultra), isNull);
       final old = ep(AgentApiFormat.google, 'gemini-2.5-flash');
-      expect(thinkLevelNote(old, ThinkLevel.off), isNull);
+      expect(llmProviderFor(old).thinkNote(ThinkLevel.off), isNull);
       final gpt = ep(AgentApiFormat.openai, 'gpt-5');
-      expect(thinkLevelNote(gpt, ThinkLevel.ultra), isNotNull);
+      expect(llmProviderFor(gpt).thinkNote(ThinkLevel.ultra), isNotNull);
       final claude = ep(AgentApiFormat.anthropic, 'claude');
-      expect(thinkLevelNote(claude, ThinkLevel.off), isNull);
+      expect(llmProviderFor(claude).thinkNote(ThinkLevel.off), isNull);
     });
 
     test('Gemini 的思考摘要不算正文', () {
       expect(
-        extractReplyText(AgentApiFormat.google, const {
+        _llm(AgentApiFormat.google).parseResponse(const {
           'candidates': [
             {
               'content': {
@@ -2319,7 +2329,7 @@ void main() {
     });
 
     test('Claude:关 = 不带 thinking 字段;开着预算不低于 1024 且递增', () {
-      expect(thinkFields(AgentApiFormat.anthropic, ThinkLevel.off), isEmpty);
+      expect(_llm(AgentApiFormat.anthropic).thinkFields(ThinkLevel.off), isEmpty);
       var prev = 0;
       for (final l in [
         ThinkLevel.low,
@@ -2327,7 +2337,7 @@ void main() {
         ThinkLevel.high,
         ThinkLevel.ultra,
       ]) {
-        final t = thinkFields(AgentApiFormat.anthropic, l)['thinking'] as Map;
+        final t = _llm(AgentApiFormat.anthropic).thinkFields(l)['thinking'] as Map;
         expect(t['type'], 'enabled');
         final b = t['budget_tokens'] as int;
         // Anthropic 自己规定的下限
@@ -2462,7 +2472,7 @@ void main() {
     // 和网络失败长得一模一样 —— 不钉住的话根本分不出是哪一头的问题。
     test('OpenAI:data[].id', () {
       expect(
-        parseModelList(AgentApiFormat.openai, const {
+        _llm(AgentApiFormat.openai).parseModels(const {
           'data': [
             {'id': 'gpt-4o'},
             {'id': 'o3-mini'},
@@ -2474,7 +2484,7 @@ void main() {
 
     test('Google:models[].name,要把 models/ 前缀剥掉', () {
       expect(
-        parseModelList(AgentApiFormat.google, const {
+        _llm(AgentApiFormat.google).parseModels(const {
           'models': [
             {'name': 'models/gemini-3.7-flash'},
             {'name': 'models/gemini-3.1-flash-lite'},
@@ -2486,7 +2496,7 @@ void main() {
 
     test('Anthropic:也是 data[].id', () {
       expect(
-        parseModelList(AgentApiFormat.anthropic, const {
+        _llm(AgentApiFormat.anthropic).parseModels(const {
           'data': [
             {'id': 'claude-sonnet-4-6'},
           ],
@@ -2496,14 +2506,14 @@ void main() {
     });
 
     test('形状不对就空表,不崩', () {
-      expect(parseModelList(AgentApiFormat.openai, null), isEmpty);
-      expect(parseModelList(AgentApiFormat.openai, const {}), isEmpty);
+      expect(_llm(AgentApiFormat.openai).parseModels(null), isEmpty);
+      expect(_llm(AgentApiFormat.openai).parseModels(const {}), isEmpty);
       expect(
-        parseModelList(AgentApiFormat.openai, const {'data': 'nope'}),
+        _llm(AgentApiFormat.openai).parseModels(const {'data': 'nope'}),
         isEmpty,
       );
       expect(
-        parseModelList(AgentApiFormat.openai, const {
+        _llm(AgentApiFormat.openai).parseModels(const {
           'data': ['x', 3],
         }),
         isEmpty,
@@ -2512,7 +2522,7 @@ void main() {
 
     test('去重', () {
       expect(
-        parseModelList(AgentApiFormat.openai, const {
+        _llm(AgentApiFormat.openai).parseModels(const {
           'data': [
             {'id': 'a'},
             {'id': 'a'},

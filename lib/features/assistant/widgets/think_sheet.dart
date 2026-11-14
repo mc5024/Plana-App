@@ -5,7 +5,7 @@
 ///
 /// 副标题那句必须留着:三家的旋钮各不相同,不会思考的模型收到这些字段通常直接
 /// 忽略,但也有中转会因此报错 —— 事先说清楚比事后查错便宜。
-/// 当前接口没有选中的那一档时,档位名下面说一句实际按哪档发(见 [thinkLevelNote])。
+/// 当前接口没有选中的那一档时,档位名下面说一句实际按哪档发(见 [LlmProvider.thinkNote])。
 library;
 
 import 'package:flutter/material.dart';
@@ -17,7 +17,7 @@ import '../../../core/util/haptics.dart';
 import '../../generate/widgets/common.dart' show dropFocusSoon;
 import '../agent_model.dart' show assistantEndpointProvider;
 import '../assistant_settings.dart';
-import '../direct_agent.dart' show thinkLevelNote;
+import '../llm/http_provider.dart' show llmProviderFor;
 import '../../../l10n/l10n.dart';
 
 Future<void> showThinkSheet(BuildContext context) async {
@@ -45,7 +45,9 @@ class _ThinkSheet extends ConsumerWidget {
     final levels = ThinkLevel.values;
     final i = levels.indexOf(level);
     final endpoint = ref.watch(assistantEndpointProvider);
-    final note = endpoint == null ? null : thinkLevelNote(endpoint, level);
+    final note = endpoint == null
+        ? null
+        : llmProviderFor(endpoint).thinkNote(level);
 
     void set(ThinkLevel l) {
       if (l == level) return;

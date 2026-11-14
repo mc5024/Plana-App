@@ -214,22 +214,8 @@ class CustomEndpoint {
     return withSlash.replaceAll('{model}', model.trim());
   }
 
-  /// 完整的对话接口地址。
+  /// 完整的对话接口地址(非流式)。流式地址各家不同,见 `llm/` 下的实现。
   Uri get chatUri => Uri.parse('$effectiveBase$effectivePath');
-
-  /// 流式的对话接口地址。OpenAI / Claude 与 [chatUri] 同一个地址(开不开流由请求体
-  /// 里的 `stream` 说了算),Gemini 得换方法名、还得带 `alt=sse` —— 不带 alt 回的是
-  /// 一个巨大的 JSON 数组、要收完才能解析,等于没开流。
-  ///
-  /// 路径是用户可改的,所以只在认得出 `:generateContent` 时替换;中转把路径改成
-  /// 别的样子时原样用它,顶多是流不起来,按非流式回落(见 `directModelStream`)。
-  Uri get chatStreamUri {
-    if (format != AgentApiFormat.google) return chatUri;
-    final u = Uri.parse(
-      '$effectiveBase${effectivePath.replaceFirst(':generateContent', ':streamGenerateContent')}',
-    );
-    return u.replace(queryParameters: {...u.queryParameters, 'alt': 'sse'});
-  }
 
   /// 填全了才能用。缺一样就发不出去,列表里置灰。
   bool get usable => apiKey.trim().isNotEmpty && model.trim().isNotEmpty;

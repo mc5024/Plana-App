@@ -1569,6 +1569,7 @@
   "ocPlaceholder": "OC Placeholders",
   "ocPlaceholderDesc": "The AI only sees placeholders for local and public OCs, restored when drawing; turn off when editing an OC's design",
   "customEndpointOnly": "Custom endpoints only",
+  "modelUnsupported": "Not supported by this model",
   "settingRules": "Rules",
   "rulePresetsDesc": "Rules followed when writing prompts",
   "settingDebug": "Debug",

@@ -9316,6 +9316,12 @@ abstract class AppLocalizations {
   /// **'仅自定义接口渠道可用'**
   String get customEndpointOnly;
 
+  /// No description provided for @modelUnsupported.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前模型不支持'**
+  String get modelUnsupported;
+
   /// No description provided for @settingRules.
   ///
   /// In zh, this message translates to:

@@ -1901,6 +1901,7 @@
   "ocPlaceholder": "OC 使用占位符",
   "ocPlaceholderDesc": "本地与公共 OC 只给 AI 占位符，出图时还原；调整原设时请关闭",
   "customEndpointOnly": "仅自定义接口渠道可用",
+  "modelUnsupported": "当前模型不支持",
   "settingRules": "规则",
   "rulePresetsDesc": "生成提示词时遵循的规则",
   "settingDebug": "调试",

@@ -5307,6 +5307,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get customEndpointOnly => '仅自定义接口渠道可用';
 
   @override
+  String get modelUnsupported => '当前模型不支持';
+
+  @override
   String get settingRules => '规则';
 
   @override

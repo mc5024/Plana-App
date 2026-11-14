@@ -9,10 +9,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-import 'package:plana_app/features/assistant/domain/agent_event.dart';
-import 'package:plana_app/features/assistant/assistant_settings.dart';
 import 'package:plana_app/features/assistant/custom_endpoint.dart';
 import 'package:plana_app/features/assistant/direct_agent.dart';
+import 'package:plana_app/features/assistant/domain/agent_event.dart';
+import 'package:plana_app/features/assistant/llm/http_provider.dart';
+import 'package:plana_app/features/assistant/llm/llm_provider.dart';
 
 CustomEndpoint _ep(AgentApiFormat f) => CustomEndpoint(
   id: 'e1',
@@ -22,6 +23,9 @@ CustomEndpoint _ep(AgentApiFormat f) => CustomEndpoint(
   apiKey: 'k',
   model: 'm1',
 );
+
+LlmText _delta(AgentApiFormat f, Object? frame) =>
+    llmProviderFor(_ep(f)).parseDelta(frame);
 
 /// 一段 SSE 响应体。
 String _sse(List<String> frames) => frames.map((f) => 'data: $f\n\n').join();
@@ -40,30 +44,28 @@ MockClient _streamingClient(
   );
 });
 
-Future<({String raw, List<AgentDelta> deltas})> _run(
+/// 跑一次对话,返回收到的每一帧(最后一帧是整段回复)。
+Future<List<LlmText>> _run(
   http.Client c,
   CustomEndpoint e, {
   bool stream = true,
-}) async {
-  final out = StringBuffer();
-  final deltas = await directModelStream(
-    c,
-    e,
-    system: 'sys',
-    msgs: const [(role: 'user', content: '画一张', image: null)],
-    think: ThinkLevel.auto,
-    timeout: const Duration(seconds: 5),
-    out: out,
-    stream: stream,
-  ).toList();
-  return (raw: out.toString(), deltas: deltas);
-}
+}) => llmProviderFor(e)
+    .chat(
+      const LlmRequest(
+        system: 'sys',
+        messages: [(role: 'user', content: '画一张', image: null)],
+      ),
+      client: c,
+      stream: stream,
+      timeout: const Duration(seconds: 5),
+    )
+    .toList();
 
 void main() {
-  group('directDelta', () {
+  group('parseDelta', () {
     test('OpenAI:content 与两种 reasoning 字段', () {
       expect(
-        directDelta(AgentApiFormat.openai, {
+        _delta(AgentApiFormat.openai, {
           'choices': [
             {
               'delta': {'content': '好的'},
@@ -74,7 +76,7 @@ void main() {
       );
       // DeepSeek 那套
       expect(
-        directDelta(AgentApiFormat.openai, {
+        _delta(AgentApiFormat.openai, {
           'choices': [
             {
               'delta': {'reasoning_content': '先想想'},
@@ -85,7 +87,7 @@ void main() {
       );
       // OpenRouter 那套
       expect(
-        directDelta(AgentApiFormat.openai, {
+        _delta(AgentApiFormat.openai, {
           'choices': [
             {
               'delta': {'reasoning': '先想想'},
@@ -96,7 +98,7 @@ void main() {
       );
       // 收尾那帧只有 finish_reason,不带字
       expect(
-        directDelta(AgentApiFormat.openai, {
+        _delta(AgentApiFormat.openai, {
           'choices': [
             {'delta': <String, Object?>{}, 'finish_reason': 'stop'},
           ],
@@ -107,7 +109,7 @@ void main() {
 
     test('Gemini:thought 为真的那几段算思考', () {
       expect(
-        directDelta(AgentApiFormat.google, {
+        _delta(AgentApiFormat.google, {
           'candidates': [
             {
               'content': {
@@ -125,14 +127,14 @@ void main() {
 
     test('Claude:text_delta / thinking_delta,别的帧不带字', () {
       expect(
-        directDelta(AgentApiFormat.anthropic, {
+        _delta(AgentApiFormat.anthropic, {
           'type': 'content_block_delta',
           'delta': {'type': 'text_delta', 'text': '好的'},
         }),
         (text: '好的', reasoning: ''),
       );
       expect(
-        directDelta(AgentApiFormat.anthropic, {
+        _delta(AgentApiFormat.anthropic, {
           'type': 'content_block_delta',
           'delta': {'type': 'thinking_delta', 'thinking': '先想想'},
         }),
@@ -140,7 +142,7 @@ void main() {
       );
       // message_delta 也带 delta,但里面是停止原因
       expect(
-        directDelta(AgentApiFormat.anthropic, {
+        _delta(AgentApiFormat.anthropic, {
           'type': 'message_delta',
           'delta': {'stop_reason': 'end_turn'},
         }),
@@ -150,9 +152,9 @@ void main() {
 
     test('不认识的帧一律当没字,不抛', () {
       for (final f in AgentApiFormat.values) {
-        expect(directDelta(f, null), (text: '', reasoning: ''));
-        expect(directDelta(f, 'oops'), (text: '', reasoning: ''));
-        expect(directDelta(f, const <String, Object?>{}), (
+        expect(_delta(f, null), (text: '', reasoning: ''));
+        expect(_delta(f, 'oops'), (text: '', reasoning: ''));
+        expect(_delta(f, const <String, Object?>{}), (
           text: '',
           reasoning: '',
         ));
@@ -198,10 +200,16 @@ void main() {
       expect(v.body, '甲乙');
       expect(v.think, '一\n二');
     });
+
+    test('一帧的显示:原生思考与 <Think> 段并在一起', () {
+      final d = liveDeltaOf((text: '<Think>二</Think>好的', reasoning: '一'));
+      expect(d.text, '好的');
+      expect(d.reasoning, '一\n二');
+    });
   });
 
-  group('directModelStream', () {
-    test('OpenAI:边收边吐,原文攒齐,最后一帧是全量', () async {
+  group('chat', () {
+    test('OpenAI:边收边吐,最后一帧是全量', () async {
       late String sent;
       final c = _streamingClient(
         _sse([
@@ -215,10 +223,8 @@ void main() {
       final r = await _run(c, _ep(AgentApiFormat.openai));
 
       expect(jsonDecode(sent)['stream'], isTrue, reason: '得真的开流');
-      expect(r.raw, '好的,画一张', reason: 'reasoning 不进原文,不然会被当正文解析');
-      expect(r.deltas, isNotEmpty);
-      expect(r.deltas.last.text, '好的,画一张');
-      expect(r.deltas.last.reasoning, '想');
+      expect(r.last.text, '好的,画一张', reason: 'reasoning 不进正文,不然会被当正文解析');
+      expect(r.last.reasoning, '想');
     });
 
     test('Claude:换成 content_block_delta,地址不变', () async {
@@ -233,8 +239,8 @@ void main() {
       final r = await _run(c, _ep(AgentApiFormat.anthropic));
 
       expect(uri.toString(), 'http://api.test/v1/messages');
-      expect(r.raw, '好的');
-      expect(r.deltas.last.reasoning, '想');
+      expect(r.last.text, '好的');
+      expect(r.last.reasoning, '想');
     });
 
     test('Gemini:换成 streamGenerateContent 并带 alt=sse', () async {
@@ -247,7 +253,7 @@ void main() {
 
       expect(uri.path, '/v1/models/m1:streamGenerateContent');
       expect(uri.queryParameters['alt'], 'sse');
-      expect(r.raw, '好的');
+      expect(r.last.text, '好的');
     });
 
     test('自定义请求头随请求发出,同名覆盖默认头', () async {
@@ -281,8 +287,7 @@ void main() {
       );
       final r = await _run(c, _ep(AgentApiFormat.openai));
 
-      expect(r.raw, '好的,画一张');
-      expect(r.deltas.single.text, '好的,画一张');
+      expect(r.single.text, '好的,画一张');
     });
 
     test('中转把 SSE 写成 json 类型:照样按帧收', () async {
@@ -294,10 +299,10 @@ void main() {
         contentType: 'application/json',
       );
       final r = await _run(c, _ep(AgentApiFormat.openai));
-      expect(r.raw, '好的,画一张');
+      expect(r.last.text, '好的,画一张');
     });
 
-    test('设置里关掉:不开流、一帧不推,打的还是原来那个地址', () async {
+    test('不开流:请求里不带 stream,收完只给一帧,地址不变', () async {
       late Uri uri;
       late String sent;
       final c = _streamingClient(
@@ -316,13 +321,12 @@ void main() {
       );
       final r = await _run(c, _ep(AgentApiFormat.openai), stream: false);
 
-      expect(r.deltas, isEmpty, reason: '关着就该老老实实转圈到出结果');
-      expect(r.raw, '好的');
+      expect(r.single.text, '好的');
       expect((jsonDecode(sent) as Map).containsKey('stream'), isFalse);
       expect(uri.toString(), 'http://api.test/v1/chat/completions');
     });
 
-    test('关掉时 Gemini 也回到 generateContent', () async {
+    test('不开流时 Gemini 也回到 generateContent', () async {
       late Uri uri;
       final c = _streamingClient(
         jsonEncode({
@@ -382,7 +386,7 @@ void main() {
       );
     });
 
-    test('围栏在流里:正文只到围栏前,原文一个字不少', () async {
+    test('围栏在流里:显示只到围栏前,原文一个字不少', () async {
       final c = _streamingClient(
         _sse([
           '{"choices":[{"delta":{"content":"我查一下\\n"}}]}',
@@ -391,13 +395,82 @@ void main() {
       );
       final r = await _run(c, _ep(AgentApiFormat.openai));
 
-      expect(r.deltas.last.text, '我查一下');
+      expect(liveDeltaOf(r.last).text, '我查一下');
       expect(
-        r.raw,
+        r.last.text,
         '我查一下\n```tool_call\n{"name":"search_artist"}\n```',
         reason: '解析用的是原文,围栏得原样留着',
       );
-      expect(parseToolCalls(r.raw).single.name, 'search_artist');
+      expect(parseToolCalls(r.last.text).single.name, 'search_artist');
+    });
+  });
+
+  group('模型列表与连通测试', () {
+    test('HTTP 错误原样抛出,不改写成「Key 不对」之类', () async {
+      final c = MockClient((req) async => http.Response('{"error":"bad key"}', 401));
+      await expectLater(
+        llmProviderFor(_ep(AgentApiFormat.openai)).listModels(client: c),
+        throwsA(
+          isA<AgentFailure>().having(
+            (e) => e.message,
+            'message',
+            'HTTP 401\n{"error":"bad key"}',
+          ),
+        ),
+      );
+    });
+
+    test('三家都打 {base}/models,带各自的鉴权头', () async {
+      final seen = <String, Map<String, String>>{};
+      final c = MockClient((req) async {
+        seen[req.url.toString()] = req.headers;
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {'id': 'x'},
+            ],
+            'models': [
+              {'name': 'models/x'},
+            ],
+          }),
+          200,
+        );
+      });
+      for (final f in AgentApiFormat.values) {
+        seen.clear();
+        expect(await llmProviderFor(_ep(f)).listModels(client: c), ['x']);
+        expect(seen.keys.single, 'http://api.test/v1/models');
+        final h = seen.values.single;
+        switch (f) {
+          case AgentApiFormat.openai:
+            expect(h['Authorization'], 'Bearer k');
+          case AgentApiFormat.google:
+            expect(h['x-goog-api-key'], 'k');
+          case AgentApiFormat.anthropic:
+            expect(h['x-api-key'], 'k');
+            expect(h['anthropic-version'], isNotEmpty);
+        }
+      }
+    });
+
+    test('连通测试:不开流发一条最短对话', () async {
+      late String sent;
+      final c = MockClient((req) async {
+        sent = req.body;
+        return http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {'content': 'OK'},
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      await llmProviderFor(_ep(AgentApiFormat.openai)).ping(client: c);
+      expect((jsonDecode(sent) as Map).containsKey('stream'), isFalse);
     });
   });
 }

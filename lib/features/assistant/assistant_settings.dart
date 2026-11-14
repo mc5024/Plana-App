@@ -16,8 +16,7 @@ import '../../l10n/l10n.dart';
 
 const _key = 'assistant_settings';
 
-/// 思考等级。**只对自定义接口生效** —— 后端渠道的推理档位由服务端按渠道定死
-/// (见 `MODEL_REGISTRY`),app 这边没有可下发的字段。
+/// 思考等级。当前模型调得了才随请求发出(见 `LlmCapabilities.thinking`)。
 /// **声明顺序即滑杆顺序**(关 → 自动 → 由低到高),别乱动。
 /// 落盘存的是 `name` 不是序号,所以将来插一档不会把老存档串位。
 enum ThinkLevel {
@@ -156,7 +155,7 @@ class AssistantSettings {
   /// 默认关:拿助手当草稿本、不想动画布的人一旦被自动覆盖,丢的是他自己写的词。
   final bool autoImport;
 
-  /// 自定义接口的思考等级。默认 [ThinkLevel.auto] = 不发这个字段。
+  /// 思考等级。默认 [ThinkLevel.auto] = 不发这个字段。
   final ThinkLevel thinkLevel;
 
   /// AI 查资料时认哪些库。默认 [LibraryScope.local]。
@@ -193,7 +192,7 @@ class AssistantSettings {
   /// 不占轮数,调小了也不会丢。
   final int historyTurns;
 
-  /// 回复边写边显示。**只对自定义接口生效** —— 后端渠道还没开流(见 runtime/backend_runtime.dart)。
+  /// 回复边写边显示。当前模型支持才生效(见 `LlmCapabilities.streaming`)。
   ///
   /// 这一项与上面那几个「放权」开关不同类,默认**开着**:它不替用户决定任何事,
   /// 只是把已经在发生的事显示出来。关掉 = 整段写完一次出,留给中转不认 `stream`

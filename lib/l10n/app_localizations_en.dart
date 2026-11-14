@@ -5777,6 +5777,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get customEndpointOnly => 'Custom endpoints only';
 
   @override
+  String get modelUnsupported => 'Not supported by this model';
+
+  @override
   String get settingRules => 'Rules';
 
   @override

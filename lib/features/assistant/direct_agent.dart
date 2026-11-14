@@ -28,13 +28,13 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
-import '../../core/util/image_ops.dart' show styleRefResizeJpg;
 import 'agent_trace.dart';
 import 'domain/conversation.dart' show decodeResources;
 import 'assistant_settings.dart';
-import 'custom_endpoint.dart';
 import 'domain/agent_event.dart';
 import 'domain/agent_result.dart';
+import 'llm/llm_image.dart';
+import 'llm/llm_provider.dart';
 import 'local_library.dart';
 import 'preset_rules.dart';
 import '../../l10n/l10n.dart';
@@ -76,51 +76,6 @@ final _liveFenceOpen = RegExp(
 /// 反引号后面**必须跟着字母**才算:光秃秃的 ``` 多半是代码块的收尾、`…` 是行内
 /// 代码的收尾,切掉反而把好好的块拆了。
 final _liveTail = RegExp(r'(?:<[A-Za-z/]{0,6}|`{1,3}[ \t]*[A-Za-z_]{1,9})$');
-
-/// 附图:MIME + base64。
-typedef DirectImage = ({String mime, String data});
-
-/// 发给模型的一条消息。[image] 只挂在本轮用户那条上 —— 历史里的图不回带,
-/// 与服务端那条一致。
-typedef DirectMsg = ({String role, String content, DirectImage? image});
-
-/// 按文件头认图片类型,认不出按 PNG —— 与服务端 `_sniff_image_mime` 同一张表。
-/// 标签和字节对不上时有的接口整条拒收,而相册里挑的多半是 JPEG。
-String imageMimeOf(Uint8List b) {
-  bool at(int i, List<int> sig) {
-    if (b.length < i + sig.length) return false;
-    for (var k = 0; k < sig.length; k++) {
-      if (b[i + k] != sig[k]) return false;
-    }
-    return true;
-  }
-
-  if (at(0, const [0x89, 0x50, 0x4E, 0x47])) return 'image/png';
-  if (at(0, const [0xFF, 0xD8, 0xFF])) return 'image/jpeg';
-  if (at(0, 'RIFF'.codeUnits) && at(8, 'WEBP'.codeUnits)) return 'image/webp';
-  if (at(0, 'GIF87a'.codeUnits) || at(0, 'GIF89a'.codeUnits)) {
-    return 'image/gif';
-  }
-  return 'image/png';
-}
-
-/// 附图超过这个字节数就先缩再发。
-///
-/// 卡的是 Claude:单张图 base64 超过 5MB 整条请求被拒,放大过的图随便就过线。
-/// 服务端那条原样转发,失败了还有「剥图重试」兜着;直连没有重试,一次就得发得出去。
-const kDirectImageMaxBytes = 3500000;
-
-/// 附图 → 发给模型的那份。超过 [kDirectImageMaxBytes] 的按长边 2048 转 JPEG,
-/// 画面内容看得清就够写提示词了。转不动(解不开的格式)就原样发,让接口自己判。
-Future<DirectImage> prepareDirectImage(Uint8List bytes) async {
-  if (bytes.length > kDirectImageMaxBytes) {
-    try {
-      final jpg = await styleRefResizeJpg(bytes, maxDim: 2048, quality: 90);
-      return (mime: 'image/jpeg', data: base64Encode(jpg));
-    } catch (_) {}
-  }
-  return (mime: imageMimeOf(bytes), data: base64Encode(bytes));
-}
 
 /// 文字里认得出的完整画师串折成占位符(映射见 [ArtistPlan.tokens])。
 ///
@@ -199,7 +154,7 @@ String directSystemPrompt({
 
 /// 跑一轮。事件序列与 [streamAgentPrompt] 一致,最后一个必是 [AgentDone]。
 Stream<AgentEvent> streamDirectPrompt({
-  required CustomEndpoint endpoint,
+  required LlmProvider provider,
   required String backendBase,
 
   /// 空串 = 没有 Bot 授权。角色候选、服务端工具照样打后端,只是用不了公共库。
@@ -263,7 +218,7 @@ Stream<AgentEvent> streamDirectPrompt({
         text: userRequest,
         libraryScope: libraryScope,
       ),
-      image == null ? Future<DirectImage?>.value() : prepareDirectImage(image),
+      image == null ? Future<LlmImage?>.value() : prepareLlmImage(image),
     ).wait;
     final pre = buildLocalPrequery(
       text: userRequest,
@@ -312,7 +267,7 @@ Stream<AgentEvent> streamDirectPrompt({
     // 用户那段 + 画布拼成一条 user 消息,资料块跟在后面。
     // 用户输入、画布和历史里认得出的完整资源折成占位符 —— 模型看到的「自己上次写的」就是占位符,
     // 不会照着抄完整串(服务端那条在 run_chat_with_retries 里做同一件事)。
-    final msgs = <DirectMsg>[
+    final msgs = <LlmMessage>[
       for (final h in history)
         (
           role: h['role'] ?? 'user',
@@ -342,19 +297,16 @@ Stream<AgentEvent> streamDirectPrompt({
 
     for (var hop = 0; hop < _maxHops; hop++) {
       final hopStart = trace?.sinceStart() ?? 0;
-      final buf = StringBuffer();
-      await for (final d in directModelStream(
-        client,
-        endpoint,
-        system: system,
-        msgs: msgs,
-        think: think,
+      var raw = '';
+      await for (final c in provider.chat(
+        LlmRequest(system: system, messages: msgs, think: think),
+        client: client,
         stream: stream,
-        out: buf,
       )) {
-        yield d;
+        raw = c.text;
+        // 关着逐字显示时一帧都不推:气泡老老实实转圈到出结果
+        if (stream) yield liveDeltaOf(c);
       }
-      final raw = buf.toString();
       if (raw.trim().isEmpty) throw AgentFailure(l10nNow.modelEmptyReply);
       final hopRec = <String, Object?>{
         't': hopStart,
@@ -685,210 +637,6 @@ Future<Object?> _serverTool(
 Map<String, String> _auth(String sessionId) =>
     sessionId.isEmpty ? const {} : {'Authorization': 'Bearer $sessionId'};
 
-/// 两帧之间至少隔这么久。快的模型一秒吐几十个 token,一个 token 推一帧等于每秒
-/// 几十次整块重建(气泡里是按围栏分块的富文本);60ms 一帧看着仍然是连续在写。
-const _liveFrameMs = 60;
-
-/// 打一次模型,边收边吐。
-///
-/// 每帧 [AgentDelta] 带的是**到此刻为止**的正文与思考(整块替换,理由见那边),
-/// 整段原文写进 [out] —— 这条链路的产出是「一段回复 + 一个围栏」,围栏收完才解析
-/// 得了,所以**流只管显示**,解析照旧在 [parseDirectReply] / [parseToolCalls]。
-///
-/// [timeout] 是「等响应头」「两帧之间」「等整段」各自的上限;null = 不限,等到用户取消。
-///
-/// 中转不认流式(回的不是 `text/event-stream`)时,收完整个 body 按老路解析,
-/// 只是没有逐字效果 —— 不能因为这个就让人用不了。
-Stream<AgentDelta> directModelStream(
-  http.Client c,
-  CustomEndpoint e, {
-  required String system,
-  required List<DirectMsg> msgs,
-  required ThinkLevel think,
-  required StringBuffer out,
-  Duration? timeout,
-
-  /// 关掉就是老样子:一个 POST 收完整段,一帧都不推。
-  bool stream = true,
-}) async* {
-  // 路径可配(中转改路径是常事),Gemini 那条还把模型名写在路径里、开流还要换方法名
-  // —— 都由 CustomEndpoint 处理,这儿不再各拼各的。
-  final uri = stream ? e.chatStreamUri : e.chatUri;
-  final (headers, body) = directRequest(
-    e,
-    system: system,
-    msgs: msgs,
-    think: think,
-    stream: stream,
-  );
-  final req = http.Request('POST', uri)
-    ..headers.addAll(
-      e.withHeaders({
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
-        ...headers,
-      }),
-    )
-    ..bodyBytes = utf8.encode(jsonEncode(body));
-
-  final noReply = AgentFailure(
-    l10nNow.modelNoReplyIn('${timeout?.inSeconds}'),
-  );
-  Future<T> limited<T>(Future<T> f) async {
-    if (timeout == null) return f;
-    try {
-      return await f.timeout(timeout);
-    } on TimeoutException {
-      throw noReply;
-    }
-  }
-
-  Future<String> readAll(http.StreamedResponse r) =>
-      limited(r.stream.bytesToString());
-
-  final http.StreamedResponse resp;
-  try {
-    resp = await limited(c.send(req));
-  } on AgentFailure {
-    rethrow;
-  } catch (e) {
-    throw AgentFailure('$e');
-  }
-
-  if (resp.statusCode < 200 || resp.statusCode >= 300) {
-    throw AgentFailure.http(resp.statusCode, await readAll(resp));
-  }
-  final Stream<String> lines;
-  if (stream &&
-      (resp.headers['content-type'] ?? '').toLowerCase().contains(
-        'event-stream',
-      )) {
-    final all = resp.stream
-        .transform(utf8.decoder)
-        .transform(const LineSplitter());
-    lines = timeout == null
-        ? all
-        : all.timeout(timeout, onTimeout: (sink) => sink.addError(noReply));
-  } else {
-    final raw = await readAll(resp);
-    final text = extractReplyText(e.format, _tryJson(raw));
-    if (text.isNotEmpty || !stream || !raw.contains('data:')) {
-      out.write(text); // 空的话由调用方报「模型回了一段空的」
-      // 关着开关时一帧都不推:气泡就该老老实实转圈到出结果
-      if (text.isNotEmpty && stream) yield _liveDelta(out, StringBuffer());
-      return;
-    }
-    // 类型写着 json、身子却是一串 SSE 帧 —— 有的中转就这德行。按帧收,
-    // 只是整段一起到,没有逐字效果。
-    lines = Stream.fromIterable(const LineSplitter().convert(raw));
-  }
-
-  final reason = StringBuffer();
-  var lastFrame = 0;
-  await for (final line in lines) {
-    // `event:` 行与 `:` 心跳不看:三家的 data 自带类型,光看 data 就够
-    if (!line.startsWith('data:')) continue;
-    final data = line.substring(5).trim();
-    if (data.isEmpty || data == '[DONE]') continue;
-    final frame = _tryJson(data);
-    // Claude 的报错是流中间的一帧,不是 HTTP 状态码
-    if (frame is Map && frame['type'] == 'error') throw AgentFailure(data);
-    final d = directDelta(e.format, frame);
-    if (d.text.isEmpty && d.reasoning.isEmpty) continue;
-    out.write(d.text);
-    reason.write(d.reasoning);
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - lastFrame < _liveFrameMs) continue;
-    lastFrame = now;
-    yield _liveDelta(out, reason);
-  }
-  // 收尾补一帧:最后几个字多半还卡在上面那道攒帧里
-  yield _liveDelta(out, reason);
-}
-
-AgentDelta _liveDelta(StringBuffer raw, StringBuffer reason) {
-  final v = directStreamView(raw.toString());
-  return AgentDelta(
-    text: v.body,
-    reasoning: [
-      reason.toString().trim(),
-      v.think,
-    ].where((s) => s.isNotEmpty).join('\n'),
-  );
-}
-
-Object? _tryJson(String s) {
-  try {
-    return jsonDecode(s);
-  } catch (_) {
-    return null; // 不是 JSON:当没有错误体,按状态码报
-  }
-}
-
-/// 流式响应的一帧 → 这一帧新增的字。三家形状各不相同,抽出来单测 —— 认错字段的
-/// 表现是「一路空白、最后整段蹦出来」,跟模型自己慢分不出来。
-///
-/// 思考在三家都是正文之外的另一个字段,所以分两路回:
-///   · OpenAI:`delta.reasoning_content`(DeepSeek 那套)或 `delta.reasoning`(OpenRouter)
-///   · Gemini:`parts[]` 里 `thought` 为真的那几段
-///   · Claude:`thinking_delta`
-({String text, String reasoning}) directDelta(
-  AgentApiFormat format,
-  Object? frame,
-) {
-  const none = (text: '', reasoning: '');
-  if (frame is! Map) return none;
-  switch (format) {
-    case AgentApiFormat.openai:
-      final choices = frame['choices'];
-      if (choices is! List || choices.isEmpty) return none;
-      final first = choices.first;
-      if (first is! Map) return none;
-      final d = first['delta'];
-      // 老式补全接口没有 delta,只有 text
-      if (d is! Map) {
-        return (
-          text: first['text'] is String ? first['text'] as String : '',
-          reasoning: '',
-        );
-      }
-      final r = d['reasoning_content'] ?? d['reasoning'];
-      return (
-        text: d['content'] is String ? d['content'] as String : '',
-        reasoning: r is String ? r : '',
-      );
-    case AgentApiFormat.google:
-      final cands = frame['candidates'];
-      if (cands is! List || cands.isEmpty) return none;
-      final first = cands.first;
-      if (first is! Map) return none;
-      final parts = (first['content'] as Map?)?['parts'];
-      if (parts is! List) return none;
-      final text = StringBuffer();
-      final think = StringBuffer();
-      for (final p in parts) {
-        if (p is! Map || p['text'] is! String) continue;
-        (p['thought'] == true ? think : text).write(p['text']);
-      }
-      return (text: text.toString(), reasoning: think.toString());
-    case AgentApiFormat.anthropic:
-      final d = frame['delta'];
-      if (d is! Map) return none;
-      return switch (d['type']) {
-        'text_delta' => (
-          text: d['text'] is String ? d['text'] as String : '',
-          reasoning: '',
-        ),
-        'thinking_delta' => (
-          text: '',
-          reasoning: d['thinking'] is String ? d['thinking'] as String : '',
-        ),
-        // message_delta(停止原因)这类也带 delta,但不带字
-        _ => none,
-      };
-  }
-}
-
 /// 流到一半的原文 → 气泡里该显示的两块。
 ///
 /// 纯函数,每帧拿全量原文重算:`</Think>` 收尾那一刻正文会整段挪位,增量式拼接
@@ -923,287 +671,14 @@ Object? _tryJson(String s) {
   );
 }
 
-/// 一次模型调用的请求头与请求体。三家的形状各不相同,抽出来单测 ——
-/// 附图字段写错的表现是「模型说没看到图」,和它自己看走眼分不出来。
-///
-/// 带图的那条 content 从字符串换成分段数组,**图在前、字在后**
-/// (Claude 与 Gemini 的文档都建议单图时这么摆,OpenAI 不挑)。
-(Map<String, String>, Map<String, dynamic>) directRequest(
-  CustomEndpoint e, {
-  required String system,
-  required List<DirectMsg> msgs,
-  required ThinkLevel think,
-
-  /// 开流式。Gemini 不在体里开 —— 它换的是路径,见 [CustomEndpoint.chatStreamUri]。
-  bool stream = false,
-}) {
-  final key = e.apiKey.trim();
-  return switch (e.format) {
-    AgentApiFormat.openai => (
-      {'Authorization': 'Bearer $key'},
-      {
-        'model': e.model,
-        'messages': [
-          {'role': 'system', 'content': system},
-          for (final m in msgs)
-            {
-              'role': m.role,
-              'content': switch (m.image) {
-                final i? => [
-                  {
-                    'type': 'image_url',
-                    'image_url': {'url': 'data:${i.mime};base64,${i.data}'},
-                  },
-                  if (m.content.isNotEmpty) {'type': 'text', 'text': m.content},
-                ],
-                null => m.content,
-              },
-            },
-        ],
-        if (stream) 'stream': true,
-        ...thinkFields(AgentApiFormat.openai, think),
-      },
-    ),
-    AgentApiFormat.google => (
-      {'x-goog-api-key': key},
-      {
-        'systemInstruction': {
-          'parts': [
-            {'text': system},
-          ],
-        },
-        'contents': [
-          for (final m in msgs)
-            {
-              // Gemini 只认 user / model 两种
-              'role': m.role == 'assistant' ? 'model' : 'user',
-              'parts': [
-                if (m.image case final i?)
-                  {
-                    'inlineData': {'mimeType': i.mime, 'data': i.data},
-                  },
-                if (m.image == null || m.content.isNotEmpty)
-                  {'text': m.content},
-              ],
-            },
-        ],
-        ...thinkFields(AgentApiFormat.google, think, model: e.model),
-      },
-    ),
-    AgentApiFormat.anthropic => (
-      {'x-api-key': key, 'anthropic-version': '2023-06-01'},
-      {
-        'model': e.model,
-        // Anthropic 必填,且没有"不限"这一档。开了思考还得**大于**思考预算,
-        // 否则整条请求会被拒:那笔预算是从 max_tokens 里切出去的。
-        'max_tokens': 4096 + _anthropicBudget(think),
-        'system': system,
-        'messages': [
-          for (final m in msgs)
-            {
-              'role': m.role,
-              'content': switch (m.image) {
-                final i? => [
-                  {
-                    'type': 'image',
-                    'source': {
-                      'type': 'base64',
-                      'media_type': i.mime,
-                      'data': i.data,
-                    },
-                  },
-                  if (m.content.isNotEmpty) {'type': 'text', 'text': m.content},
-                ],
-                null => m.content,
-              },
-            },
-        ],
-        if (stream) 'stream': true,
-        ...thinkFields(AgentApiFormat.anthropic, think),
-      },
-    ),
-  };
+/// 模型这一刻的全量回复 → 气泡里实时显示的那一帧。
+AgentDelta liveDeltaOf(LlmText c) {
+  final v = directStreamView(c.text);
+  return AgentDelta(
+    text: v.body,
+    reasoning: [
+      c.reasoning.trim(),
+      v.think,
+    ].where((s) => s.isNotEmpty).join('\n'),
+  );
 }
-
-/// Anthropic 的思考预算(token)。0 = 不开。下限是它自己规定的 1024。
-int _anthropicBudget(ThinkLevel l) => switch (l) {
-  ThinkLevel.auto || ThinkLevel.off => 0,
-  ThinkLevel.low => 1024,
-  ThinkLevel.medium => 4096,
-  ThinkLevel.high => 8192,
-  ThinkLevel.ultra => 16384,
-};
-
-/// Gemini 的思考旋钮按代分两种:2.x 及更早给 token 预算(`thinkingBudget`),
-/// 3 及以后(含 Gemini 4 的 Argon / Carbon / Hydrogen)给档位(`thinkingLevel`)。
-/// 发错一种会被 400 拒掉,两种一起发也拒。
-enum GeminiThinking { budget, level }
-
-/// 按模型名认是哪一种。不带 gemini 字样的(中转挂的别家模型)按预算发。
-GeminiThinking geminiThinkingOf(String model) {
-  final m = model.trim().toLowerCase();
-  if (RegExp(r'gemini-[12](?:[.\-]|$)').hasMatch(m)) {
-    return GeminiThinking.budget;
-  }
-  if (RegExp(r'gemini|argon|carbon|hydrogen').hasMatch(m)) {
-    return GeminiThinking.level;
-  }
-  return GeminiThinking.budget;
-}
-
-/// 只有 Gemini 4 Hydrogen 有 XHIGH。
-bool _geminiHasXHigh(String model) => model.toLowerCase().contains('hydrogen');
-
-/// 思考等级 → 各家请求体里的那几个字段。
-///
-/// 三家的旋钮完全不是一回事:OpenAI 给的是档位字符串,Claude 要 **token 预算**,
-/// Gemini 按代分预算和档位(见 [geminiThinkingOf])。
-/// [ThinkLevel.auto] 不发档位,让模型/服务方用自己的默认;Gemini 3 及以后照样带
-/// `includeThoughts`,让流里有思考摘要可显示。
-/// 中转不认这些字段时通常直接忽略,所以发了也不至于把请求打死。
-Map<String, dynamic> thinkFields(
-  AgentApiFormat format,
-  ThinkLevel level, {
-  String model = '',
-}) {
-  if (format == AgentApiFormat.google &&
-      geminiThinkingOf(model) == GeminiThinking.level) {
-    return {
-      'generationConfig': {
-        'thinkingConfig': {
-          'includeThoughts': true,
-          if (level != ThinkLevel.auto)
-            // 没有「关」:MINIMAL Gemini 4 不收,3.x 上多轮还要带思考签名,统一落到 LOW
-            'thinkingLevel': switch (level) {
-              ThinkLevel.medium => 'MEDIUM',
-              ThinkLevel.high => 'HIGH',
-              ThinkLevel.ultra => _geminiHasXHigh(model) ? 'XHIGH' : 'HIGH',
-              _ => 'LOW',
-            },
-        },
-      },
-    };
-  }
-  if (level == ThinkLevel.auto) return const {};
-  switch (format) {
-    case AgentApiFormat.openai:
-      return {
-        'reasoning_effort': switch (level) {
-          // OpenAI 两头都封顶:没有「关」,minimal 是最低;也没有「超高」,
-          // high 是最高 —— 所以这两档各自撞在端点上,不是写漏了。
-          ThinkLevel.off => 'minimal',
-          ThinkLevel.low => 'low',
-          ThinkLevel.high || ThinkLevel.ultra => 'high',
-          _ => 'medium',
-        },
-      };
-    case AgentApiFormat.google:
-      return {
-        'generationConfig': {
-          'thinkingConfig': {
-            'thinkingBudget': switch (level) {
-              ThinkLevel.off => 0,
-              ThinkLevel.low => 1024,
-              ThinkLevel.high => 16384,
-              ThinkLevel.ultra => 24576,
-              _ => 8192,
-            },
-            if (level != ThinkLevel.off) 'includeThoughts': true,
-          },
-        },
-      };
-    case AgentApiFormat.anthropic:
-      final budget = _anthropicBudget(level);
-      // 「关」在 Anthropic 这边就是不带 thinking 字段
-      if (budget == 0) return const {};
-      return {
-        'thinking': {'type': 'enabled', 'budget_tokens': budget},
-      };
-  }
-}
-
-/// 选的档位在这个接口上没有、发送时换成了别的档,说一句换成了什么;原样发的返回 null。
-String? thinkLevelNote(CustomEndpoint e, ThinkLevel level) {
-  switch (e.format) {
-    case AgentApiFormat.openai:
-      return switch (level) {
-        ThinkLevel.off => l10nNow.thinkNoOffFormat,
-        ThinkLevel.ultra => l10nNow.thinkNoUltraFormat,
-        _ => null,
-      };
-    case AgentApiFormat.google:
-      if (geminiThinkingOf(e.model) != GeminiThinking.level) return null;
-      return switch (level) {
-        ThinkLevel.off => l10nNow.thinkNoOffModel,
-        ThinkLevel.ultra when !_geminiHasXHigh(e.model) =>
-          l10nNow.thinkNoUltraModel,
-        _ => null,
-      };
-    case AgentApiFormat.anthropic:
-      return null;
-  }
-}
-
-/// 发一条最短的对话,确认地址、Key、模型、格式对得上。成功返回用时;
-/// 失败抛 [AgentFailure],内容是原始错误。测试等两分钟为止。
-Future<Duration> testEndpoint(CustomEndpoint e, {http.Client? client}) async {
-  final own = client == null;
-  final c = client ?? http.Client();
-  final sw = Stopwatch()..start();
-  try {
-    final out = StringBuffer();
-    await directModelStream(
-      c,
-      e,
-      system: 'Reply with the single word OK.',
-      msgs: const [(role: 'user', content: 'ping', image: null)],
-      think: ThinkLevel.auto,
-      timeout: const Duration(seconds: 120),
-      out: out,
-      stream: false,
-    ).drain<void>();
-    if (out.toString().trim().isEmpty) {
-      throw AgentFailure(l10nNow.replyUnreadable);
-    }
-    return sw.elapsed;
-  } finally {
-    if (own) c.close();
-  }
-}
-
-/// 三家的响应 → 正文。认错字段的表现是「模型回了一段空的」,和真的空回
-/// 长得一样,所以抽出来单测。
-String extractReplyText(AgentApiFormat format, Object? body) {
-  if (body is! Map) return '';
-  switch (format) {
-    case AgentApiFormat.openai:
-      final choices = body['choices'];
-      if (choices is! List || choices.isEmpty) return '';
-      final first = choices.first;
-      if (first is! Map) return '';
-      final msg = first['message'];
-      if (msg is Map) return msg['content']?.toString() ?? '';
-      return first['text']?.toString() ?? '';
-    case AgentApiFormat.google:
-      final cands = body['candidates'];
-      if (cands is! List || cands.isEmpty) return '';
-      final first = cands.first;
-      if (first is! Map) return '';
-      final parts = (first['content'] as Map?)?['parts'];
-      if (parts is! List) return '';
-      return [
-        for (final p in parts)
-          // 思考摘要(thought: true)不算正文
-          if (p is Map && p['text'] != null && p['thought'] != true)
-            p['text'].toString(),
-      ].join();
-    case AgentApiFormat.anthropic:
-      final content = body['content'];
-      if (content is! List) return '';
-      return [
-        for (final p in content)
-          if (p is Map && p['type'] == 'text') p['text']?.toString() ?? '',
-      ].join();
-  }
-}
-

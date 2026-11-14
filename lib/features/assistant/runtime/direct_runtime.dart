@@ -3,6 +3,7 @@ import '../custom_endpoint.dart' show CustomEndpoint;
 import '../direct_agent.dart' show streamDirectPrompt;
 import '../domain/agent_event.dart';
 import '../domain/turn_request.dart';
+import '../llm/http_provider.dart' show llmProviderFor;
 import '../preset_rules.dart'
     show appOutputFormat, appToolLayer, defaultRules, rulesFamilyOf, withToolLayer;
 import 'agent_runtime.dart';
@@ -36,7 +37,7 @@ class DirectAgentRuntime implements AgentRuntime {
     );
     final canvas = req.canvas;
     yield* streamDirectPrompt(
-      endpoint: endpoint,
+      provider: llmProviderFor(endpoint),
       backendBase: backendBase,
       sessionId: sessionId,
       userRequest: req.userText,

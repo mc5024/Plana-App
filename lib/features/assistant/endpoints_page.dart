@@ -36,8 +36,7 @@ import 'agent_model.dart'
         customEndpointIdOf,
         customModelKey;
 import 'custom_endpoint.dart';
-import 'custom_endpoint_api.dart';
-import 'direct_agent.dart' show testEndpoint;
+import 'llm/http_provider.dart' show llmProviderFor;
 import '../../l10n/l10n.dart';
 
 /// [editId] 为空 = 展开「添加接口」那张;否则展开那一条。
@@ -634,12 +633,9 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
     });
     List<String> listed;
     try {
-      listed = await fetchModelList(_draft());
-    } on EndpointException catch (e) {
-      if (mounted) _fail(e.message);
-      return;
+      listed = await llmProviderFor(_draft()).listModels();
     } catch (e) {
-      if (mounted) _fail(context.l10n.fetchFailedWith('$e'));
+      if (mounted) _fail('$e');
       return;
     } finally {
       if (mounted) setState(() => _loadingModels = false);
@@ -668,7 +664,7 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
     });
     final draft = _draft();
     try {
-      final took = await testEndpoint(draft);
+      final took = await llmProviderFor(draft).ping();
       if (!mounted) return;
       Haptics.selection();
       final secs = (took.inMilliseconds / 1000).toStringAsFixed(1);

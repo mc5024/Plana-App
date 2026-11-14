@@ -16,7 +16,10 @@ import '../../../core/ui/setting_row.dart';
 import '../../generate/prompt_sections.dart' show SectionImport;
 import '../../generate/widgets/common.dart' show dropFocusSoon, hintSnack;
 import '../agent_model.dart'
-    show assistantBotAuthorizedProvider, assistantEndpointProvider;
+    show
+        assistantBotAuthorizedProvider,
+        assistantCapabilitiesProvider,
+        assistantEndpointProvider;
 import '../assistant_settings.dart';
 import '../application/assistant_controller.dart';
 import '../preset_rules.dart';
@@ -46,6 +49,7 @@ class _SettingsSheet extends ConsumerWidget {
     final n = ref.read(assistantSettingsProvider.notifier);
     final authorized = ref.watch(assistantBotAuthorizedProvider);
     final customEndpoint = ref.watch(assistantEndpointProvider) != null;
+    final caps = ref.watch(assistantCapabilitiesProvider);
     return SettingSheet(
       title: context.l10n.assistantSettings,
       children: [
@@ -67,11 +71,15 @@ class _SettingsSheet extends ConsumerWidget {
             format: (v) => v.toStringAsFixed(0),
             onChanged: (v) => n.patch((o) => o.copyWith(fontSize: v)),
           ),
+          // 当前模型不能逐字显示时置灰,显示生效的「关」
           SettingRow(
             icon: Icons.keyboard_outlined,
             title: context.l10n.streamOutput,
-            desc: context.l10n.streamOutputDesc,
-            value: s.stream,
+            desc: caps.streaming
+                ? context.l10n.streamOutputDesc
+                : context.l10n.modelUnsupported,
+            value: caps.streaming && s.stream,
+            enabled: caps.streaming,
             onChanged: (v) => n.patch((o) => o.copyWith(stream: v)),
           ),
           settingSection(context, context.l10n.settingDraw),
