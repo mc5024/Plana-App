@@ -2,6 +2,8 @@ import '../agent_trace.dart';
 import '../custom_endpoint.dart' show CustomEndpoint;
 import '../domain/agent_event.dart';
 import '../domain/turn_request.dart';
+import '../llm/http_provider.dart' show llmProviderFor;
+import '../tools/tool_context.dart' show OnlineTags, TagLookup;
 import 'backend_runtime.dart';
 import 'direct_runtime.dart';
 
@@ -16,14 +18,17 @@ abstract interface class AgentRuntime {
 }
 
 /// 选了自定义接口([endpoint] 非 null)就在本机跑,否则走 Plana 后端。
+/// [offline] / [online] 是本机那条的工具来源。
 AgentRuntime agentRuntimeFor({
   required CustomEndpoint? endpoint,
   required String backendBase,
   required String sessionId,
+  TagLookup? offline,
+  OnlineTags? online,
 }) => endpoint != null
     ? DirectAgentRuntime(
-        endpoint: endpoint,
-        backendBase: backendBase,
-        sessionId: sessionId,
+        provider: llmProviderFor(endpoint),
+        offline: offline,
+        online: online,
       )
     : BackendAgentRuntime(baseUrl: backendBase, sessionId: sessionId);

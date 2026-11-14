@@ -60,6 +60,7 @@ const kDegradedTool = 'degraded';
 /// 工具名 → 界面上的中文。与灵感页的分类名对齐(那边叫「画风」,不叫画师串)。
 String toolLabel(String name) => switch (name) {
   'search_character' => l10nNow.toolCharLib,
+  'search_oc' => l10nNow.toolOcLib,
   'search_artist' || 'random_artist' => l10nNow.toolStyleLib,
   'lookup_tag' => l10nNow.toolTagWiki,
   kDegradedTool => l10nNow.toolSafeMode,

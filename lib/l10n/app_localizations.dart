@@ -8176,6 +8176,108 @@ abstract class AppLocalizations {
   /// **'安全模式'**
   String get toolSafeMode;
 
+  /// No description provided for @toolOcLib.
+  ///
+  /// In zh, this message translates to:
+  /// **'OC 库'**
+  String get toolOcLib;
+
+  /// No description provided for @assistantTools.
+  ///
+  /// In zh, this message translates to:
+  /// **'工具'**
+  String get assistantTools;
+
+  /// No description provided for @assistantToolsDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 查资料时能用的工具'**
+  String get assistantToolsDesc;
+
+  /// No description provided for @toolsEnabledN.
+  ///
+  /// In zh, this message translates to:
+  /// **'{n} 个已开'**
+  String toolsEnabledN(int n);
+
+  /// No description provided for @toolSearchArtist.
+  ///
+  /// In zh, this message translates to:
+  /// **'查画风'**
+  String get toolSearchArtist;
+
+  /// No description provided for @toolSearchArtistDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'按编号或名字取你的画风库'**
+  String get toolSearchArtistDesc;
+
+  /// No description provided for @toolSearchOc.
+  ///
+  /// In zh, this message translates to:
+  /// **'查 OC'**
+  String get toolSearchOc;
+
+  /// No description provided for @toolSearchOcDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'按名字查你的 OC 库'**
+  String get toolSearchOcDesc;
+
+  /// No description provided for @toolSearchCharacter.
+  ///
+  /// In zh, this message translates to:
+  /// **'查角色'**
+  String get toolSearchCharacter;
+
+  /// No description provided for @toolSearchCharacterDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'查动漫、游戏角色的 tag'**
+  String get toolSearchCharacterDesc;
+
+  /// No description provided for @toolLookupTag.
+  ///
+  /// In zh, this message translates to:
+  /// **'查 tag'**
+  String get toolLookupTag;
+
+  /// No description provided for @toolLookupTagDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'查某个 tag 是什么意思'**
+  String get toolLookupTagDesc;
+
+  /// No description provided for @toolSourceOffline.
+  ///
+  /// In zh, this message translates to:
+  /// **'离线词库'**
+  String get toolSourceOffline;
+
+  /// No description provided for @toolSourceOfflineDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'在手机上查,不联网'**
+  String get toolSourceOfflineDesc;
+
+  /// No description provided for @toolSourceSemantic.
+  ///
+  /// In zh, this message translates to:
+  /// **'语义搜词'**
+  String get toolSourceSemantic;
+
+  /// No description provided for @toolSourceWiki.
+  ///
+  /// In zh, this message translates to:
+  /// **'Wiki 摘要'**
+  String get toolSourceWiki;
+
+  /// No description provided for @toolSourceOnline.
+  ///
+  /// In zh, this message translates to:
+  /// **'经 Plana 后端查询'**
+  String get toolSourceOnline;
+
   /// No description provided for @randomN.
   ///
   /// In zh, this message translates to:
@@ -9307,7 +9409,7 @@ abstract class AppLocalizations {
   /// No description provided for @ocPlaceholderDesc.
   ///
   /// In zh, this message translates to:
-  /// **'本地与公共 OC 只给 AI 占位符，出图时还原；调整原设时请关闭'**
+  /// **'OC 只给 AI 占位符，出图时还原；调整原设时请关闭'**
   String get ocPlaceholderDesc;
 
   /// No description provided for @customEndpointOnly.

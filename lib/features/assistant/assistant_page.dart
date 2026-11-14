@@ -37,7 +37,7 @@ import 'assistant_settings.dart';
 import 'application/assistant_controller.dart';
 import 'application/proposal_service.dart' show canvasHasContent;
 import 'domain/image_model.dart';
-import 'preset_rules.dart' show RulesFamily, rulesFamilyOf;
+import 'presets/preset_rule.dart' show RulesFamily, rulesFamilyOf;
 import 'widgets/history_sheet.dart';
 import 'widgets/inline_images.dart';
 import 'widgets/intro_dialog.dart';
@@ -726,18 +726,12 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
     final picked = await showModeSheet(context, current: shown);
     if (picked == null || !mounted) return;
     if (!usable(picked)) {
-      // 手上那份默认规则可能是旧的:后端改了预设、重启过,app 还拿着之前取的那份。
-      // 说「不支持」之前先向服务端要一份最新的,真没有才说
-      final latest = await refreshAssistantModes(ref, family);
-      if (!mounted) return;
-      if (!latest.contains(picked)) {
-        hintSnack(
-          context,
-          context.l10n.rulesNoMode(assistantModeLabel(picked)),
-          icon: assistantModeIcon(picked),
-        );
-        return;
-      }
+      hintSnack(
+        context,
+        context.l10n.rulesNoMode(assistantModeLabel(picked)),
+        icon: assistantModeIcon(picked),
+      );
+      return;
     }
     // 和存着的比,不和显示的比:显示成「无」可能只是这份预设没写那个模式,
     // 用户这时选「无」是真想换回来

@@ -10,10 +10,11 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:plana_app/features/assistant/custom_endpoint.dart';
-import 'package:plana_app/features/assistant/direct_agent.dart';
 import 'package:plana_app/features/assistant/domain/agent_event.dart';
 import 'package:plana_app/features/assistant/llm/http_provider.dart';
 import 'package:plana_app/features/assistant/llm/llm_provider.dart';
+import 'package:plana_app/features/assistant/protocol/fenced_protocol.dart';
+import 'package:plana_app/features/assistant/protocol/reply_parser.dart';
 
 CustomEndpoint _ep(AgentApiFormat f) => CustomEndpoint(
   id: 'e1',
@@ -162,41 +163,41 @@ void main() {
     });
   });
 
-  group('directStreamView', () {
+  group('streamView', () {
     test('收完的 <Think> 划到思考,正文接着往下', () {
-      final v = directStreamView('<Think>先想想</Think>好的,画一张');
+      final v = streamView('<Think>先想想</Think>好的,画一张');
       expect(v.body, '好的,画一张');
       expect(v.think, '先想想');
     });
 
     test('还没收尾的 <Think>:后面全算思考', () {
-      final v = directStreamView('<Think>先想想,这个词');
+      final v = streamView('<Think>先想想,这个词');
       expect(v.body, isEmpty);
       expect(v.think, '先想想,这个词');
     });
 
     test('围栏一开始正文就到此为止', () {
-      final v = directStreamView('我查一下画师\n```tool_call\n{"name": "sear');
+      final v = streamView('我查一下画师\n```tool_call\n{"name": "sear');
       expect(v.body, '我查一下画师');
       expect(v.think, isEmpty);
-      final d = directStreamView('画好了\n```nai_draw\n{"positive": "1girl');
+      final d = streamView('画好了\n```nai_draw\n{"positive": "1girl');
       expect(d.body, '画好了');
     });
 
     test('普通代码块照留 —— 回复里列 tag 会用到', () {
       const raw = '给你:\n```\n1girl, blue eyes\n```';
-      expect(directStreamView(raw).body, raw);
+      expect(streamView(raw).body, raw);
     });
 
     test('收到一半的标签和围栏头不露出来', () {
-      expect(directStreamView('好的 <Thi').body, '好的');
-      expect(directStreamView('好的\n```nai_dr').body, '好的');
+      expect(streamView('好的 <Thi').body, '好的');
+      expect(streamView('好的\n```nai_dr').body, '好的');
       // 光秃秃的反引号留着:多半是代码块/行内代码的收尾,切了反而拆了好好的块
-      expect(directStreamView('给你 `1girl`').body, '给你 `1girl`');
+      expect(streamView('给你 `1girl`').body, '给你 `1girl`');
     });
 
     test('多段 <Think> 合到一起', () {
-      final v = directStreamView('<Think>一</Think>甲<Think>二</Think>乙');
+      final v = streamView('<Think>一</Think>甲<Think>二</Think>乙');
       expect(v.body, '甲乙');
       expect(v.think, '一\n二');
     });
@@ -401,7 +402,10 @@ void main() {
         '我查一下\n```tool_call\n{"name":"search_artist"}\n```',
         reason: '解析用的是原文,围栏得原样留着',
       );
-      expect(parseToolCalls(r.last.text).single.name, 'search_artist');
+      expect(
+        const FencedToolProtocol().parse(r.last.text).calls.single.name,
+        'search_artist',
+      );
     });
   });
 

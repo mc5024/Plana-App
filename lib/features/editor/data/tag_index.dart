@@ -306,6 +306,29 @@ class TagIndexSpec {
   }
 }
 
+/// 词库一行的只读视图,见 [TagIndex.rows]。
+class TagRowView {
+  TagRowView._(this._ix, this._row);
+
+  final TagIndex _ix;
+  final int _row;
+
+  int get count => _ix._rowCount(_row);
+
+  /// Danbooru 类目:0 一般 / 1 画师 / 3 作品 / 4 角色 / 5 meta。
+  int get category => _ix._rowCategory(_row);
+
+  /// 标签正名(下划线形式)。
+  String get tag => _ix._str(_row + 2, _ix._u16(_row));
+
+  /// 首段译名;没有是空串。
+  String get zh {
+    final zhAt = _row + 2 + _ix._u16(_row);
+    final len = _ix._u16(zhAt);
+    return len == 0 ? '' : _ix._str(zhAt + 2, len);
+  }
+}
+
 /// 读取端。查询全是同步的,只读字节;注音层 / 词条栏经 [offlineTagMeta] 用它。
 class TagIndex implements OfflineTagMeta {
   TagIndex(ByteData data)
@@ -382,6 +405,18 @@ class TagIndex implements OfflineTagMeta {
     if (p < 0) return null;
     final row = _u32(p + 6);
     return row == 0 ? null : row;
+  }
+
+  /// 按热度降序逐条给出词库的行。字段用到才解码,扫全库时只解码要比的那一列。
+  Iterable<TagRowView> get rows sync* {
+    var p = _entriesOff;
+    for (var i = 0; i < _entryCount; i++) {
+      final row = p;
+      final zhAt = row + 2 + _u16(row);
+      final aliasAt = zhAt + 2 + _u16(zhAt) + 5;
+      p = aliasAt + 2 + _u16(aliasAt);
+      yield TagRowView._(this, row);
+    }
   }
 
   /// 英文补全,匹配口径同后端 `tag_search/autocomplete.py`(仿 Danbooru tag_query)。

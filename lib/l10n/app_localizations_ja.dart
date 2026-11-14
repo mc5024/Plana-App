@@ -4653,6 +4653,59 @@ class AppLocalizationsJa extends AppLocalizations {
   String get toolSafeMode => '安全模式';
 
   @override
+  String get toolOcLib => 'OC 库';
+
+  @override
+  String get assistantTools => '工具';
+
+  @override
+  String get assistantToolsDesc => 'AI 查资料时能用的工具';
+
+  @override
+  String toolsEnabledN(int n) {
+    return '$n 个已开';
+  }
+
+  @override
+  String get toolSearchArtist => '查画风';
+
+  @override
+  String get toolSearchArtistDesc => '按编号或名字取你的画风库';
+
+  @override
+  String get toolSearchOc => '查 OC';
+
+  @override
+  String get toolSearchOcDesc => '按名字查你的 OC 库';
+
+  @override
+  String get toolSearchCharacter => '查角色';
+
+  @override
+  String get toolSearchCharacterDesc => '查动漫、游戏角色的 tag';
+
+  @override
+  String get toolLookupTag => '查 tag';
+
+  @override
+  String get toolLookupTagDesc => '查某个 tag 是什么意思';
+
+  @override
+  String get toolSourceOffline => '离线词库';
+
+  @override
+  String get toolSourceOfflineDesc => '在手机上查,不联网';
+
+  @override
+  String get toolSourceSemantic => '语义搜词';
+
+  @override
+  String get toolSourceWiki => 'Wiki 摘要';
+
+  @override
+  String get toolSourceOnline => '经 Plana 后端查询';
+
+  @override
   String randomN(int n) {
     return '随机 $n 个';
   }
@@ -5301,7 +5354,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get ocPlaceholder => 'OC 使用占位符';
 
   @override
-  String get ocPlaceholderDesc => '本地与公共 OC 只给 AI 占位符，出图时还原；调整原设时请关闭';
+  String get ocPlaceholderDesc => 'OC 只给 AI 占位符，出图时还原；调整原设时请关闭';
 
   @override
   String get customEndpointOnly => '仅自定义接口渠道可用';

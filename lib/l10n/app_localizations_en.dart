@@ -5054,6 +5054,61 @@ class AppLocalizationsEn extends AppLocalizations {
   String get toolSafeMode => 'Safe Mode';
 
   @override
+  String get toolOcLib => 'OC Library';
+
+  @override
+  String get assistantTools => 'Tools';
+
+  @override
+  String get assistantToolsDesc => 'What the AI can use to look things up';
+
+  @override
+  String toolsEnabledN(int n) {
+    return '$n on';
+  }
+
+  @override
+  String get toolSearchArtist => 'Style Lookup';
+
+  @override
+  String get toolSearchArtistDesc =>
+      'Fetch from your style library by ID or name';
+
+  @override
+  String get toolSearchOc => 'OC Lookup';
+
+  @override
+  String get toolSearchOcDesc => 'Search your OC library by name';
+
+  @override
+  String get toolSearchCharacter => 'Character Lookup';
+
+  @override
+  String get toolSearchCharacterDesc =>
+      'Find tags for anime and game characters';
+
+  @override
+  String get toolLookupTag => 'Tag Lookup';
+
+  @override
+  String get toolLookupTagDesc => 'Look up what a tag means';
+
+  @override
+  String get toolSourceOffline => 'Offline Dictionary';
+
+  @override
+  String get toolSourceOfflineDesc => 'Runs on this phone, no network';
+
+  @override
+  String get toolSourceSemantic => 'Semantic Search';
+
+  @override
+  String get toolSourceWiki => 'Wiki Summary';
+
+  @override
+  String get toolSourceOnline => 'Queried via the Plana backend';
+
+  @override
   String randomN(int n) {
     return '$n random';
   }
@@ -5771,7 +5826,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get ocPlaceholderDesc =>
-      'The AI only sees placeholders for local and public OCs, restored when drawing; turn off when editing an OC\'s design';
+      'The AI only sees placeholders for OCs, restored when drawing; turn off when editing an OC\'s design';
 
   @override
   String get customEndpointOnly => 'Custom endpoints only';

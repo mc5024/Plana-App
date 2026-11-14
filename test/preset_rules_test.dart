@@ -11,9 +11,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:plana_app/core/store/app_stores.dart';
 import 'package:plana_app/features/assistant/assistant_mode.dart';
-import 'package:plana_app/features/assistant/direct_agent.dart'
-    show directSystemPrompt;
-import 'package:plana_app/features/assistant/preset_rules.dart';
+import 'package:plana_app/features/assistant/presets/default_rules.dart';
+import 'package:plana_app/features/assistant/presets/preset_rule.dart';
+import 'package:plana_app/features/assistant/presets/rules_file.dart';
+import 'package:plana_app/features/assistant/presets/rules_library.dart';
+import 'package:plana_app/features/assistant/runtime/prompt_assets.dart';
+import 'package:plana_app/features/assistant/runtime/prompt_composer.dart';
 
 Directory _tempRoot() {
   final root = Directory.systemTemp.createTempSync('plana_rules');
@@ -416,12 +419,12 @@ sections:
       expect(() => decodeRulesFile(text), throwsFormatException);
     });
 
-    test('app 自带的工具层与出图格式都在,也不再提 bot', () async {
-      final tools = await appToolLayer();
+    test('app 自带的工具约定与出图格式都在,也不再提 bot', () async {
+      final tools = await toolLayerText();
       expect(tools, startsWith('<tool_usage>'));
       expect(tools, contains('tool_call'));
       expect(tools, isNot(contains('Bot 端')));
-      expect(await appOutputFormat(), contains('nai_draw'));
+      expect(await outputFormatText(), contains('nai_draw'));
     });
 
     test('默认规则里已经没有工具说明,不会和工具层发两份', () async {
@@ -431,29 +434,31 @@ sections:
       }
     });
 
-    test('自定义接口的系统提示:规则、出图格式、工具表依次排开', () {
-      final system = directSystemPrompt(
+    test('系统提示:规则(工具约定挂在 role 后面)、出图格式、工具清单、附加说明依次排开', () {
+      final system = composeSystemPrompt(
         rules: const [
           PresetRule(name: 'role', content: 'R'),
           PresetRule(name: 'comic_composition', content: 'C', when: 'comic'),
         ],
         modes: const [],
+        toolLayer: '<tool_usage>',
         outputFormat: '[输出格式]',
-        toolsBlock: '[可用工具]',
+        toolList: '[可用工具]',
+        notes: const ['', '[OC 占位符模式]'],
       );
-      expect(system, 'R\n\n[输出格式]\n\n[可用工具]');
+      expect(
+        system,
+        'R\n\n<tool_usage>\n\n[输出格式]\n\n[可用工具]\n\n[OC 占位符模式]',
+      );
     });
 
-    test('自定义接口那条也带上用户选的模式', () {
-      final system = directSystemPrompt(
+    test('系统提示也按用户选的模式挑段', () {
+      final system = composeSystemPrompt(
         rules: const [
           PresetRule(name: 'role', content: 'R'),
           PresetRule(name: 'mode_natural', content: 'NL', when: 'mode:natural'),
         ],
-        modes: const [],
-        chosen: assistantModeKeys(AssistantMode.natural),
-        outputFormat: '',
-        toolsBlock: '',
+        modes: assistantModeKeys(AssistantMode.natural),
       );
       expect(system, 'R\n\nNL');
     });
@@ -466,16 +471,12 @@ sections:
       PresetRule(name: 'output_specification', content: 'O'),
     ];
 
-    test('判过了、不是漫画:漫画规则不发', () {
+    test('没选漫画:漫画规则不发 —— 不按聊天内容自动判', () {
       expect(renderRules(rules, const []), 'R\n\nO');
     });
 
-    test('判出是漫画:发', () {
+    test('选的模式带着 comic:发', () {
       expect(renderRules(rules, const ['comic']), 'R\n\nC\n\nO');
-    });
-
-    test('没判成(预匹配失败):全发 —— 多发一段比把漫画画成单图代价小', () {
-      expect(renderRules(rules, null), 'R\n\nC\n\nO');
     });
 
     const withModes = [
@@ -485,19 +486,13 @@ sections:
       PresetRule(name: 'mode_natural', content: 'NL', when: 'mode:natural'),
     ];
 
-    test('模式段只认用户选的:没判成要全发时也不带,判到漫画也不带', () {
-      // 模式段写的是用户现在选了什么:没选却发出去,模型会以为在做漫画
-      expect(renderRules(withModes, null), 'R\n\nC');
+    test('模式段只认选中的那个键:光有 comic 不带 mode:comic 那段', () {
       expect(renderRules(withModes, const ['comic']), 'R\n\nC');
     });
 
     test('选了漫画:漫画规则和模式段都在,不用等「四格」这类词判到', () {
       expect(
-        renderRules(
-          withModes,
-          const [],
-          chosen: assistantModeKeys(AssistantMode.comic),
-        ),
+        renderRules(withModes, assistantModeKeys(AssistantMode.comic)),
         'R\n\nC\n\nMC',
       );
     });
@@ -505,22 +500,14 @@ sections:
     test('模式选「无」什么都不发给模型', () {
       expect(assistantModeKeys(AssistantMode.normal), isEmpty);
       expect(
-        renderRules(
-          withModes,
-          const [],
-          chosen: assistantModeKeys(AssistantMode.normal),
-        ),
+        renderRules(withModes, assistantModeKeys(AssistantMode.normal)),
         'R',
       );
     });
 
     test('选了仅自然语言:只多它那段,漫画规则不跟着来', () {
       expect(
-        renderRules(
-          withModes,
-          const [],
-          chosen: assistantModeKeys(AssistantMode.natural),
-        ),
+        renderRules(withModes, assistantModeKeys(AssistantMode.natural)),
         'R\n\nNL',
       );
     });
@@ -539,19 +526,13 @@ sections:
           when: 'mode:natural',
         ),
       ];
-      expect(renderRules(swap, null), 'R\n\nMIX');
+      expect(renderRules(swap, const []), 'R\n\nMIX');
       expect(
-        renderRules(swap, const [
-          'comic',
-        ], chosen: assistantModeKeys(AssistantMode.comic)),
+        renderRules(swap, assistantModeKeys(AssistantMode.comic)),
         'R\n\nMIX',
       );
       expect(
-        renderRules(
-          swap,
-          const [],
-          chosen: assistantModeKeys(AssistantMode.natural),
-        ),
+        renderRules(swap, assistantModeKeys(AssistantMode.natural)),
         'R\n\nNAT',
       );
     });
@@ -576,11 +557,7 @@ sections:
   test('默认 NAI5 规则:平时发混合写法,选了仅自然语言整段换成纯自然语言写法', () async {
     final rules = await bundledRules(RulesFamily.nai5);
     final plain = renderRules(rules, const []);
-    final natural = renderRules(
-      rules,
-      const [],
-      chosen: assistantModeKeys(AssistantMode.natural),
-    );
+    final natural = renderRules(rules, assistantModeKeys(AssistantMode.natural));
     expect(plain, contains('tag + 短句 + 自然语言混排'));
     expect(plain, isNot(contains('提示词构建：纯自然语言')));
     expect(natural, contains('提示词构建：纯自然语言'));

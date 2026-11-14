@@ -121,16 +121,18 @@ flutter:
     # 离线词库索引,由 assets/danbooru.tsv 生成(dart run tool/build_tag_index.dart);
     # TSV 本身不进包。Android 端不压缩存,见 android/app/build.gradle.kts。
     - assets/danbooru.tagidx
-    # AI 助手的默认规则主体(预设中间 role → output_specification 那段,按段存,
-    # 带条件段标记)。平时从服务端 GET /api/agent/preset-rules 取最新的,这两份只在
-    # 连不上后端时兜底。由服务端 prompts.load_rules 生成,见 lib/features/assistant/preset_rules.dart。
+    # AI 助手的默认规则主体(Nyako,按段存,带条件段标记),是默认规则的唯一来源。
+    # 见 lib/features/assistant/presets/default_rules.dart。
     - assets/prompts/nai45.json
     - assets/prompts/nai5.json
-    # AI 助手的工具层:怎么调工具、系统塞进来的数据块怎么读(tool_layer),以及自定义
-    # 接口那条的出图代码块格式(output_format)。app 自己带,挂在用户选的任意预设上,
-    # 用户写预设不必再抄工具说明。见 lib/features/assistant/preset_rules.dart。
+    # AI 助手发给模型的固定文字:工具调用约定(tool_layer)、出图代码块格式(output_format)、
+    # 零碎文字(texts.yaml)、各工具的说明(tools/)。见 lib/features/assistant/runtime/prompt_assets.dart。
+    # tool_layer_backend 只给后端模型那条用(服务端自己的工具)。
     - assets/prompts/tool_layer.md
+    - assets/prompts/tool_layer_backend.md
     - assets/prompts/output_format.md
+    - assets/prompts/texts.yaml
+    - assets/prompts/tools/
     # 关于页那颗图标(77 KB)。**不是** icons/app_icon.png —— 那张是给
     # flutter_launcher_icons 用的 1024² 原图,不进包。这张是按自适应图标
     # 的真实几何(背景色 + inset 16% 前景 + 裁到中心 72dp)预合成好的

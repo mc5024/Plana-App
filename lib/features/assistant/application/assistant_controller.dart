@@ -21,7 +21,6 @@ import '../../../l10n/l10n.dart';
 import '../../generate/canvas_state.dart';
 import '../../generate/generate_state.dart';
 import '../../generate/models.dart' show GenerateState;
-import '../../inspiration/public_tags.dart' show publicTagsProvider;
 import '../../inspiration/tag_library.dart';
 import '../../inspiration/tag_models.dart';
 import '../agent_model.dart';
@@ -34,8 +33,14 @@ import '../domain/agent_result.dart';
 import '../domain/conversation.dart';
 import '../domain/image_model.dart';
 import '../domain/turn_request.dart';
-import '../preset_rules.dart';
+import '../../editor/data/tag_completion.dart' show tagCompletionProvider;
+import '../presets/preset_rule.dart';
+import '../presets/rules_library.dart';
 import '../runtime/agent_runtime.dart';
+import '../tools/offline_tags.dart';
+import '../tools/online_tags.dart';
+import '../tools/tool_registry.dart';
+import '../tools/tool_settings.dart';
 import 'proposal_service.dart';
 import 'session_repository.dart';
 import 'trace_recorder.dart';
@@ -430,29 +435,21 @@ class AssistantController extends Notifier<AssistantState> {
       endpoint: endpoint,
       backendBase: base,
       sessionId: sid,
+      offline: ref.read(offlineTagsProvider),
+      online: base.isEmpty
+          ? null
+          : CompletionOnlineTags(ref.read(tagCompletionProvider)),
     );
     // 记录跟着这条提问一起开:下面还要等灵感库、规则,这期间按了停止也得收尾
     final trace = _traces.begin(route: runtime.route, userText: trimmed);
 
-    // 公共库要 Bot 授权,没授权时按本地库发
-    final scope = effectiveLibraryScope(
-      settings.libraryScope,
-      botAuthorized: sid.isNotEmpty,
-    );
-    // 公共库画师串的负面收尾时要用(见 [_libArtists]),先取着,不等它
-    if (scope == LibraryScope.all) {
-      unawaited(
-        ref
-            .read(publicTagsProvider(TagCategory.artist).future)
-            .then((_) {}, onError: (_) {}),
-      );
+    final lib = await _webLibrary();
+    ToolSettings toolSettings;
+    try {
+      toolSettings = await ref.read(toolSettingsProvider.future);
+    } catch (_) {
+      toolSettings = const ToolSettings();
     }
-    final lib = scope == LibraryScope.none
-        ? (
-            artists: const <Map<String, dynamic>>[],
-            ocs: const <Map<String, dynamic>>[],
-          )
-        : await _webLibrary();
 
     final imageModel = agentImageModel(g.params.model);
     final family = rulesFamilyOf(imageModel);
@@ -483,8 +480,10 @@ class AssistantController extends Notifier<AssistantState> {
       'mode': effective.name,
       'mode_keys': modeKeys,
       'no_draw': noDraw,
-      'library_scope': scope.name,
-      'oc_placeholders': endpoint != null && settings.ocPlaceholders,
+      'tools': [for (final t in enabledTools(toolSettings)) t.name],
+      if (toolSettings.disabledSources.isNotEmpty)
+        'disabled_sources': toolSettings.disabledSources.toList(),
+      'oc_placeholders': toolSettings.ocPlaceholders,
       'history_turns': settings.historyTurns,
       'history_entries': history.length,
       'with_canvas': canvas,
@@ -499,11 +498,10 @@ class AssistantController extends Notifier<AssistantState> {
       imageModel: imageModel,
       customRules: custom,
       modeKeys: modeKeys,
+      tools: toolSettings,
       artists: lib.artists,
       ocs: lib.ocs,
       resources: latestResources(state.msgs),
-      libraryScope: libraryScopeWire(scope),
-      ocPlaceholders: settings.ocPlaceholders,
       think: settings.thinkLevel,
       stream: settings.stream,
       backendModel: ref.read(assistantModelKeyProvider),
@@ -568,7 +566,6 @@ class AssistantController extends Notifier<AssistantState> {
                   picked,
                   noDraw,
                   sourceCanvasId,
-                  scope,
                 );
             }
           },
@@ -642,12 +639,10 @@ class AssistantController extends Notifier<AssistantState> {
     );
   }
 
-  /// 补负面用的画师串条目:本地库,选了「+ 公共库」再并上已经取到的公共库。
-  List<TagEntry> _libArtists(LibraryScope scope) => [
+  /// 补负面用的画师串条目:画风库。
+  List<TagEntry> _libArtists() => [
     for (final e in ref.read(tagLibraryProvider).value?.entries ?? const [])
       if (e.category == TagCategory.artist) e,
-    if (scope == LibraryScope.all)
-      ...?ref.read(publicTagsProvider(TagCategory.artist)).value,
   ];
 
   void _finish(
@@ -657,7 +652,6 @@ class AssistantController extends Notifier<AssistantState> {
     AssistantMode mode,
     bool noDraw,
     String sourceCanvasId,
-    LibraryScope scope,
   ) {
     LiveProgress.instance.endAssistant(success: true, keep: !_appForeground);
     // 产出先当成一份「提议」挂在这条消息上,用户在结果卡上点「导入」才落地。
@@ -677,11 +671,11 @@ class AssistantController extends Notifier<AssistantState> {
             ],
           )
         : null;
-    final draw = stripped == null || scope == LibraryScope.none
-        ? stripped
+    final draw = stripped == null
+        ? null
         : DrawProposal(
             positive: stripped.positive,
-            negative: withArtistNegatives(stripped, _libArtists(scope)),
+            negative: withArtistNegatives(stripped, _libArtists()),
             characters: stripped.characters,
           );
     final text = r.replyText.trim().isNotEmpty

@@ -26,10 +26,22 @@ import 'package:plana_app/features/assistant/llm/gemini_provider.dart';
 import 'package:plana_app/features/assistant/llm/http_provider.dart';
 import 'package:plana_app/features/assistant/llm/llm_image.dart';
 import 'package:plana_app/features/assistant/llm/llm_provider.dart';
-import 'package:plana_app/features/assistant/direct_agent.dart';
-import 'package:plana_app/features/assistant/local_library.dart';
-import 'package:plana_app/features/assistant/preset_rules.dart';
-import 'package:plana_app/features/assistant/prompt_diff.dart';
+import 'package:plana_app/features/assistant/domain/turn_request.dart';
+import 'package:plana_app/features/assistant/presets/preset_rule.dart';
+import 'package:plana_app/features/assistant/protocol/fenced_protocol.dart';
+import 'package:plana_app/features/assistant/protocol/reply_parser.dart';
+import 'package:plana_app/features/assistant/protocol/tool_protocol.dart';
+import 'package:plana_app/features/assistant/runtime/direct_runtime.dart';
+import 'package:plana_app/features/assistant/runtime/ledger.dart';
+import 'package:plana_app/features/assistant/runtime/placeholders.dart';
+import 'package:plana_app/features/assistant/runtime/prompt_assets.dart';
+import 'package:plana_app/features/assistant/tools/artist_tool.dart';
+import 'package:plana_app/features/assistant/tools/character_tool.dart';
+import 'package:plana_app/features/assistant/tools/my_library.dart';
+import 'package:plana_app/features/assistant/tools/oc_tool.dart';
+import 'package:plana_app/features/assistant/tools/tool_context.dart';
+import 'package:plana_app/features/assistant/tools/tool_registry.dart';
+import 'package:plana_app/features/assistant/tools/tool_settings.dart';import 'package:plana_app/features/assistant/prompt_diff.dart';
 import 'package:plana_app/features/assistant/application/assistant_controller.dart';
 import 'package:plana_app/features/assistant/application/proposal_service.dart';
 import 'package:plana_app/features/assistant/application/session_repository.dart';
@@ -67,6 +79,53 @@ HttpLlmProvider _llm(AgentApiFormat f, [String model = 'm']) => llmProviderFor(
   ),
 );
 
+PromptTexts _texts() =>
+    PromptTexts.parse(File('assets/prompts/texts.yaml').readAsStringSync());
+
+List<ToolCall> _calls(String reply) =>
+    const FencedToolProtocol().parse(reply).calls;
+
+class _FakeOffline implements TagLookup {
+  _FakeOffline({this.roles = const [], this.chars = const []});
+
+  final List<TagRecord> roles;
+  final List<TagRecord> chars;
+
+  @override
+  Future<List<TagRecord>> roleCandidates(String text, {int limit = 5}) async =>
+      roles;
+
+  @override
+  Future<List<TagRecord>> characters({
+    String query = '',
+    String origin = '',
+    int limit = 10,
+  }) async => chars;
+
+  @override
+  Future<List<TagRecord>> tags(
+    String query, {
+    int? category,
+    int limit = 10,
+  }) async => const [];
+}
+
+class _FakeOnline implements OnlineTags {
+  _FakeOnline({this.hits = const []});
+
+  final List<SemanticHit> hits;
+  final asked = <String>[];
+
+  @override
+  Future<List<SemanticHit>> characters(String query, {int limit = 10}) async {
+    asked.add(query);
+    return hits;
+  }
+
+  @override
+  Future<String?> wiki(String tag) async => null;
+}
+
 Future<GenerateNotifier> _notifier() async {
   final stores = await AppStores.open(rootOverride: _tempRoot());
   final c = ProviderContainer(
@@ -82,6 +141,8 @@ AssistantChange _change(String before, String after) => AssistantChange(
 );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('tag 差集', () {
     test('加了什么、删了什么,按 after 的顺序报', () {
       final c = _change(
@@ -1275,8 +1336,7 @@ void main() {
     });
   });
 
-  group('本地资料:预匹配与资料块(自定义接口那条)', () {
-    // 判据与服务端逐条对齐,改的时候拿服务端那份跑同一批用例对照过
+  group('工具:预取资料块', () {
     const a1 = '[[artist:as109]],{{artist:wlop}},1.3::artist:hiten::';
     const d11 =
         '<artist>\n2.4::harukui::,1.4::urotsuki_(ku9625)::\n</artist>\n\n'
@@ -1301,6 +1361,22 @@ void main() {
         'tag_group': 'silver hair, twin braids',
       },
     ]);
+    final texts = _texts();
+
+    ToolContext ctx(
+      String text, {
+      Map<String, Map<String, String>> remembered = const {},
+      ToolSettings settings = const ToolSettings(),
+      TagLookup? offline,
+    }) => ToolContext(
+      userText: text,
+      settings: settings,
+      texts: texts,
+      artists: artists,
+      ocs: ocs,
+      remembered: remembered,
+      offline: offline,
+    );
 
     test('编号不分大小写、名字去掉空白标点再比,没内容的条目不认', () {
       expect(matchArtists('a1 和厚涂风,还有 e5', artists), [
@@ -1315,62 +1391,49 @@ void main() {
     });
 
     test('OC 认中文名、别名和去掉 OC_ 的键名,命中的名字越长越靠前', () {
-      // DeepSeek 8 个字排在「小小纺」3 个字前面;同一个 OC 命中的名字按库里的顺序连起来
       expect(matchOcs('阿纺、小小纺和 deep seek', ocs), [
         ('DeepSeek', 'blue hair'),
         ('小小纺、阿纺', 'silver hair, twin braids'),
       ]);
     });
 
-    test('资料块:画师串只给占位符,多行内容一行都不漏;OC 给完整 tag 组', () {
-      final pre = buildLocalPrequery(
-        text: '用 D11 画小小纺',
-        artists: artists,
-        ocs: ocs,
-        remembered: const {},
-        roleBlock: '[角色候选]\nflandre_scarlet → 中文: 芙兰',
-      );
+    test('[画师串] 只给占位符,多行内容一行都不漏;[OC 角色] 给完整 tag 组', () async {
+      final c = ctx('用 D11 画小小纺');
+      final artist = await const SearchArtistTool().prefetch(c);
       expect(
-        pre.block,
-        '[画师串]\n$kArtistBlockNote\nD11 → __ARTIST_D11__\n\n'
-        '[OC 角色]\n小小纺 → silver hair, twin braids\n\n'
-        '[角色候选]\nflandre_scarlet → 中文: 芙兰',
+        artist!.text,
+        '[画师串]\n${texts.get('artist_block_note')}\nD11 → __ARTIST_D11__',
       );
-      expect(pre.thisTurn['artist'], {'D11': d11});
-      expect(pre.plan.tokens, {'__ARTIST_D11__': d11});
+      expect(artist.resources, {
+        'artist': {'D11': d11},
+      });
+      expect(c.artistPlan.tokens, {'__ARTIST_D11__': d11});
+      final oc = await const SearchOcTool().prefetch(c);
+      expect(oc!.text, '[OC 角色]\n小小纺 → silver hair, twin braids');
     });
 
-    test('开启 OC 占位符时本地和公共 OC 都只给 token，默认行为不变', () {
-      final pre = buildLocalPrequery(
-        text: '画小小纺和深海',
-        artists: artists,
-        ocs: ocs,
-        remembered: const {},
-        publicOcs: const {'深海': 'blue eyes, shell crown'},
-        ocPlaceholders: true,
-      );
-      expect(pre.block, contains('小小纺 → __OC_小小纺__'));
-      expect(pre.block, contains('深海 → __OC_深海__'));
-      expect(pre.block, isNot(contains('twin braids')));
-      expect(pre.block, isNot(contains('shell crown')));
-      final later = buildLocalPrequery(
-        text: '换个姿势',
-        artists: artists,
-        ocs: ocs,
+    test('开着 OC 占位符:只给占位符,这轮没点到就补账本里记着的', () async {
+      const on = ToolSettings(enabledOptions: {kOcPlaceholdersOption});
+      final first = await const SearchOcTool().prefetch(ctx('画小小纺', settings: on));
+      expect(first!.text, contains('小小纺 → __OC_小小纺__'));
+      expect(first.text, isNot(contains('twin braids')));
+      final later = ctx(
+        '换个姿势',
+        settings: on,
         remembered: const {
           'oc': {'深海': 'blue eyes, shell crown'},
         },
-        ocPlaceholders: true,
       );
-      expect(later.block, contains('深海 → __OC_深海__'));
-      expect(later.block, isNot(contains('shell crown')));
+      final block = await const SearchOcTool().prefetch(later);
+      expect(block!.text, contains('深海 → __OC_深海__'));
+      expect(block.text, isNot(contains('shell crown')));
       expect(later.ocPlan.tokens['__OC_深海__'], 'blue eyes, shell crown');
       final draw = expandOcDraw({
         'positive': '__OC_深海__, sea',
         'characters': [
           {'name': '小小纺', 'positive': '__OC_小小纺__, smiling'},
         ],
-      }, pre.ocPlan)!;
+      }, later.ocPlan)!;
       expect(draw['positive'], 'blue eyes, shell crown, sea');
       expect(
         (draw['characters'] as List).single['positive'],
@@ -1378,41 +1441,44 @@ void main() {
       );
     });
 
-    test('这轮没点到的画师串用账本补上,OC 不补;账本里记着的画师串都进映射', () {
-      final pre = buildLocalPrequery(
-        text: '换个姿势',
-        artists: artists,
-        ocs: ocs,
+    test('这轮没点到的画师串用账本补上,OC 不补;补上的不算本轮命中', () async {
+      final c = ctx(
+        '换个姿势',
         remembered: {
           'artist': {'A1': a1},
-          'oc': {'小小纺': 'silver hair, twin braids'}, // 旧版记下的
+          'oc': {'小小纺': 'silver hair, twin braids'},
         },
       );
-      expect(pre.block, contains('A1 → __ARTIST_A1__'));
-      expect(pre.block, isNot(contains('[OC 角色]')), reason: 'OC 只活在点到它的那一轮');
-      expect(pre.thisTurn['artist'], isEmpty, reason: '补上的不算本轮命中');
-      final none = buildLocalPrequery(
-        text: '用 D11',
-        artists: artists,
-        ocs: ocs,
-        remembered: {
-          'artist': {'A1': a1},
-        },
-        useLibrary: false,
+      final artist = await const SearchArtistTool().prefetch(c);
+      expect(artist!.text, contains('A1 → __ARTIST_A1__'));
+      expect(artist.resources['artist'], isEmpty);
+      expect(
+        await const SearchOcTool().prefetch(c),
+        isNull,
+        reason: 'OC 只活在点到它的那一轮',
       );
-      expect(none.block, isEmpty, reason: '「不使用」时不匹配也不补');
-      expect(none.plan.tokens, {'__ARTIST_A1__': a1}, reason: '历史里的串照样要折');
     });
 
-    test('公共库命中的排在本地后面,同名以本地为准', () {
-      final pre = buildLocalPrequery(
-        text: '用 A1',
-        artists: artists,
-        ocs: ocs,
-        remembered: const {},
-        publicArtists: const {'a1': 'artist:public', 'Z9': 'artist:z9'},
+    test('[角色候选] 来自离线词库,出处取 tag 末尾的括号;离线来源关着就不预取', () async {
+      final offline = _FakeOffline(
+        roles: const [
+          (tag: 'shiroko_(blue_archive)', zh: '砂狼白子', count: 11429, category: 4),
+        ],
       );
-      expect(pre.thisTurn['artist'], {'A1': a1, 'Z9': 'artist:z9'});
+      final b = await const SearchCharacterTool().prefetch(
+        ctx('画白子', offline: offline),
+      );
+      expect(
+        b!.text,
+        '[角色候选]\nshiroko_(blue_archive) → 中文: 砂狼白子 / 出处: blue archive',
+      );
+      const off = ToolSettings(disabledSources: {'search_character/offline'});
+      expect(
+        await const SearchCharacterTool().prefetch(
+          ctx('画白子', offline: offline, settings: off),
+        ),
+        isNull,
+      );
     });
 
     test('旧账本里只记下第一行的多行画师串,按本地库补全', () {
@@ -1420,22 +1486,6 @@ void main() {
         'artist': {'D11': '<artist>', 'A1': 'artist:old'},
       }, artists);
       expect(healed['artist'], {'D11': d11, 'A1': 'artist:old'});
-    });
-
-    test('服务端的环境块里只挑角色候选那块,块里的空行不算分界', () {
-      const env =
-          '[画师串]\nZ9 → artist:z9\n\n[角色候选]\nflandre_scarlet → 中文: 芙兰\n\n'
-          'remilia → 中文: 蕾米\n\n[OC 角色]\nx → y';
-      expect(
-        pickBlock(env, kRoleBlock),
-        '[角色候选]\nflandre_scarlet → 中文: 芙兰\n\nremilia → 中文: 蕾米',
-      );
-    });
-
-    test('条件段:用户原话、画布、历史里任一段像在画漫画', () {
-      expect(detectPromptModes(['画个四格漫画']), ['comic']);
-      expect(detectPromptModes(['第三格改成笑']), ['comic']);
-      expect(detectPromptModes(['manga style girl', '普通立绘']), isEmpty);
     });
   });
 
@@ -1494,19 +1544,21 @@ void main() {
       );
     });
 
-    test('工具查到的画师串记进映射,按它返回的 placeholder 认', () {
-      final plan = ArtistPlan();
-      final hits = searchLocalArtists(artists, {
-        'artist_ids': ['a1'],
-      });
-      expect(hits.single['placeholder'], '__ARTIST_A1__');
-      rememberToolArtists(plan, hits);
-      rememberToolArtists(plan, [
-        {'id': 'P1', 'name': 'P1', 'prompt': 'artist:public'},
-      ]);
-      expect(plan.tokens, {
-        '__ARTIST_A1__': a1,
-        '__ARTIST_P1__': 'artist:public',
+    test('查画风返回 placeholder,查到的画师串作为资源报上来', () async {
+      final out = await const SearchArtistTool().call(
+        ToolContext(
+          userText: '',
+          settings: const ToolSettings(),
+          texts: _texts(),
+          artists: artists,
+        ),
+        {
+          'artist_ids': ['a1'],
+        },
+      );
+      expect((out.data as List).single['placeholder'], '__ARTIST_A1__');
+      expect(out.resources, {
+        'artist': {'A1': a1},
       });
     });
 
@@ -1558,13 +1610,10 @@ void main() {
       );
     });
 
-    test('查本地库的工具:按编号 / 关键词找画师串,OC 按名字找', () {
-      expect(
-        searchLocalArtists(artists, {'keyword': 'RELLA'}).single['id'],
-        '厚涂 风',
-      );
-      expect(searchLocalArtists(artists, {'keyword': '  '}), isEmpty);
-      final ocs = searchLocalOcs(
+    test('查我的库:按编号 / 关键词找画师串,OC 按名字找', () {
+      expect(searchArtists(artists, {'keyword': 'RELLA'}).single.id, '厚涂 风');
+      expect(searchArtists(artists, {'keyword': '  '}), isEmpty);
+      final ocs = searchOcs(
         libOcsOf([
           {
             'en_name': 'OC_DeepSeek',
@@ -1573,15 +1622,14 @@ void main() {
             'tag_group': 'blue hair',
           },
         ]),
-        {'query': 'deep seek'},
+        'deep seek',
       );
-      expect(ocs.single['source'], 'oc');
-      expect(ocs.single['tags'], 'blue hair');
-      expect(ocs.single['zh_aliases'], ['DeepSeek', '深度求索']);
+      expect(ocs.single.tagGroup, 'blue hair');
+      expect(ocs.single.aliases, ['深度求索']);
     });
   });
 
-  group('自定义接口:本地库不出本机', () {
+  group('自定义接口:一轮在本机跑', () {
     const d11 =
         '<artist>\n1.2::harukui::,\n</artist>\n\n<style>\nthick paint,\n</style>,';
     const a1 = '[[artist:as109]],{{artist:wlop}}';
@@ -1605,105 +1653,97 @@ void main() {
           'zh_aliases': <String>[],
           'tag_group': 'silver hair, twin braids',
         },
+        {
+          'en_name': 'local-2',
+          'zh_name': '深海',
+          'zh_aliases': <String>[],
+          'tag_group': 'blue eyes, shell crown',
+        },
       ],
     );
 
-    http.Response json(Object body) => http.Response(
-      jsonEncode(body),
+    http.Response modelSays(String text) => http.Response(
+      jsonEncode({
+        'choices': [
+          {
+            'message': {'content': text},
+          },
+        ],
+      }),
       200,
       headers: {'content-type': 'application/json; charset=utf-8'},
     );
 
-    http.Response modelSays(String text) => json({
-      'choices': [
-        {
-          'message': {'content': text},
-        },
-      ],
-    });
-
     Future<List<AgentEvent>> run(
       MockClient mock, {
-      required String scope,
       String userRequest = '用 D11 画小小纺',
-      bool ocPlaceholders = false,
+      ToolSettings tools = const ToolSettings(),
+      TagLookup? offline,
+      OnlineTags? online,
       bool stream = true,
     }) => http.runWithClient(
-      () => streamDirectPrompt(
+      () => DirectAgentRuntime(
         provider: llmProviderFor(endpoint),
-        backendBase: 'https://plana.test',
-        sessionId: '',
-        userRequest: userRequest,
-        rules: const [PresetRule(name: 'role', content: '你是画师')],
-        canvasBlock: '[当前画面提示词]\npositive: $a1, 1girl',
-        history: const [
-          {'role': 'user', 'content': '上一轮'},
-          {'role': 'assistant', 'content': 'positive: $a1'},
-        ],
-        webArtists: library.artists,
-        webOcs: library.ocs,
-        ocPlaceholders: ocPlaceholders,
-        resources: const {
-          'artist': {'A1': a1},
-        },
-        libraryScope: scope,
-        stream: stream,
+        offline: offline,
+        online: online,
+      ).run(
+        AgentTurnRequest(
+          userText: userRequest,
+          imageModel: 'nai_v45_full',
+          customRules: const [PresetRule(name: 'role', content: '你是画师')],
+          canvas: const CanvasSnapshot(
+            positive: '$a1, 1girl',
+            negative: '',
+            characters: [],
+          ),
+          history: const [
+            {'role': 'user', 'content': '上一轮'},
+            {'role': 'assistant', 'content': 'positive: $a1'},
+          ],
+          tools: tools,
+          artists: library.artists,
+          ocs: library.ocs,
+          resources: const {
+            'artist': {'A1': a1},
+          },
+          stream: stream,
+        ),
       ).toList(),
       () => mock,
     );
 
-    test('发给后端的只有这句话;匹配、查库、还原、记账都在本地', () async {
-      final backend = <http.Request>[];
+    test('只请求模型接口;预取、查库、还原、记账都在本机', () async {
+      final others = <http.Request>[];
       final model = <String>[];
       final mock = MockClient((req) async {
-        if (req.url.host == 'llm.test') {
-          model.add(req.body);
-          return modelSays(
-            model.length == 1
-                ? '```tool_call\n{"name": "search_artist", "arguments": {"artist_ids": ["B7"]}}\n```'
-                : '用 __ARTIST_D11__ 和 __ARTIST_B7__ 画好了\n```nai_draw\n'
-                      '{"positive": "1.2::__ARTIST_D11__::, __ARTIST_B7__, 1girl, silver hair, twin braids", '
-                      '"negative": "", "characters": []}\n```',
-          );
+        if (req.url.host != 'llm.test') {
+          others.add(req);
+          return http.Response('{}', 404);
         }
-        backend.add(req);
-        return switch (req.url.path) {
-          '/api/agent/tools' => json({'block': '[可用工具]'}),
-          '/api/agent/prequery' => json({
-            'block': '[角色候选]\nflandre_scarlet → 中文: 芙兰',
-            'this_turn': <String, Object>{},
-            'modes': <String>[],
-          }),
-          _ => http.Response('{}', 404),
-        };
+        model.add(req.body);
+        return modelSays(
+          model.length == 1
+              ? '```tool_call\n{"name": "search_artist", "arguments": {"artist_ids": ["B7"]}}\n```'
+              : '用 __ARTIST_D11__ 和 __ARTIST_B7__ 画好了\n```nai_draw\n'
+                    '{"positive": "1.2::__ARTIST_D11__::, __ARTIST_B7__, 1girl, silver hair, twin braids", '
+                    '"negative": "", "characters": []}\n```',
+        );
       });
 
-      final events = await run(mock, scope: 'local');
-
-      expect(backend.map((r) => r.url.path), [
-        '/api/agent/tools',
-        '/api/agent/prequery',
-      ], reason: '查库工具、还原、记账都不打后端');
-      final prequery = backend.firstWhere(
-        (r) => r.url.path == '/api/agent/prequery',
+      final events = await run(
+        mock,
+        offline: _FakeOffline(
+          roles: const [
+            (tag: 'flandre_scarlet', zh: '芙兰朵露', count: 58619, category: 4),
+          ],
+        ),
       );
-      expect(jsonDecode(prequery.body), {
-        'user_request': '用 D11 画小小纺',
-        'library_scope': 'local',
-      });
-      for (final r in backend) {
-        for (final leaked in ['harukui', 'rella', 'twin braids', 'as109']) {
-          expect(
-            r.body,
-            isNot(contains(leaked)),
-            reason: '${r.url.path} 带了库内容',
-          );
-        }
-      }
 
+      expect(others, isEmpty, reason: '自定义接口那条不打 Plana 后端');
       expect(model.first, contains('D11 → __ARTIST_D11__'));
       expect(model.first, contains('小小纺 → silver hair, twin braids'));
       expect(model.first, contains('[角色候选]'));
+      expect(model.first, contains('[可用工具]'));
       expect(model.first, isNot(contains('harukui')));
       expect(model.first, isNot(contains('as109')), reason: '画布、历史里的串折成占位符');
       expect(model.last, contains('__ARTIST_B7__'), reason: '工具结果回灌');
@@ -1715,100 +1755,64 @@ void main() {
       );
       expect(done.replyText, '用 D11 和 B7 画好了');
       expect(done.resources, {
-        'artist': {'D11': d11},
-      });
+        'artist': {'D11': d11, 'B7': 'artist:rella'},
+      }, reason: '工具查到、用进画面的画师串也进账本;没再用的 A1 筛掉');
     });
 
-    test('「+ 公共库」:公共库命中的接在本地后面,工具的服务端那半只发参数', () async {
-      final backend = <http.Request>[];
+    test('查角色:语义搜词在前、离线词库补后,重复的去掉', () async {
       final model = <String>[];
       final mock = MockClient((req) async {
-        if (req.url.host == 'llm.test') {
-          model.add(req.body);
-          return modelSays(
-            model.length == 1
-                ? '```tool_call\n{"name": "search_character", "arguments": {"query": "小小纺"}}\n```'
-                : '好',
-          );
-        }
-        backend.add(req);
-        return switch (req.url.path) {
-          '/api/agent/tools' => json({'block': ''}),
-          '/api/agent/prequery' => json({
-            'block': '[画师串]\nZ9 → artist:z9',
-            'this_turn': {
-              'artist': {'Z9': 'artist:z9'},
-            },
-          }),
-          '/api/agent/tools/call' => json({
-            'result': [
-              {
-                'name': 'xiao_(game)',
-                'tags': 'xiao_(game)',
-                'source': 'roleTag',
-              },
-            ],
-          }),
-          _ => http.Response('{}', 404),
-        };
+        model.add(req.body);
+        return modelSays(
+          model.length == 1
+              ? '```tool_call\n{"name": "search_character", "arguments": {"query": "芙兰", "origin": "东方"}}\n```'
+              : '好',
+        );
       });
-
-      await run(mock, scope: 'all', userRequest: '用 D11 和 Z9 画小小纺');
-
-      // 请求体是 JSON,换行在里面是转义过的
+      final online = _FakeOnline(
+        hits: const [
+          (
+            tag: 'flandre_scarlet',
+            zh: '芙兰朵露·斯卡雷特、东方Project',
+            count: 58619,
+            wiki: '红魔馆的二小姐',
+          ),
+        ],
+      );
+      final offline = _FakeOffline(
+        chars: const [
+          (tag: 'flandre_scarlet', zh: '芙兰朵露', count: 58619, category: 4),
+          (tag: 'fran_(ff12)', zh: '芙兰', count: 546, category: 4),
+        ],
+      );
+      await run(mock, userRequest: '画芙兰', online: online, offline: offline);
+      expect(online.asked, ['东方 芙兰']);
+      final result = model.last;
+      expect(result.indexOf('红魔馆的二小姐'), greaterThan(-1));
       expect(
-        model.first,
-        contains(r'D11 → __ARTIST_D11__\nZ9 → __ARTIST_Z9__'),
+        result.indexOf('fran_(ff12)'),
+        greaterThan(result.indexOf('红魔馆的二小姐')),
       );
-      final call = backend.firstWhere(
-        (r) => r.url.path == '/api/agent/tools/call',
-      );
-      expect(jsonDecode(call.body), {
-        'name': 'search_character',
-        'arguments': {'query': '小小纺'},
-        'library_scope': 'all',
-      });
-      final result = model.last.indexOf('"source\\":\\"oc\\"');
-      final role = model.last.indexOf('xiao_(game)');
-      expect(result, greaterThan(-1));
-      expect(role, greaterThan(result), reason: '本地 OC 排在角色库前面');
+      expect('flandre_scarlet'.allMatches(result), hasLength(1));
     });
 
-    test('OC 占位符模式：本地与公共预匹配、工具结果都不向模型展开', () async {
+    test('OC 占位符:预取、查 OC 的结果都只给占位符,出图前展开', () async {
       final model = <String>[];
       final mock = MockClient((req) async {
-        if (req.url.host == 'llm.test') {
-          model.add(req.body);
-          return modelSays(
-            model.length == 1
-                ? '```tool_call\n{"name": "search_character", "arguments": {"query": "深海"}}\n```'
-                : '```nai_draw\n{"positive": "__OC_深海__, sea", "characters": [{"name": "小小纺", "positive": "__OC_小小纺__, smiling"}]}\n```',
-          );
-        }
-        return switch (req.url.path) {
-          '/api/agent/tools' => json({'block': '[可用工具]'}),
-          '/api/agent/prequery' => json({
-            'block': '',
-            'this_turn': {
-              'oc': {'深海': 'blue eyes, shell crown'},
-            },
-          }),
-          '/api/agent/tools/call' => json({
-            'result': [
-              {'name': '深海', 'tags': 'blue eyes, shell crown', 'source': 'oc'},
-            ],
-          }),
-          _ => http.Response('{}', 404),
-        };
+        model.add(req.body);
+        return modelSays(
+          model.length == 1
+              ? '```tool_call\n{"name": "search_oc", "arguments": {"query": "深海"}}\n```'
+              : '```nai_draw\n{"positive": "__OC_深海__, sea", "characters": [{"name": "小小纺", "positive": "__OC_小小纺__, smiling"}]}\n```',
+        );
       });
       final events = await run(
         mock,
-        scope: 'all',
-        userRequest: '画小小纺和深海',
-        ocPlaceholders: true,
+        userRequest: '画小小纺',
+        tools: const ToolSettings(enabledOptions: {kOcPlaceholdersOption}),
       );
       expect(model.first, contains('小小纺 → __OC_小小纺__'));
-      expect(model.first, contains('深海 → __OC_深海__'));
+      expect(model.first, contains('[OC 占位符模式]'));
       expect(model.last, contains('"tags\\":\\"__OC_深海__'));
       for (final request in model) {
         expect(request, isNot(contains('twin braids')));
@@ -1827,24 +1831,47 @@ void main() {
     });
 
     test('关掉逐字显示:一帧 AgentDelta 都不推', () async {
-      final mock = MockClient((req) async {
-        if (req.url.host == 'llm.test') return modelSays('好');
-        return json({'block': ''});
-      });
-      final events = await run(mock, scope: 'none', stream: false);
+      final mock = MockClient((req) async => modelSays('好'));
+      final events = await run(mock, stream: false);
       expect(events.whereType<AgentDelta>(), isEmpty);
       expect(events.whereType<AgentDone>().single.result.replyText, '好');
     });
 
-    test('「不使用」:连预匹配都不打', () async {
-      final paths = <String>[];
+    test('工具全关:不预取,系统提示里没有工具;账本里的画师串照样折', () async {
+      final model = <String>[];
       final mock = MockClient((req) async {
-        if (req.url.host == 'llm.test') return modelSays('好');
-        paths.add(req.url.path);
-        return json({'block': ''});
+        model.add(req.body);
+        return modelSays('好');
       });
-      await run(mock, scope: 'none');
-      expect(paths, ['/api/agent/tools']);
+      await run(
+        mock,
+        tools: ToolSettings(disabledTools: {for (final t in kAgentTools) t.name}),
+      );
+      expect(model.single, isNot(contains('[可用工具]')));
+      expect(model.single, isNot(contains('<tool_usage>')));
+      expect(model.single, isNot(contains('[画师串]')));
+      expect(model.single, isNot(contains('as109')));
+    });
+
+    test('调了没开的工具:回灌「没有这个工具」,这一轮照常收尾', () async {
+      final model = <String>[];
+      final mock = MockClient((req) async {
+        model.add(req.body);
+        return modelSays(
+          model.length == 1
+              ? '```tool_call\n{"name": "lookup_tag", "arguments": {"query": "halo"}}\n```'
+              : '查不了,直接说喵',
+        );
+      });
+      final events = await run(
+        mock,
+        tools: const ToolSettings(disabledTools: {'lookup_tag'}),
+      );
+      expect(model.last, contains('没有这个工具'));
+      expect(
+        events.whereType<AgentDone>().single.result.replyText,
+        '查不了,直接说喵',
+      );
     });
   });
 
@@ -1852,7 +1879,7 @@ void main() {
     // 模型写坏围栏的花样很多,而写坏的表现是「这轮没出图」——和「模型决定不出图」
     // 长得一模一样,不钉住根本分不出来。
     test('正文 + nai_draw 围栏', () {
-      final r = parseDirectReply(
+      final r = parseReply(
         '好耶,画一张芙兰喵~\n'
         '```nai_draw\n'
         '{"positive": "1girl, flandre_scarlet", "negative": "bad hands"}\n'
@@ -1863,12 +1890,12 @@ void main() {
     });
 
     test('<Think> 段要剥掉,不能发给用户', () {
-      final r = parseDirectReply('<Think>先查一下</Think>\n好的喵~');
+      final r = parseReply('<Think>先查一下</Think>\n好的喵~');
       expect(r.reply, '好的喵~');
     });
 
     test('写了两版围栏时以最后一版为准', () {
-      final r = parseDirectReply(
+      final r = parseReply(
         '```nai_draw\n{"positive": "a"}\n```\n'
         '改一下\n'
         '```nai_draw\n{"positive": "b"}\n```',
@@ -1877,13 +1904,13 @@ void main() {
     });
 
     test('围栏里不是合法 JSON:当这轮没出图,正文照发', () {
-      final r = parseDirectReply('在想喵\n```nai_draw\n{坏了\n```');
+      final r = parseReply('在想喵\n```nai_draw\n{坏了\n```');
       expect(r.draw, isNull);
       expect(r.reply, '在想喵');
     });
 
     test('纯聊天轮没有围栏', () {
-      final r = parseDirectReply('这串 tag 挺好的喵');
+      final r = parseReply('这串 tag 挺好的喵');
       expect(r.draw, isNull);
       expect(r.reply, '这串 tag 挺好的喵');
     });
@@ -1891,7 +1918,7 @@ void main() {
 
   group('直连工具调用解析', () {
     test('一条回复里多个 tool_call 都要认出来', () {
-      final calls = parseToolCalls(
+      final calls = _calls(
         '我查一下喵\n'
         '```tool_call\n'
         '{"name": "search_character", "arguments": {"query": "芙兰"}}\n'
@@ -1908,7 +1935,7 @@ void main() {
     });
 
     test('坏掉的那一块跳过,别的照常执行', () {
-      final calls = parseToolCalls(
+      final calls = _calls(
         '```tool_call\n{坏了\n```\n'
         '```tool_call\n'
         '{"name": "lookup_tag", "arguments": {"query": "halo"}}\n'
@@ -1919,11 +1946,11 @@ void main() {
     });
 
     test('没有 name 的不算一次调用', () {
-      expect(parseToolCalls('```tool_call\n{"arguments": {}}\n```'), isEmpty);
+      expect(_calls('```tool_call\n{"arguments": {}}\n```'), isEmpty);
     });
 
     test('没写围栏就是没调工具', () {
-      expect(parseToolCalls('直接给你写好了喵'), isEmpty);
+      expect(_calls('直接给你写好了喵'), isEmpty);
     });
   });
 
@@ -2085,14 +2112,11 @@ void main() {
   });
 
   group('助手设置', () {
-    test('默认:自动的一律关着,资料库取窄的那一档', () {
+    test('默认:自动的一律关着,逐字显示开着', () {
       const d = AssistantSettings();
       expect(d.autoGenerate, isFalse);
       expect(d.inlineImage, isFalse);
       expect(d.autoImport, isFalse);
-      // 公共库上万条画师串,默认并进去等于把预匹配的准头让出去
-      expect(d.libraryScope, LibraryScope.local);
-      expect(d.ocPlaceholders, isFalse);
       // 逐字显示不属于「放权」那一类:它不替用户决定任何事,默认开着
       expect(d.stream, isTrue);
     });
@@ -2108,82 +2132,82 @@ void main() {
     });
 
     test('存得下也读得回来', () {
-      const s = AssistantSettings(
-        autoGenerate: true,
-        libraryScope: LibraryScope.all,
-        thinkLevel: ThinkLevel.high,
-        ocPlaceholders: true,
-      );
+      const s = AssistantSettings(autoGenerate: true, thinkLevel: ThinkLevel.high);
       final back = AssistantSettings.fromJson(s.toJson());
       expect(back.autoGenerate, isTrue);
-      expect(back.libraryScope, LibraryScope.all);
       expect(back.thinkLevel, ThinkLevel.high);
-      expect(back.ocPlaceholders, isTrue);
-      expect(AssistantSettings.fromJson(const {}).ocPlaceholders, isFalse);
     });
+  });
 
-    test('老存档没这个字段,回落本地库', () {
-      expect(
-        AssistantSettings.fromJson(const {'autoGenerate': true}).libraryScope,
-        LibraryScope.local,
-      );
-      // 认不出的值也一样,别让一个脏字段把设置页读崩
-      expect(
-        AssistantSettings.fromJson(const {'libraryScope': 'nope'}).libraryScope,
-        LibraryScope.local,
-      );
-    });
-
-    test('没有 Bot 授权选不了公共库,已经选着的按本地库算', () {
-      for (final s in LibraryScope.values) {
-        expect(libraryScopeAllowed(s, botAuthorized: true), isTrue);
+  group('工具设置', () {
+    test('默认工具和来源全开,选项全关', () {
+      const s = ToolSettings();
+      for (final t in kAgentTools) {
+        expect(s.toolOn(t.name), isTrue);
+        for (final src in t.sources) {
+          expect(s.sourceOn(t.name, src.id), isTrue);
+        }
+        for (final o in t.options) {
+          expect(s.optionOn(t.name, o.id), isFalse);
+        }
       }
-      expect(
-        libraryScopeAllowed(LibraryScope.all, botAuthorized: false),
-        isFalse,
-      );
-      expect(
-        libraryScopeAllowed(LibraryScope.local, botAuthorized: false),
-        isTrue,
-      );
-      expect(
-        effectiveLibraryScope(LibraryScope.all, botAuthorized: false),
-        LibraryScope.local,
-      );
-      expect(
-        effectiveLibraryScope(LibraryScope.none, botAuthorized: false),
-        LibraryScope.none,
-      );
-      expect(
-        effectiveLibraryScope(LibraryScope.all, botAuthorized: true),
-        LibraryScope.all,
-      );
-    });
-
-    test('落盘存的是名字不是序号', () {
-      // 将来在中间插一档,老存档不会串位
-      expect(
-        const AssistantSettings(
-          libraryScope: LibraryScope.all,
-        ).toJson()['libraryScope'],
-        'all',
-      );
-    });
-
-    test('由窄到宽:菜单顺序就是这个', () {
-      expect(LibraryScope.values, [
-        LibraryScope.none,
-        LibraryScope.local,
-        LibraryScope.all,
+      expect([for (final t in enabledTools(s)) t.name], [
+        'search_artist',
+        'search_oc',
+        'search_character',
+        'lookup_tag',
       ]);
     });
 
-    test('发给服务端的就是枚举名', () {
-      // 「不使用」这一档**必须显式发** —— 光不发库的话服务端会回落公共库,
-      // 恰好和用户要的相反,所以这个取值不能错。
-      expect(libraryScopeWire(LibraryScope.none), 'none');
-      expect(libraryScopeWire(LibraryScope.local), 'local');
-      expect(libraryScopeWire(LibraryScope.all), 'all');
+    test('关掉的工具不算;来源全关的工具也不算', () {
+      const s = ToolSettings(
+        disabledTools: {'search_oc'},
+        disabledSources: {'lookup_tag/offline', 'lookup_tag/wiki'},
+      );
+      expect([for (final t in enabledTools(s)) t.name], [
+        'search_artist',
+        'search_character',
+      ]);
+    });
+
+    test('存得下也读得回来', () {
+      const s = ToolSettings(
+        disabledTools: {'search_oc'},
+        disabledSources: {'search_character/semantic'},
+        enabledOptions: {kOcPlaceholdersOption},
+      );
+      final back = ToolSettings.fromJson(s.toJson());
+      expect(back.toolOn('search_oc'), isFalse);
+      expect(back.sourceOn('search_character', 'semantic'), isFalse);
+      expect(back.ocPlaceholders, isTrue);
+      expect(ToolSettings.fromJson(const {}).ocPlaceholders, isFalse);
+    });
+
+    test('旧版设置迁过来:资料库「不使用」关掉查画风、查 OC 和查角色的离线词库,OC 占位符照带', () {
+      final none = ToolSettings.fromLegacy(const {
+        'libraryScope': 'none',
+        'ocPlaceholders': true,
+      });
+      expect(none.toolOn('search_artist'), isFalse);
+      expect(none.toolOn('search_oc'), isFalse);
+      expect(none.sourceOn('search_character', 'offline'), isFalse);
+      expect(none.sourceOn('search_character', 'semantic'), isTrue);
+      expect(none.ocPlaceholders, isTrue);
+      final all = ToolSettings.fromLegacy(const {'libraryScope': 'all'});
+      expect(enabledTools(all), hasLength(kAgentTools.length));
+      expect(all.ocPlaceholders, isFalse);
+    });
+
+    test('工具清单:只列开着的工具,带参数和各自的说明;没有工具就是空的', () async {
+      final list = await const FencedToolProtocol().toolList(
+        enabledTools(const ToolSettings(disabledTools: {'lookup_tag'})),
+      );
+      expect(list, contains('- search_artist'));
+      expect(list, contains('artist_ids: array'));
+      expect(list, contains('- search_oc'));
+      expect(list, contains('预取块 [画师串]'));
+      expect(list, isNot(contains('lookup_tag')));
+      expect(await const FencedToolProtocol().toolList(const []), isEmpty);
     });
   });
 

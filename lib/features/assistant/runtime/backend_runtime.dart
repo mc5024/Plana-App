@@ -14,8 +14,9 @@ import '../agent_trace.dart';
 import '../domain/agent_event.dart';
 import '../domain/agent_result.dart';
 import '../domain/turn_request.dart';
-import '../preset_rules.dart' show appToolLayer, withToolLayer;
 import 'agent_runtime.dart';
+import 'prompt_assets.dart';
+import 'prompt_composer.dart' show withToolLayer;
 
 class BackendAgentRuntime implements AgentRuntime {
   BackendAgentRuntime({required this.baseUrl, required this.sessionId});
@@ -30,11 +31,18 @@ class BackendAgentRuntime implements AgentRuntime {
 
   @override
   Stream<AgentEvent> run(AgentTurnRequest req, {AgentTrace? trace}) async* {
-    // 没自定义就不发规则,服务端用它自己那份;自定义的挂上 app 的工具层再发
+    // 没自定义就不发规则,服务端用它自己那份;自定义的挂上服务端工具的那份说明再发
+    // (服务端换掉的是整段规则主体,不挂的话它自己的工具说明也跟着没了)
     final custom = req.customRules;
     final presetRules = custom == null
         ? const <Map<String, dynamic>>[]
-        : [for (final r in withToolLayer(custom, await appToolLayer())) r.toJson()];
+        : [
+            for (final r in withToolLayer(
+              custom,
+              await promptAsset('tool_layer_backend.md'),
+            ))
+              r.toJson(),
+          ];
     final image = req.image;
     final canvas = req.canvas;
     yield* streamAgentPrompt(
@@ -52,7 +60,6 @@ class BackendAgentRuntime implements AgentRuntime {
       webArtists: req.artists,
       webOcs: req.ocs,
       resources: req.resources,
-      libraryScope: req.libraryScope,
       presetRules: presetRules,
       modes: req.modeKeys,
       onRequest: trace == null ? null : (body) => trace.request = body,

@@ -426,6 +426,47 @@ class TagCompletion {
     return out;
   }
 
+  /// 语义搜角色(AI 助手查角色用):只搜角色类,名字整体查、不拆词 —— 拆开的话
+  /// 「芙兰朵露」会被切成「芙兰 / 朵 / 露」,命中别作品里同名的冷门角色。
+  /// 拿不到返回空表,不抛。
+  Future<List<({String tag, String cnName, int count, String wiki})>>
+  searchCharacters(String query, {int limit = 10}) async {
+    final q = query.trim();
+    if (baseUrl.isEmpty || q.isEmpty) return const [];
+    try {
+      final resp = await _retry(
+        () => _client.post(
+          Uri.parse('$baseUrl/api/tags/search'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'query': q,
+            'limit': limit,
+            'top_k': 50,
+            'show_nsfw': true,
+            'target_categories': ['Character'],
+            'use_segmentation': false,
+          }),
+        ),
+      );
+      if (resp.statusCode != 200) return const [];
+      final body = jsonDecode(utf8.decode(resp.bodyBytes));
+      final results = body is Map ? body['results'] : null;
+      if (results is! List) return const [];
+      return [
+        for (final r in results)
+          if (r is Map && '${r['tag'] ?? ''}'.trim().isNotEmpty)
+            (
+              tag: '${r['tag']}'.trim(),
+              cnName: '${r['cn_name'] ?? ''}'.trim(),
+              count: (r['count'] as num?)?.toInt() ?? 0,
+              wiki: '${r['wiki'] ?? ''}'.trim(),
+            ),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// 解析 Danbooru `autocomplete.json` 数组 → 标签建议(前缀优先 → 热度降序,剔除 <50 冷门)。
   List<Suggestion> _parseDanbooru(List<int> bytes, String q) {
     final data = jsonDecode(utf8.decode(bytes));

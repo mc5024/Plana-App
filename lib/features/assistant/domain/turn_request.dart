@@ -4,7 +4,8 @@ library;
 import 'dart:typed_data';
 
 import '../assistant_settings.dart' show ThinkLevel;
-import '../preset_rules.dart' show PresetRule;
+import '../presets/preset_rule.dart' show PresetRule;
+import '../tools/tool_settings.dart' show ToolSettings;
 
 /// 引用创作页时带给 AI 的画面。字段与发出去的形状一致:角色站位已换算成 `"x,y"`。
 class CanvasSnapshot {
@@ -31,11 +32,10 @@ class AgentTurnRequest {
     this.canvas,
     this.customRules,
     this.modeKeys = const [],
+    this.tools = const ToolSettings(),
     this.artists = const [],
     this.ocs = const [],
     this.resources = const {},
-    this.libraryScope = 'local',
-    this.ocPlaceholders = false,
     this.think = ThinkLevel.auto,
     this.stream = true,
     this.backendModel = '',
@@ -62,7 +62,10 @@ class AgentTurnRequest {
   /// 用户选的模式(`comic`、`mode:comic` 这类),拿来挑条件段。
   final List<String> modeKeys;
 
-  /// 用户自己的画师串库 / OC 库(`{'id','name','prompt'}` /
+  /// 工具页的开关。
+  final ToolSettings tools;
+
+  /// 用户自己的画风库 / OC 库(`{'id','name','prompt'}` /
   /// `{'en_name','zh_name','zh_aliases','tag_group'}`)。
   final List<Map<String, dynamic>> artists;
   final List<Map<String, dynamic>> ocs;
@@ -70,10 +73,6 @@ class AgentTurnRequest {
   /// 上一轮记下的沿用资源账本。
   final Map<String, Map<String, String>> resources;
 
-  /// 资料库范围(`none` / `local` / `all`)。
-  final String libraryScope;
-
-  final bool ocPlaceholders;
   final ThinkLevel think;
   final bool stream;
 

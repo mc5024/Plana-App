@@ -1,12 +1,12 @@
 /// 规则预设页:每个模型在用哪一份、导入、导出、编辑、删除。
 ///
-/// 一张卡一份预设。默认规则按模型分两张(v4.5 版、v5 版),名称、作者、版本读服务端
-/// 预设顶层的 meta。**点卡片就用这份**,正在用的卡右上角挂一个「使用中」角标。
+/// 一张卡一份预设。默认规则按模型分两张(v4.5 版、v5 版),名称、作者、版本读内置
+/// 那份的 meta。**点卡片就用这份**,正在用的卡右上角挂一个「使用中」角标。
 /// 每个模型恰好有一张卡在用,默认规则兜底。
 ///
 /// 编辑是全文编辑:摊开的就是导出的那份文本,不做逐段的表单 —— 规则文件的写法与
 /// 服务端预设一致,整份摊开最直接,电脑上改好的也能整段贴进来。默认规则的原件在
-/// 服务端,改完另存为一份新预设。
+/// 包里,改完另存为一份新预设。
 library;
 
 import 'dart:convert';
@@ -15,13 +15,14 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/auth/bot_session_store.dart';
-import '../../core/net/backend_config.dart';
 import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/util/haptics.dart';
 import '../generate/widgets/common.dart' show confirmDialog, hintSnack;
-import 'preset_rules.dart';
+import 'presets/default_rules.dart';
+import 'presets/preset_rule.dart';
+import 'presets/rules_file.dart';
+import 'presets/rules_library.dart';
 import '../../l10n/l10n.dart';
 
 class RulesPresetPage extends ConsumerWidget {
@@ -72,7 +73,7 @@ class RulesPresetPage extends ConsumerWidget {
     }
 
     if (p.isDefault) {
-      // 默认规则只支持一个模型;名称、作者、版本读服务端预设,没取到时用占位值
+      // 默认规则只支持一个模型;名称、作者、版本读内置那份,没读到时用占位值
       final f = p.models.single;
       final info = ref.watch(defaultRulesProvider(f)).value;
       return _PresetCard(
@@ -158,18 +159,8 @@ class RulesPresetPage extends ConsumerWidget {
     }
   }
 
-  Future<DefaultRules> _fetchDefault(
-    WidgetRef ref,
-    RulesFamily f, {
-    bool fresh = false,
-  }) async => fetchDefaultRules(
-    f,
-    backendBase: ref.read(backendBaseProvider).value ?? '',
-    sessionId: (await ref.read(botSessionProvider.future))?.sessionId ?? '',
-    fresh: fresh,
-  );
 
-  /// 默认规则导出的是服务端**最新**那份,名字带上版本(「Nyako v5」)——
+  /// 默认规则导出时名字带上版本(「Nyako v5」)——
   /// 两个版本同名,导进来之后分不出哪张是哪张。
   Future<void> _exportDefault(
     BuildContext context,
@@ -177,7 +168,7 @@ class RulesPresetPage extends ConsumerWidget {
     RulesFamily f,
   ) async {
     try {
-      final d = await _fetchDefault(ref, f, fresh: true);
+      final d = await bundledDefaultRules(f);
       if (!context.mounted) return;
       await _save(
         context,
@@ -240,7 +231,7 @@ class RulesPresetPage extends ConsumerWidget {
     }
   }
 
-  /// 默认规则的原件跟着服务端走,改不了:改完另存为一份新预设。这个模型原先用的是
+  /// 默认规则的原件在包里,改不了:改完另存为一份新预设。这个模型原先用的是
   /// 默认规则的,改用新存的这份 —— 点「编辑」是想改自己在用的规则,存完还挂在原件上
   /// 等于白改。
   Future<void> _editDefault(
@@ -251,7 +242,7 @@ class RulesPresetPage extends ConsumerWidget {
     final DefaultRules d;
     try {
       // 卡片进页面时刚取过,走缓存就行,不让人干等一趟网络
-      d = await _fetchDefault(ref, f);
+      d = await bundledDefaultRules(f);
     } catch (e) {
       if (context.mounted) {
         hintSnack(

@@ -2,8 +2,7 @@
 ///
 /// 几个开关都是**把默认的手动改成自动**,所以默认一律关着 —— 这套流程的地基是
 /// 「AI 碰创作页、花点数出图,两件事都得用户按一下」;打开哪一项都是用户明知
-/// 自己在放权,不能替他决定。同理,[AssistantSettings.libraryScope] 的默认取
-/// **范围更窄**的那一档。
+/// 自己在放权,不能替他决定。
 library;
 
 import 'dart:convert';
@@ -13,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/store/app_stores.dart';
 import '../generate/prompt_sections.dart' show SectionImport;
 import '../../l10n/l10n.dart';
+import 'tools/tool_settings.dart' show migrateLegacyToolSettings;
 
 const _key = 'assistant_settings';
 
@@ -44,49 +44,6 @@ String thinkLevelLabel(ThinkLevel l) => switch (l) {
   ThinkLevel.ultra => l10nNow.thinkUltra,
 };
 
-/// AI 查画师串 / 角色时认哪些库。**由窄到宽声明**(菜单顺序即此)。
-///
-/// 落盘存 `name`,插档不串位(同 [ThinkLevel])。
-enum LibraryScope {
-  /// 一个库都不给:画师串、OC、预训练角色三样都不喂,也不补上一轮记着的。
-  /// 模型只能凭自己那点知识写 —— 想要「别掺进来任何我这边的数据」时用。
-  none,
-
-  /// 只认灵感页里你自己那份库。
-  local,
-
-  /// 自己那份之外,再并上服务端的公共库。
-  all,
-}
-
-String libraryScopeLabel(LibraryScope s) => switch (s) {
-  LibraryScope.none => l10nNow.scopeNone,
-  LibraryScope.local => l10nNow.localLibrary,
-  LibraryScope.all => l10nNow.scopeLocalPublic,
-};
-
-/// 选项下面那行说明。首次引导和助手设置里的选择框共用。
-String libraryScopeDesc(LibraryScope s) => switch (s) {
-  LibraryScope.none => l10nNow.scopeNoneDesc,
-  LibraryScope.local => l10nNow.scopeLocalDesc,
-  LibraryScope.all => l10nNow.scopeAllDesc,
-};
-
-/// 公共库要 Bot 授权:没授权时「本地库 + 公共库」选不了,已经选着的按本地库算
-/// (存着的不改,授权回来就还是它)。
-bool libraryScopeAllowed(LibraryScope s, {required bool botAuthorized}) =>
-    botAuthorized || s != LibraryScope.all;
-
-LibraryScope effectiveLibraryScope(
-  LibraryScope s, {
-  required bool botAuthorized,
-}) => libraryScopeAllowed(s, botAuthorized: botAuthorized)
-    ? s
-    : LibraryScope.local;
-
-/// 发给服务端的取值(`library_scope`)。就是枚举名,单独写一个函数是为了
-/// 把「线上协议」和「本地枚举」的耦合摆到明面上:改名字要一起改。
-String libraryScopeWire(LibraryScope s) => s.name;
 
 String sectionImportLabel(SectionImport m) => switch (m) {
   SectionImport.main => l10nNow.importReplaceMain,
@@ -103,8 +60,6 @@ class AssistantSettings {
     this.inlineImage = false,
     this.autoImport = false,
     this.thinkLevel = ThinkLevel.auto,
-    this.libraryScope = LibraryScope.local,
-    this.ocPlaceholders = false,
     this.noDraw = false,
     this.introVersion = 0,
     this.fontSize = fontSizeDefault,
@@ -158,15 +113,6 @@ class AssistantSettings {
   /// 思考等级。默认 [ThinkLevel.auto] = 不发这个字段。
   final ThinkLevel thinkLevel;
 
-  /// AI 查资料时认哪些库。默认 [LibraryScope.local]。
-  ///
-  /// 默认只认自己那份,是因为公共库上万条画师串,而用户想用的是自己收藏的那几十条;
-  /// 拿全量去和一句话做匹配,捞上来的多半是他没见过的东西。
-  final LibraryScope libraryScope;
-
-  /// 自定义接口渠道：本地和公共库 OC 只给 AI 占位符，结果落地前展开。默认关闭。
-  final bool ocPlaceholders;
-
   /// 纯文本格式:AI 照常写提示词,提议只显示成纯文本给复制,不出结果卡、不导入、不出图
   /// (见 [AssistantMsg.promptAsText])。什么都不发给模型。
   ///
@@ -178,7 +124,7 @@ class AssistantSettings {
   final int introVersion;
 
   /// 第一次打开 AI 页的引导走完了没有。没走完每次进 AI 页都会弹,
-  /// 引导里定下的资料库范围和使用习惯要用户点过「开始使用」才算数。
+  /// 引导里定下的使用习惯要用户点过「开始使用」才算数。
   bool get introDone => introVersion >= kAssistantIntroVersion;
 
   /// 对话消息的正文字号:用户气泡、AI 回复、报错,见 [fontSizeMin] / [fontSizeMax]。
@@ -207,8 +153,6 @@ class AssistantSettings {
     bool? inlineImage,
     bool? autoImport,
     ThinkLevel? thinkLevel,
-    LibraryScope? libraryScope,
-    bool? ocPlaceholders,
     bool? noDraw,
     int? introVersion,
     double? fontSize,
@@ -220,8 +164,6 @@ class AssistantSettings {
     inlineImage: inlineImage ?? this.inlineImage,
     autoImport: autoImport ?? this.autoImport,
     thinkLevel: thinkLevel ?? this.thinkLevel,
-    libraryScope: libraryScope ?? this.libraryScope,
-    ocPlaceholders: ocPlaceholders ?? this.ocPlaceholders,
     noDraw: noDraw ?? this.noDraw,
     introVersion: introVersion ?? this.introVersion,
     fontSize: fontSize ?? this.fontSize,
@@ -235,8 +177,6 @@ class AssistantSettings {
     'inlineImage': inlineImage,
     'autoImport': autoImport,
     'thinkLevel': thinkLevel.name,
-    'libraryScope': libraryScope.name,
-    'ocPlaceholders': ocPlaceholders,
     'noDraw': noDraw,
     'introVersion': introVersion,
     'fontSize': fontSize,
@@ -254,10 +194,6 @@ class AssistantSettings {
         autoImport: j['autoImport'] == true || j['alwaysCanvas'] == true,
         thinkLevel:
             ThinkLevel.values.asNameMap()[j['thinkLevel']] ?? ThinkLevel.auto,
-        libraryScope:
-            LibraryScope.values.asNameMap()[j['libraryScope']] ??
-            LibraryScope.local,
-        ocPlaceholders: j['ocPlaceholders'] == true,
         noDraw: j['noDraw'] == true,
         // 缺键 = 老存档,按开算:新行为更好,不必等用户自己去翻设置
         stream: j['stream'] != false,
@@ -295,7 +231,10 @@ class AssistantSettingsNotifier extends AsyncNotifier<AssistantSettings> {
   @override
   Future<AssistantSettings> build() async {
     try {
-      final raw = await ref.read(prefsStoreProvider).read(key: _key);
+      final prefs = ref.read(prefsStoreProvider);
+      // 先把旧字段迁走:这份设置一改就整份重写,旧字段就没了
+      await migrateLegacyToolSettings(prefs);
+      final raw = await prefs.read(key: _key);
       if (raw == null || raw.isEmpty) return const AssistantSettings();
       return AssistantSettings.fromJson(
         jsonDecode(raw) as Map<String, dynamic>,

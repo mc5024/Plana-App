@@ -1,0 +1,26 @@
+# 发给模型的零碎固定文字。{名字} 是运行时填进去的值。
+
+# 引用创作页时,[当前画面提示词] 块前面那句
+canvas_intro: >-
+  请在下面这份提示词的基础上改:没让你动的部分原样留着;characters 连 position 一起带回来,不带会把我摆好的构图打乱。除非我明说要全新主题 / 重做,否则都按这份改。
+
+# 工具结果回灌给模型的那条消息
+tool_results: |-
+  [tool_result 共 {count} 条] 以下是你上一条回复里 tool_call 的执行结果。请基于结果给出**最终回复**(不要再重复调用同样的工具)。
+
+  {results}
+tool_failed: >-
+  执行失败:{error}
+unknown_tool: >-
+  没有这个工具:{name}
+
+# 预取资料块的块头说明
+artist_block_note: >-
+  直接写占位符，放在 positive 最前面，出图时换成完整画师串；除非用户要求调整或询问画师串内容，不要调 search_artist 查它
+oc_block_note: >-
+  直接写 OC 占位符，出图时换成完整 tag 组；需要改 OC 设定时请先关闭 OC 占位符设置
+
+# 开着 OC 占位符时补在系统提示末尾
+oc_placeholder_mode: |-
+  [OC 占位符模式]
+  直接写 OC 占位符，出图时换成完整 tag 组；需要改 OC 设定时请先关闭 OC 占位符设置。search_oc 返回的 tags 也是占位符；不要猜测或展开其内容。

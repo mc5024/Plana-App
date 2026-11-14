@@ -15,15 +15,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/ui/setting_row.dart';
 import '../../generate/prompt_sections.dart' show SectionImport;
 import '../../generate/widgets/common.dart' show dropFocusSoon, hintSnack;
-import '../agent_model.dart'
-    show
-        assistantBotAuthorizedProvider,
-        assistantCapabilitiesProvider,
-        assistantEndpointProvider;
+import '../agent_model.dart' show assistantCapabilitiesProvider;
 import '../assistant_settings.dart';
 import '../application/assistant_controller.dart';
-import '../preset_rules.dart';
+import '../presets/preset_rule.dart';
+import '../presets/rules_library.dart';
 import '../rules_page.dart';
+import '../tools/tool_registry.dart';
+import '../tools/tool_settings.dart';
+import 'tools_sheet.dart';
 import '../../../l10n/l10n.dart';
 
 Future<void> showAssistantSettings(BuildContext context) async {
@@ -47,9 +47,8 @@ class _SettingsSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(assistantSettingsProvider).value;
     final n = ref.read(assistantSettingsProvider.notifier);
-    final authorized = ref.watch(assistantBotAuthorizedProvider);
-    final customEndpoint = ref.watch(assistantEndpointProvider) != null;
     final caps = ref.watch(assistantCapabilitiesProvider);
+    final tools = ref.watch(toolSettingsProvider).value;
     return SettingSheet(
       title: context.l10n.assistantSettings,
       children: [
@@ -139,32 +138,14 @@ class _SettingsSheet extends ConsumerWidget {
                 n.patch((o) => o.copyWith(historyTurns: v.round())),
           ),
           settingSection(context, context.l10n.settingLibrary),
-          SettingChoiceRow<LibraryScope>(
-            icon: Icons.library_books_outlined,
-            title: context.l10n.libraryScope,
-            desc: context.l10n.libraryScopeDesc,
-            value: effectiveLibraryScope(
-              s.libraryScope,
-              botAuthorized: authorized,
-            ),
-            options: LibraryScope.values,
-            labelOf: libraryScopeLabel,
-            optionEnabled: (o) =>
-                libraryScopeAllowed(o, botAuthorized: authorized),
-            optionNote: (o) => libraryScopeAllowed(o, botAuthorized: authorized)
-                ? libraryScopeDesc(o)
-                : context.l10n.notAvailableYet,
-            onChanged: (v) => n.patch((o) => o.copyWith(libraryScope: v)),
-          ),
-          SettingRow(
-            icon: Icons.person_outline,
-            title: context.l10n.ocPlaceholder,
-            desc: customEndpoint
-                ? context.l10n.ocPlaceholderDesc
-                : context.l10n.customEndpointOnly,
-            value: customEndpoint && s.ocPlaceholders,
-            enabled: customEndpoint,
-            onChanged: (v) => n.patch((o) => o.copyWith(ocPlaceholders: v)),
+          SettingNavRow(
+            icon: Icons.handyman_outlined,
+            title: context.l10n.assistantTools,
+            desc: context.l10n.assistantToolsDesc,
+            value: tools == null
+                ? ''
+                : context.l10n.toolsEnabledN(enabledTools(tools).length),
+            onTap: () => showToolsSheet(context),
           ),
           settingSection(context, context.l10n.settingRules),
           SettingNavRow(

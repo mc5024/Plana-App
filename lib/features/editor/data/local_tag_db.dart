@@ -34,6 +34,9 @@ class LocalTagDb {
     }
   }();
 
+  /// 索引本身;读不出来是 null。
+  Future<TagIndex?> get index => _ready;
+
   /// 读进索引并装给注音层 / 词条栏的同步反查([translationOf] / [countOf])。
   /// 开机在 runApp 之前调,从第一帧起就查得到。
   Future<void> install() async {

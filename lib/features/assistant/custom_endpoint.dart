@@ -3,9 +3,7 @@
 /// **存在加密存储里**,因为条目带 API Key —— 与 NAI 令牌同一条规矩
 /// (见 `secure_storage.dart`:读写点一律走共享的那份配置,别自建)。
 ///
-/// 直连那条用的是**规则主体**(与服务端那条同一份,见 `preset_rules.dart`),只是不套
-/// 服务端的外壳;查角色、画风这些**工具仍然走后端**(`/api/agent/tools/call`),
-/// 与 tag 补全同一个路子。没有的是降级阶梯、拒绝重掷、tag 哨兵 —— 跑失败就是失败。
+/// 选了它,整轮在本机跑(见 `runtime/direct_runtime.dart`),报文格式见 `llm/`。
 library;
 
 import 'dart:convert';
