@@ -21,7 +21,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
-import '../assistant_models.dart';
+import '../domain/conversation.dart';
 
 /// 一行文字的行高倍数。**量圆点位置和排文字用的是同一个常数** ——
 /// 分开写的话改了一处另一处就错位,而错位只有一两个像素,肉眼要盯着看才发现。

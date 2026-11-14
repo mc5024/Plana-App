@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../../features/assistant/session_store.dart';
+import '../../features/assistant/application/session_repository.dart';
 import '../../features/editor/data/trans_cache_store.dart';
 import '../../features/gallery/gallery_store.dart';
 import '../../features/gallery/albums/album_store.dart';
@@ -41,8 +41,8 @@ class AppStores {
   /// 画布历史,见 [CanvasHistoryStore]。
   final CanvasHistoryStore history;
 
-  /// AI 助手的对话存档,见 [AssistantStore]。
-  final AssistantStore assistant;
+  /// AI 助手的对话存档,见 [SessionRepository]。
+  final SessionRepository assistant;
 
   /// 非机密设置(主题/生成参数/编辑器…),见 [PrefsStore]。
   final PrefsStore prefs;
@@ -61,7 +61,7 @@ class AppStores {
       workspace,
       GalleryStore(blobs, root),
       KeyLedgerStore(root),
-      AssistantStore(blobs, root),
+      SessionRepository(blobs, root),
       PrefsStore.emptyForTest(root),
       AlbumStore(root),
       CanvasHistoryStore(workspace, root),
@@ -89,7 +89,7 @@ class AppStores {
     final gallery = GalleryStore(blobs, root);
     final albums = AlbumStore(root);
     final ledger = KeyLedgerStore(root);
-    final assistant = AssistantStore(blobs, root);
+    final assistant = SessionRepository(blobs, root);
     final transCache = TransCacheStore(root);
     try {
       await blobs.ensureReady();

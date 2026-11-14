@@ -32,9 +32,11 @@ import '../generate/widgets/common.dart'
 import '../shell/shell_state.dart';
 import 'agent_model.dart';
 import 'assistant_mode.dart';
-import 'assistant_models.dart';
+import 'domain/conversation.dart';
 import 'assistant_settings.dart';
-import 'assistant_state.dart';
+import 'application/assistant_controller.dart';
+import 'application/proposal_service.dart' show canvasHasContent;
+import 'domain/image_model.dart';
 import 'preset_rules.dart' show RulesFamily, rulesFamilyOf;
 import 'widgets/history_sheet.dart';
 import 'widgets/inline_images.dart';
@@ -1261,17 +1263,19 @@ class _MsgTile extends ConsumerWidget {
     );
   }
 
-  /// 失败气泡。
+  /// 失败气泡:原始错误内容 + 复制 / 重试。
   Widget _error(BuildContext context, ColorScheme scheme) {
-    final auth = msg.errorKind == AssistErrorKind.auth;
-    final fg = auth ? scheme.onSurfaceVariant : scheme.onErrorContainer;
+    final fg = scheme.onErrorContainer;
     final retry = onRetry;
+    final buttonStyle = TextButton.styleFrom(
+      foregroundColor: fg,
+      visualDensity: VisualDensity.compact,
+    );
     return Container(
-      padding: EdgeInsets.fromLTRB(14, 12, 14, retry == null ? 12 : 4),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
       decoration: BoxDecoration(
-        color: auth ? scheme.surfaceContainerLow : scheme.errorContainer,
+        color: scheme.errorContainer,
         borderRadius: BorderRadius.circular(16),
-        border: auth ? Border.all(color: scheme.outlineVariant) : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1280,11 +1284,7 @@ class _MsgTile extends ConsumerWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                auth ? Icons.lock_outline : Icons.error_outline,
-                size: 18,
-                color: auth ? scheme.outline : scheme.onErrorContainer,
-              ),
+              Icon(Icons.error_outline, size: 18, color: fg),
               const SizedBox(width: 9),
               Expanded(
                 child: Text(
@@ -1298,19 +1298,24 @@ class _MsgTile extends ConsumerWidget {
               ),
             ],
           ),
-          if (retry != null)
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: retry,
-                icon: const Icon(Icons.refresh, size: 17),
-                label: Text(context.l10n.retry),
-                style: TextButton.styleFrom(
-                  foregroundColor: fg,
-                  visualDensity: VisualDensity.compact,
-                ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton.icon(
+                onPressed: () => copyText(context, msg.text),
+                icon: const Icon(Icons.copy_outlined, size: 16),
+                label: Text(context.l10n.copy),
+                style: buttonStyle,
               ),
-            ),
+              if (retry != null)
+                TextButton.icon(
+                  onPressed: retry,
+                  icon: const Icon(Icons.refresh, size: 17),
+                  label: Text(context.l10n.retry),
+                  style: buttonStyle,
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -1401,7 +1406,7 @@ class _LiveTurn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 从发出那一刻算:这一轮是跟那条提问一起开始的(见 AssistantNotifier.send)
+    // 从发出那一刻算:这一轮是跟那条提问一起开始的(见 AssistantController.send)
     int? since;
     for (final m in state.msgs.reversed) {
       if (m.role == MsgRole.user) {

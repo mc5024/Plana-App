@@ -14,7 +14,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../../../core/theme/app_theme.dart';
 import '../../generate/widgets/common.dart' show hintSnack;
-import '../assistant_models.dart' show DrawProposal, promptTextOf;
+import '../domain/conversation.dart' show DrawProposal, promptTextOf;
 import '../../../l10n/l10n.dart';
 
 /// 复制到剪贴板并给一句回执。

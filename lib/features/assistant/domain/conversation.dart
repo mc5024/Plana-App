@@ -1,36 +1,20 @@
-/// AI 助手的数据模型:一条消息、一次写回、以及撤销要用的两份快照。
+/// AI 助手的对话数据:一条消息、一次写回、以及撤销要用的两份快照。
 ///
-/// 落盘形状即这里的 `toJson`(见 [SessionStore])。用户带的图不进 JSON,
-/// 只存 blob 键 —— 与工作台存档同一条路子。
+/// 落盘形状即这里的 `toJson`(见 [SessionRepository])。用户带的图不进 JSON,
+/// 只存 blob 键 —— 与工作台存档同一条路子。旧存档的字段兼容统一在
+/// [SessionRepository.migrate] 里做,这里只认当前版本。
 library;
 
 import 'dart:convert';
 
-import '../../core/net/backend_client.dart' show AgentCharacter;
-import '../generate/models.dart' show CharacterPrompt, CharTab, PromptSection;
-import '../generate/state_codec.dart' show decodeSections, encodeSections;
-import 'assistant_mode.dart';
-import 'prompt_diff.dart';
-import '../../l10n/l10n.dart';
+import '../../generate/models.dart' show CharacterPrompt, CharTab, PromptSection;
+import '../../generate/state_codec.dart' show decodeSections, encodeSections;
+import '../../../l10n/l10n.dart';
+import '../assistant_mode.dart';
+import '../prompt_diff.dart';
+import 'agent_result.dart';
 
 enum MsgRole { user, ai, error }
-
-/// 失败的种类。决定错误气泡怎么说话、给不给「换个说法」。
-///
-/// 全部四种都**没有写过创作页**。
-enum AssistErrorKind {
-  /// 连不上 / 静默超时。
-  network,
-
-  /// 模型交白卷(服务端 refusal 检测判定为模板化免责声明)。
-  refusal,
-
-  /// 会话失效(401)。要引导去重新绑定账号。
-  auth,
-
-  /// 其余(服务端 5xx、格式异常)。
-  unknown,
-}
 
 /// 一次知识库工具调用。[summary] 空 = 还在跑(只收到 `tool_call`)。
 class ToolTrace {
@@ -461,13 +445,12 @@ class AssistantMsg {
     this.tools = const [],
     this.draw,
     this.change,
-    this.errorKind,
   });
 
   final String id;
   final MsgRole role;
 
-  /// 正文。user = 用户输入;ai = `AgentResult.replyText`;error = 人话错误。
+  /// 正文。user = 用户输入;ai = `AgentResult.replyText`;error = 原始错误内容。
   final String text;
 
   /// UNIX 毫秒。
@@ -530,9 +513,6 @@ class AssistantMsg {
   /// 用户点过「导入」之后才有:那一次写回的记录(含撤销要用的两份快照)。
   final AssistantChange? change;
 
-  /// 仅 [MsgRole.error]。
-  final AssistErrorKind? errorKind;
-
   AssistantMsg copyWith({
     String? text,
     List<ToolTrace>? tools,
@@ -552,7 +532,6 @@ class AssistantMsg {
     tools: tools ?? this.tools,
     draw: draw,
     change: change ?? this.change,
-    errorKind: errorKind,
   );
 
   Map<String, dynamic> toJson() => {
@@ -569,7 +548,6 @@ class AssistantMsg {
     if (tools.isNotEmpty) 'tools': [for (final t in tools) t.toJson()],
     if (draw != null) 'draw': draw!.toJson(),
     if (change != null) 'change': change!.toJson(),
-    if (errorKind != null) 'errorKind': errorKind!.name,
   };
 
   factory AssistantMsg.fromJson(Map<String, dynamic> j) => AssistantMsg(
@@ -580,8 +558,7 @@ class AssistantMsg {
     imageHash: j['imageHash'] as String?,
     withCanvas: j['withCanvas'] == true,
     mode: AssistantMode.values.asNameMap()[j['mode']] ?? AssistantMode.normal,
-    // 「纯文本格式」早先是模式之一,那时存下的消息写的是 mode: noDraw
-    noDraw: j['noDraw'] == true || j['mode'] == 'noDraw',
+    noDraw: j['noDraw'] == true,
     imageIds: [for (final e in (j['imageIds'] as List? ?? const [])) '$e'],
     resources: decodeResources(j['resources']),
     tools: [
@@ -594,7 +571,6 @@ class AssistantMsg {
     change: j['change'] is Map<String, dynamic>
         ? AssistantChange.fromJson(j['change'] as Map<String, dynamic>)
         : null,
-    errorKind: AssistErrorKind.values.asNameMap()[j['errorKind']],
   );
 }
 

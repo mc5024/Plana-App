@@ -24,7 +24,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/util/nai_tokenizer.dart';
-import '../assistant_models.dart';
+import '../domain/conversation.dart';
 import '../prompt_diff.dart';
 import 'proposal_actions.dart';
 import 'proposal_sheet.dart';

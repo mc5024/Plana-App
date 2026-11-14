@@ -10,16 +10,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-import 'package:plana_app/core/net/agent_stream.dart';
+import 'package:plana_app/features/assistant/domain/agent_event.dart';
 import 'package:plana_app/core/store/app_stores.dart';
 import 'package:plana_app/features/assistant/agent_model.dart';
 import 'package:plana_app/features/assistant/agent_trace.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:plana_app/core/net/backend_client.dart' show AgentCharacter;
+import 'package:plana_app/features/assistant/domain/agent_result.dart';
 import 'package:plana_app/features/assistant/assistant_mode.dart';
-import 'package:plana_app/features/assistant/assistant_models.dart';
+import 'package:plana_app/features/assistant/domain/conversation.dart';
 import 'package:plana_app/features/assistant/assistant_settings.dart';
 import 'package:plana_app/features/assistant/custom_endpoint.dart';
 import 'package:plana_app/features/assistant/custom_endpoint_api.dart';
@@ -27,7 +27,10 @@ import 'package:plana_app/features/assistant/direct_agent.dart';
 import 'package:plana_app/features/assistant/local_library.dart';
 import 'package:plana_app/features/assistant/preset_rules.dart';
 import 'package:plana_app/features/assistant/prompt_diff.dart';
-import 'package:plana_app/features/assistant/assistant_state.dart';
+import 'package:plana_app/features/assistant/application/assistant_controller.dart';
+import 'package:plana_app/features/assistant/application/proposal_service.dart';
+import 'package:plana_app/features/assistant/application/session_repository.dart';
+import 'package:plana_app/features/assistant/domain/image_model.dart';
 import 'package:plana_app/features/assistant/widgets/reply_body.dart';
 import 'package:plana_app/features/generate/generate_state.dart';
 import 'package:plana_app/features/inspiration/codex/codex_char_split.dart';
@@ -1099,14 +1102,38 @@ void main() {
       expect((back.mode, back.noDraw), (AssistantMode.comic, true));
       const off = AssistantMsg(id: 'a2', role: MsgRole.ai, text: 'x', at: 1);
       expect(off.toJson().containsKey('noDraw'), isFalse);
-      final legacy = AssistantMsg.fromJson(const {
-        'id': 'u3',
-        'role': 'user',
-        'text': 'x',
-        'at': 1,
-        'mode': 'noDraw',
+      final migrated = SessionRepository.migrate({
+        'v': 1,
+        'current': [
+          {'id': 'u3', 'role': 'user', 'text': 'x', 'at': 1, 'mode': 'noDraw'},
+        ],
+        'sessions': [
+          {
+            'id': 7,
+            'at': 1,
+            'msgs': [
+              {
+                'id': 'e1',
+                'role': 'error',
+                'text': 'boom',
+                'at': 1,
+                'errorKind': 'network',
+              },
+            ],
+          },
+        ],
       });
+      expect(migrated['v'], SessionRepository.schemaVersion);
+      final legacy = AssistantMsg.fromJson(
+        (migrated['current'] as List).single as Map<String, dynamic>,
+      );
       expect((legacy.mode, legacy.noDraw), (AssistantMode.normal, true));
+      final err =
+          ((migrated['sessions'] as List).single as Map)['msgs'] as List;
+      expect((err.single as Map).containsKey('errorKind'), isFalse);
+      // 已是当前版本的原样返回
+      final current = {'v': SessionRepository.schemaVersion, 'current': []};
+      expect(identical(SessionRepository.migrate(current), current), isTrue);
     });
 
     test('开新对话回到正常', () async {

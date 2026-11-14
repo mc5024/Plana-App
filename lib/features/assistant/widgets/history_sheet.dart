@@ -8,8 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../generate/widgets/common.dart' show confirmDialog, dropFocusSoon;
-import '../assistant_models.dart';
-import '../assistant_state.dart';
+import '../domain/conversation.dart';
+import '../application/assistant_controller.dart';
 import '../../../l10n/l10n.dart';
 
 Future<void> showHistorySheet(BuildContext context) async {

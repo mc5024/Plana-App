@@ -27,8 +27,8 @@ import '../../generate/gen_jobs.dart' show GenJob;
 import '../../generate/generation_controller.dart' show generationProvider;
 import '../../generate/widgets/common.dart' show StripeThumb;
 import '../../shell/shell_state.dart';
-import '../assistant_models.dart';
-import '../assistant_state.dart';
+import '../domain/conversation.dart';
+import '../application/assistant_controller.dart';
 import '../../../l10n/l10n.dart';
 
 /// 单张最高多少。宽度撑满对话区,超过这个高度的竖图按高度回算宽度 ——

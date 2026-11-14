@@ -3,26 +3,26 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import '../../core/store/atomic_file.dart';
-import '../../core/store/blob_store.dart';
-import '../../core/util/log.dart';
-import 'agent_trace.dart';
-import 'assistant_models.dart';
+import '../../../core/store/atomic_file.dart';
+import '../../../core/store/blob_store.dart';
+import '../../../core/util/log.dart';
+import '../agent_trace.dart';
+import '../domain/conversation.dart';
 
 /// AI 助手的对话存档(`<support>/assistant/sessions.json`):当前这段对话 +
-/// 已归档的历史。范式同 [WorkspaceStore](workspace_store.dart) —— 防抖 800ms
-/// 写、原子落盘、退后台由 `AppStores.flushNow` 即刻冲刷。
+/// 已归档的历史。防抖 800ms 写、原子落盘、退后台由 `AppStores.flushNow` 即刻冲刷。
 ///
-/// **不用 [PrefsStore]**:那边是「整个 map 全量重写」的小设置仓,对话历史会把它撑爆。
-///
-/// 用户带的图不进 JSON,只留 blob 键 —— 所以 [liveRefs] **必须**接进
-/// `AppStores.postBootMaintenance` 的 GC 引用清单,否则启动第 6 秒图就被回收了。
-class AssistantStore {
-  AssistantStore(this._blobs, Directory supportRoot)
+/// 用户带的图不进 JSON,只留 blob 键 —— 所以 [liveRefs] 必须接进
+/// `AppStores.postBootMaintenance` 的 GC 引用清单。
+class SessionRepository {
+  SessionRepository(this._blobs, Directory supportRoot)
     : _file = File('${supportRoot.path}/assistant/sessions.json');
 
   final BlobStore _blobs;
   final File _file;
+
+  /// 存档格式版本。读到更低的先过 [migrate]。
+  static const schemaVersion = 2;
 
   /// 启动读出的当前对话;空 = 首启/无存档。
   List<AssistantMsg> initialCurrent = const [];
@@ -30,7 +30,7 @@ class AssistantStore {
   /// 启动读出的历史会话(新的在前)。
   List<ArchivedSession> initialSessions = const [];
 
-  /// 历史最多留这么多段。再多的意义不大,而每段都带两份快照。
+  /// 历史最多留这么多段。
   static const maxSessions = 30;
 
   /// 启动读出的调试记录(当前对话的每一轮,见 [AgentTrace])。
@@ -39,16 +39,50 @@ class AssistantStore {
   /// 调试记录最多留这么多轮。自定义接口那条一轮带着整份系统提示,几十 KB。
   static const maxTraces = 30;
 
-  /// 调试记录单独一个文件(`traces.json`):它只给导出用,和对话存档搅在一起的话,
-  /// 每改一个字就得把几百 KB 的记录重写一遍。
+  /// 调试记录单独一个文件,免得每改一个字就把几百 KB 的记录重写一遍。
   File get _traceFile => File('${_file.parent.path}/traces.json');
+
+  /// 旧版存档 → 当前版本。
+  ///
+  /// v1 → v2:「纯文本格式」曾是模式之一,消息上写的是 `mode: noDraw`,改记成 `noDraw: true`;
+  /// 错误消息上的 `errorKind` 不再使用。
+  static Map<String, dynamic> migrate(Map<String, dynamic> j) {
+    final v = (j['v'] as num?)?.toInt() ?? 1;
+    if (v >= schemaVersion) return j;
+    Object? msg(Object? m) {
+      if (m is! Map<String, dynamic>) return m;
+      final out = {...m}..remove('errorKind');
+      if (out['mode'] == 'noDraw') {
+        out
+          ..remove('mode')
+          ..['noDraw'] = true;
+      }
+      return out;
+    }
+
+    List<Object?> msgs(Object? l) => [
+      if (l is List)
+        for (final m in l) msg(m),
+    ];
+    return {
+      ...j,
+      'v': schemaVersion,
+      'current': msgs(j['current']),
+      'sessions': [
+        if (j['sessions'] is List)
+          for (final s in j['sessions'] as List)
+            s is Map<String, dynamic> ? {...s, 'msgs': msgs(s['msgs'])} : s,
+      ],
+    };
+  }
 
   Future<void> load() async {
     initialTraces = await _loadTraces();
     try {
       if (!await _file.exists()) return;
-      final j = jsonDecode(await _file.readAsString());
-      if (j is! Map<String, dynamic>) return;
+      final raw = jsonDecode(await _file.readAsString());
+      if (raw is! Map<String, dynamic>) return;
+      final j = migrate(raw);
       initialCurrent = [
         for (final e in (j['current'] as List? ?? const []))
           if (e is Map<String, dynamic>) AssistantMsg.fromJson(e),
@@ -139,7 +173,7 @@ class AssistantStore {
         await writeStringAtomic(
           _file,
           jsonEncode({
-            'v': 1,
+            'v': schemaVersion,
             'refs': _refsOf(cur, ses).toList(),
             'current': [for (final m in cur) m.toJson()],
             'sessions': [for (final s in ses) s.toJson()],

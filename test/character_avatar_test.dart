@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:plana_app/core/store/app_stores.dart';
-import 'package:plana_app/features/assistant/assistant_models.dart';
+import 'package:plana_app/features/assistant/domain/conversation.dart';
 import 'package:plana_app/features/generate/generate_state.dart';
 import 'package:plana_app/features/generate/models.dart';
 import 'package:plana_app/features/generate/state_codec.dart';

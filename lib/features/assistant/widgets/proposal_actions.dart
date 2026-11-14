@@ -25,8 +25,8 @@ import '../../generate/vibe_encoder.dart';
 import '../../generate/widgets/bottom_action_bar.dart' show CostPill;
 import '../../generate/widgets/common.dart'
     show confirmDialog, dropFocusSoon, hintSnack;
-import '../assistant_models.dart';
-import '../assistant_state.dart';
+import '../domain/conversation.dart';
+import '../application/assistant_controller.dart';
 import '../../../l10n/l10n.dart';
 
 class ProposalActions extends ConsumerWidget {

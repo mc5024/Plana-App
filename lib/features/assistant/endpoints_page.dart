@@ -18,7 +18,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/net/backend_client.dart' show BackendException;
 import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/util/haptics.dart';
@@ -681,8 +680,6 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
               : context.l10n.connOk(secs),
         ),
       );
-    } on BackendException catch (e) {
-      if (mounted) _fail(e.message);
     } catch (e) {
       if (mounted) _fail('$e');
     } finally {

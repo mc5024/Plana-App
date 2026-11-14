@@ -3,7 +3,7 @@
 ///
 /// **下游一个字都不用改**:结果卡、导入、生成、内联出图只认这几个事件和
 /// [AgentResult],不知道字节是从 Plana 后端来的还是从用户自己的模型来的。
-/// (逐字显示的 [AgentDelta] 目前只有这条发 —— 服务端那条还没开流,见 agent_stream。)
+/// (逐字显示的 [AgentDelta] 目前只有这条发 —— 服务端那条还没开流,见 runtime/backend_runtime.dart。)
 ///
 /// 三件事和服务端那条对齐,不能自己另发明一套:
 ///   · **提示词**用规则主体([PresetRule]),与服务端那条是同一份:自定义过就用自定义的,
@@ -28,13 +28,13 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
-import '../../core/net/agent_stream.dart';
-import '../../core/net/backend_client.dart';
 import '../../core/util/image_ops.dart' show styleRefResizeJpg;
 import 'agent_trace.dart';
-import 'assistant_models.dart' show decodeResources;
+import 'domain/conversation.dart' show decodeResources;
 import 'assistant_settings.dart';
 import 'custom_endpoint.dart';
+import 'domain/agent_event.dart';
+import 'domain/agent_result.dart';
 import 'local_library.dart';
 import 'preset_rules.dart';
 import '../../l10n/l10n.dart';
@@ -355,7 +355,7 @@ Stream<AgentEvent> streamDirectPrompt({
         yield d;
       }
       final raw = buf.toString();
-      if (raw.trim().isEmpty) throw BackendException(l10nNow.modelEmptyReply);
+      if (raw.trim().isEmpty) throw AgentFailure(l10nNow.modelEmptyReply);
       final hopRec = <String, Object?>{
         't': hopStart,
         'ms': (trace?.sinceStart() ?? 0) - hopStart,
@@ -661,7 +661,7 @@ Future<Object?> _serverTool(
   ({String name, Map<String, dynamic> args}) call,
   String libraryScope,
 ) async {
-  if (base.isEmpty) throw BackendException('没有后端地址,查不了资料');
+  if (base.isEmpty) throw AgentFailure('没有后端地址,查不了资料');
   final r = await c
       .post(
         Uri.parse('$base/api/agent/tools/call'),
@@ -673,12 +673,11 @@ Future<Object?> _serverTool(
         }),
       )
       .timeout(const Duration(seconds: 30));
-  final j = jsonDecode(utf8.decode(r.bodyBytes));
+  final body = utf8.decode(r.bodyBytes);
   if (r.statusCode < 200 || r.statusCode >= 300) {
-    final detail =
-        (j is Map ? j['detail']?.toString() : null) ?? '${r.statusCode}';
-    throw BackendException(detail);
+    throw AgentFailure.http(r.statusCode, body);
   }
+  final j = jsonDecode(body);
   return j is Map ? j['result'] : null;
 }
 
@@ -732,7 +731,7 @@ Stream<AgentDelta> directModelStream(
     )
     ..bodyBytes = utf8.encode(jsonEncode(body));
 
-  final noReply = BackendException(
+  final noReply = AgentFailure(
     l10nNow.modelNoReplyIn('${timeout?.inSeconds}'),
   );
   Future<T> limited<T>(Future<T> f) async {
@@ -750,15 +749,14 @@ Stream<AgentDelta> directModelStream(
   final http.StreamedResponse resp;
   try {
     resp = await limited(c.send(req));
-  } on BackendException {
+  } on AgentFailure {
     rethrow;
-  } catch (_) {
-    throw BackendException(l10nNow.cantConnectHost(uri.host));
+  } catch (e) {
+    throw AgentFailure('$e');
   }
 
   if (resp.statusCode < 200 || resp.statusCode >= 300) {
-    final raw = await readAll(resp);
-    throw BackendException(_errorOf(_tryJson(raw), resp.statusCode));
+    throw AgentFailure.http(resp.statusCode, await readAll(resp));
   }
   final Stream<String> lines;
   if (stream &&
@@ -794,9 +792,7 @@ Stream<AgentDelta> directModelStream(
     if (data.isEmpty || data == '[DONE]') continue;
     final frame = _tryJson(data);
     // Claude 的报错是流中间的一帧,不是 HTTP 状态码
-    if (frame is Map && frame['type'] == 'error') {
-      throw BackendException(_errorOf(frame, resp.statusCode));
-    }
+    if (frame is Map && frame['type'] == 'error') throw AgentFailure(data);
     final d = directDelta(e.format, frame);
     if (d.text.isEmpty && d.reasoning.isEmpty) continue;
     out.write(d.text);
@@ -1149,7 +1145,7 @@ String? thinkLevelNote(CustomEndpoint e, ThinkLevel level) {
 }
 
 /// 发一条最短的对话,确认地址、Key、模型、格式对得上。成功返回用时;
-/// 失败抛 [BackendException],消息是给用户看的原话。测试等两分钟为止。
+/// 失败抛 [AgentFailure],内容是原始错误。测试等两分钟为止。
 Future<Duration> testEndpoint(CustomEndpoint e, {http.Client? client}) async {
   final own = client == null;
   final c = client ?? http.Client();
@@ -1167,7 +1163,7 @@ Future<Duration> testEndpoint(CustomEndpoint e, {http.Client? client}) async {
       stream: false,
     ).drain<void>();
     if (out.toString().trim().isEmpty) {
-      throw BackendException(l10nNow.replyUnreadable);
+      throw AgentFailure(l10nNow.replyUnreadable);
     }
     return sw.elapsed;
   } finally {
@@ -1211,17 +1207,3 @@ String extractReplyText(AgentApiFormat format, Object? body) {
   }
 }
 
-/// 错误体 → 给用户看的一句话。三家都把话装在 `error` 里,但形状不同。
-String _errorOf(Object? body, int status) {
-  if (body is Map) {
-    final err = body['error'];
-    if (err is Map) {
-      final m = err['message']?.toString();
-      if (m != null && m.isNotEmpty) return m;
-    }
-    if (err is String && err.isNotEmpty) return err;
-    final m = body['message']?.toString();
-    if (m != null && m.isNotEmpty) return m;
-  }
-  return l10nNow.modelReturned('$status');
-}

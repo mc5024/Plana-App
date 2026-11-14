@@ -20,7 +20,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../generate/char_position.dart' show positionChipLabel;
 import '../../generate/widgets/common.dart' show dropFocusSoon;
 import '../../inspiration/widgets/prompt_chips.dart';
-import '../assistant_models.dart' show AssistantMsg;
+import '../domain/conversation.dart' show AssistantMsg;
 import '../prompt_diff.dart';
 import 'proposal_actions.dart';
 import 'tag_diff.dart';

@@ -18,7 +18,7 @@ import '../../generate/widgets/common.dart' show dropFocusSoon, hintSnack;
 import '../agent_model.dart'
     show assistantBotAuthorizedProvider, assistantEndpointProvider;
 import '../assistant_settings.dart';
-import '../assistant_state.dart';
+import '../application/assistant_controller.dart';
 import '../preset_rules.dart';
 import '../rules_page.dart';
 import '../../../l10n/l10n.dart';

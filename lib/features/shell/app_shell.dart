@@ -16,7 +16,7 @@ import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_settings.dart';
 import '../assistant/assistant_page.dart';
-import '../assistant/assistant_state.dart';
+import '../assistant/application/assistant_controller.dart';
 import '../gallery/gallery_page.dart';
 import '../gallery/gallery_state.dart';
 import '../gallery/albums/album_models.dart';

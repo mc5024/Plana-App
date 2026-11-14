@@ -9,8 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-import 'package:plana_app/core/net/agent_stream.dart';
-import 'package:plana_app/core/net/backend_client.dart';
+import 'package:plana_app/features/assistant/domain/agent_event.dart';
 import 'package:plana_app/features/assistant/assistant_settings.dart';
 import 'package:plana_app/features/assistant/custom_endpoint.dart';
 import 'package:plana_app/features/assistant/direct_agent.dart';
@@ -345,18 +344,21 @@ void main() {
       expect(uri.queryParameters['alt'], isNull);
     });
 
-    test('HTTP 错误体:把上游的话原样报出来', () async {
+    test('HTTP 错误:状态码 + 响应原文,不改写', () async {
+      final body = jsonEncode({
+        'error': {'message': '额度不足'},
+      });
       final c = _streamingClient(
-        jsonEncode({
-          'error': {'message': '额度不足'},
-        }),
+        body,
         contentType: 'application/json',
         status: 429,
       );
       await expectLater(
         _run(c, _ep(AgentApiFormat.openai)),
         throwsA(
-          isA<BackendException>().having((e) => e.message, 'message', '额度不足'),
+          isA<AgentFailure>()
+              .having((e) => e.status, 'status', 429)
+              .having((e) => e.message, 'message', 'HTTP 429\n$body'),
         ),
       );
     });
@@ -371,7 +373,11 @@ void main() {
       await expectLater(
         _run(c, _ep(AgentApiFormat.anthropic)),
         throwsA(
-          isA<BackendException>().having((e) => e.message, 'message', '上游过载'),
+          isA<AgentFailure>().having(
+            (e) => e.message,
+            'message',
+            '{"type":"error","error":{"message":"上游过载"}}',
+          ),
         ),
       );
     });
