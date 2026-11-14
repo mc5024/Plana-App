@@ -1392,6 +1392,17 @@ void main() {
       expect(matchArtists('画一张风景', single), isEmpty);
     });
 
+    test('编号只认整段:A12 不带出 A1,三位编号也认', () {
+      final coded = libArtistsOf([
+        {'id': 'A1', 'name': 'A1', 'prompt': 'artist:a'},
+        {'id': 'A10', 'name': 'A10', 'prompt': 'artist:b'},
+        {'id': 'A12', 'name': 'A12', 'prompt': 'artist:c'},
+        {'id': 'A105', 'name': 'A105', 'prompt': 'artist:d'},
+      ]);
+      expect(matchArtists('用 A12 画', coded), [('A12', 'artist:c')]);
+      expect(matchArtists('a105 那个', coded), [('A105', 'artist:d')]);
+    });
+
     test('OC 认中文名、别名和去掉 OC_ 的键名,命中的名字越长越靠前', () {
       expect(matchOcs('阿纺、小小纺和 deep seek', ocs), [
         ('DeepSeek', 'blue hair'),

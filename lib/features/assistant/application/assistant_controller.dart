@@ -21,6 +21,8 @@ import '../../../l10n/l10n.dart';
 import '../../generate/canvas_state.dart';
 import '../../generate/generate_state.dart';
 import '../../generate/models.dart' show GenerateState;
+import '../../inspiration/public_tags.dart'
+    show mergeMineTags, publicTagsProvider;
 import '../../inspiration/tag_library.dart';
 import '../../inspiration/tag_models.dart';
 import '../agent_model.dart';
@@ -153,6 +155,9 @@ final assistantProvider = NotifierProvider<AssistantController, AssistantState>(
 
 /// 历史里保留 `nai_draw` 围栏的 AI 轮数(见 [historyFenceIds])。
 const _keepFences = 2;
+
+/// 发一轮时等公共库列表(我发布的画风 / OC)最多多久,过了这轮只用本机条目。
+const _publicLibraryWait = Duration(seconds: 5);
 
 class AssistantController extends Notifier<AssistantState> {
   StreamSubscription<AgentEvent>? _sub;
@@ -293,9 +298,12 @@ class AssistantController extends Notifier<AssistantState> {
     return recentTurns(out, assistantSettingsOf(ref).historyTurns);
   }
 
-  /// 用户自己那份画师串 / OC(灵感页的库)。
+  /// 用户自己那份画师串 / OC,和灵感页「我的」同一份:本机条目 + 公共库里我发布、
+  /// 本机没副本的(见 [mergeMineTags])。
   ///
   /// 要 await:灵感页没打开过时 provider 还没读盘,同步取到的是 null。
+  /// 公共库列表灵感页拉过就用现成的,没拉过最多等 [_publicLibraryWait];
+  /// 没授权、拉不到就只用本机条目。
   Future<({List<Map<String, dynamic>> artists, List<Map<String, dynamic>> ocs})>
   _webLibrary() async {
     TagLibraryState? lib;
@@ -310,16 +318,36 @@ class AssistantController extends Notifier<AssistantState> {
         ocs: const <Map<String, dynamic>>[],
       );
     }
+    final local = lib;
+    String? myId;
+    try {
+      myId = (await ref.read(botSessionProvider.future))?.botUserId;
+    } catch (_) {}
+    Future<List<TagEntry>> mine(TagCategory c) async {
+      List<TagEntry>? pub;
+      if (myId != null) {
+        try {
+          pub = await ref
+              .read(publicTagsProvider(c).future)
+              .timeout(_publicLibraryWait);
+        } catch (_) {}
+      }
+      return mergeMineTags(local.of(c), myId, pub);
+    }
+
+    final (artists, ocs) = await (
+      mine(TagCategory.artist),
+      mine(TagCategory.character),
+    ).wait;
     return (
       artists: [
-        for (final e in lib.entries)
-          if (e.category == TagCategory.artist && e.positive.trim().isNotEmpty)
+        for (final e in artists)
+          if (e.positive.trim().isNotEmpty)
             {'id': e.name, 'name': e.name, 'prompt': e.positive},
       ],
       ocs: [
-        for (final e in lib.entries)
-          if (e.category == TagCategory.character &&
-              e.positive.trim().isNotEmpty)
+        for (final e in ocs)
+          if (e.positive.trim().isNotEmpty)
             {
               // 没发布过的本地 OC 没有 en_name,拿本地 id 顶上(只当键用)
               'en_name': e.publicId ?? e.id,

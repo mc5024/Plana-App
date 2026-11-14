@@ -126,14 +126,18 @@ List<LibOc> libOcsOf(List<Map<String, dynamic>> raw) {
 
 // ---- 字面匹配(预取用) ----
 
-final _artistIdRe = RegExp(r'(?<![A-Za-z])([A-Za-z])(\d{1,2})(?!\d)');
+final _artistIdRe = RegExp(r'(?<![A-Za-z])([A-Za-z])(\d+)');
+
+/// 编号形状的名字(A1、b12)。
+final _artistIdShape = RegExp(r'^[A-Za-z]\d+$');
 
 /// 一块最多几条。
 const kBlockMax = 10;
 
 /// 这句话点到的画师串 → [(块里的名字, 完整串)],按块里的顺序。
 ///
-/// 两条路:编号(A1 / b12)、名字(规范化后至少 2 个字,越长越靠前)。最多 10 条。
+/// 两条路:编号(A1 / b12)、名字(规范化后至少 2 个字,越长越靠前)。编号形状的名字
+/// 只走编号那条,「A12」里不会再撞出 A1。最多 10 条。
 List<(String, String)> matchArtists(String text, List<LibArtist> artists) {
   final out = <(String, String)>[];
   final seen = <String>{};
@@ -149,7 +153,11 @@ List<(String, String)> matchArtists(String text, List<LibArtist> artists) {
   final textNorm = normalizeName(text);
   final byName = <(int, String, String)>[];
   for (final a in artists) {
-    if (a.name.isEmpty || seen.contains(a.label.toUpperCase())) continue;
+    if (a.name.isEmpty ||
+        _artistIdShape.hasMatch(a.name.trim()) ||
+        seen.contains(a.label.toUpperCase())) {
+      continue;
+    }
     final n = normalizeName(a.name);
     if (nameLength(n) < 2 || !textNorm.contains(n)) continue;
     seen.add(a.label.toUpperCase());
