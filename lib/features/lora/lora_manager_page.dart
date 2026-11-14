@@ -16,6 +16,7 @@ import 'lora_providers.dart';
 import 'lora_stack_ui.dart';
 import 'lora_stacks.dart';
 import 'lora_upload_sheet.dart';
+import 'lora_upload_task.dart';
 
 /// LoRA 管理器(anima / krea 出图渠道,结构对齐 web LoraManagerModal):
 /// 我的(我下载过的 + 我上传的,🗑=移出;无人拥有的 web 条目由后端回收)
@@ -75,7 +76,7 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
 
   // 上传自己的 LoRA:0~100 = 本机→server 的百分比,null = 没在传。
   // 传输跑在本页而不是上传面板里,面板关掉、切 tab 都不打断。
-  int? _uploadPct;
+  void Function()? _dropUploadHandler;
 
   /// server→机房的推送轮询,按 LR 编号一条一个(重进本页会给自己那些
   /// 还在推的条目重新接上)。
@@ -155,6 +156,10 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
         _runSearch(reset: false);
       }
     });
+    // 后台上传结束时本页开着:由本页替用户选上并提示(生成页卡片就不再提示)
+    _dropUploadHandler = ref
+        .read(loraUploadTaskProvider.notifier)
+        .onFinished(_onUploadFinished);
     // 全集不在这儿拉:provider 常驻,首次 watch 才发请求,之后重开直接命中。
     // 但常驻也意味着重开时不会再触发 ref.listen —— 手上这份已有的值要自己看一眼
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -165,6 +170,7 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
 
   @override
   void dispose() {
+    _dropUploadHandler?.call();
     _searchDebounce?.cancel();
     for (final t in [..._pushTimers.values, ..._installTimers.values]) {
       t.cancel();
@@ -357,8 +363,8 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
 
   // ---- 上传自己的 LoRA ----
 
-  /// 选文件填表 → 传给 server(它校验完只登记就返回,推进机房是它的后台活)。
-  /// 所以传完不算完:拿到编号后接着 [_watchPush] 盯推送,synced 才是能挂载。
+  /// 选文件填表 → 交给后台上传任务就返回([loraUploadTaskProvider]):传输和之后
+  /// 盯推送都不在本页,退出去出图也不断;结束时 [_onUploadFinished] 接。
   Future<void> _startUpload() async {
     final draft = await showLoraUploadSheet(context);
     if (draft == null || !mounted) return;
@@ -368,52 +374,49 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
       hintSnack(context, '暂未开放');
       return;
     }
-    setState(() => _uploadPct = 0);
-    try {
-      final r = await ref
-          .read(backendClientProvider)
-          .uploadLora(
-            sessionId: sid,
-            filePath: draft.path,
-            fileName: draft.fileName,
-            fileSize: draft.size,
-            displayName: draft.displayName,
-            triggerGroups: draft.triggerGroups,
-            type: draft.type,
-            public: draft.public,
-            base: _base, // 决定文件落 Volume 的哪个子目录 → 之后能被哪个渠道挂载
-            onProgress: (p) {
-              // 每块都回调(几百兆能有几千次),整数百分比不变就不重建
-              final v = (p * 100).clamp(0, 100).round();
-              if (!mounted || v == _uploadPct) return;
-              setState(() => _uploadPct = v);
-            },
-          );
-      if (!mounted) return;
-      if (!r.ok) {
-        hintSnack(context, r.message.isEmpty ? '上传失败' : r.message);
-        return;
-      }
-      await _loadInstalled();
-      final id = r.lrId;
-      if (!mounted || id == null) return;
-      if (r.dedup) {
-        // 同一个文件机房里已经有了,后端没重复存,直接给收藏了
-        final ok = _autoSelect(id);
-        hintSnack(
-          context,
-          r.message.isEmpty ? '该文件已在库中,已为你收藏' : r.message,
-          icon: ok ? Icons.check : Icons.info_outline,
+    final started = ref
+        .read(loraUploadTaskProvider.notifier)
+        .start(
+          sessionId: sid,
+          filePath: draft.path,
+          fileName: draft.fileName,
+          fileSize: draft.size,
+          displayName: draft.displayName,
+          triggerGroups: draft.triggerGroups,
+          type: draft.type,
+          public: draft.public,
+          base: _base, // 决定文件落 Volume 的哪个子目录 → 之后能被哪个渠道挂载
         );
-      } else {
-        hintSnack(context, '已接收,正在推送到机房…', icon: Icons.cloud_upload_outlined);
-        _watchPush(id);
-      }
-    } catch (e) {
-      if (mounted) hintSnack(context, '$e');
-    } finally {
-      if (mounted) setState(() => _uploadPct = null);
+    hintSnack(
+      context,
+      started ? '开始上传,可以返回继续出图,传完会提示' : '已经有 LoRA 在上传了,等它传完再传下一个',
+      icon: started ? Icons.cloud_upload_outlined : Icons.info_outline,
+    );
+  }
+
+  /// 后台上传有了结论、本页还开着:替用户选上(同底模才选)并提示。返回 true = 接走了。
+  bool _onUploadFinished(LoraUploadOutcome o) {
+    if (!mounted) return false;
+    final id = o.lrId;
+    if (!o.ok) {
+      hintSnack(context, '「${o.name}」${o.message}', icon: Icons.cloud_off);
+      return true;
     }
+    final ok = id != null && o.base == _base && _autoSelect(id);
+    if (o.dedup) {
+      hintSnack(
+        context,
+        o.message.isEmpty ? '该文件已在库中,已为你收藏' : o.message,
+        icon: ok ? Icons.check : Icons.info_outline,
+      );
+    } else {
+      hintSnack(
+        context,
+        ok ? '「${o.name}」已就绪并选中,点「确认挂载」生效' : '「${o.name}」已就绪',
+        icon: Icons.check,
+      );
+    }
+    return true;
   }
 
   /// 盯 server→机房的推送(3s 一问,对齐 web)。就绪→刷新列表并替用户选上;
@@ -910,11 +913,11 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
   }
 
   /// 上传入口。传输期间整条按钮变成进度条(从左往右填),不另占位置 ——
-  /// 传输跑在本页,面板关掉、切 tab 都还看得见它走到哪了。
+  /// 传输跑在后台任务上,退出本页再回来也接得上进度。
   Widget _uploadEntry() {
     final scheme = context.scheme;
-    final pct = _uploadPct;
-    if (pct == null) {
+    final job = ref.watch(loraUploadTaskProvider);
+    if (job == null) {
       return OutlinedButton.icon(
         onPressed: _startUpload,
         icon: const Icon(Icons.upload_file, size: 18),
@@ -929,7 +932,8 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
     }
     // 100% 之后还要等服务端算完整份文件的 SHA 才回执,那段没进度可报:
     // 条填满不动,换个转圈告诉用户还没完
-    final verifying = pct >= 100;
+    final pct = job.pct;
+    final verifying = job.phase != LoraUploadPhase.sending;
     return Container(
       height: _kUploadBarHeight,
       clipBehavior: Clip.antiAlias,
@@ -964,7 +968,11 @@ class _LoraManagerPageState extends ConsumerState<LoraManagerPage>
                   Icon(Icons.upload_file, size: 18, color: scheme.primary),
                 const SizedBox(width: 8),
                 Text(
-                  verifying ? '校验中…' : '上传中 $pct%',
+                  switch (job.phase) {
+                    LoraUploadPhase.sending => '上传中 $pct%,可以返回继续出图',
+                    LoraUploadPhase.verifying => '校验中…',
+                    LoraUploadPhase.pushing => '推送机房中…',
+                  },
                   style: context.texts.labelLarge!.copyWith(
                     color: scheme.primary,
                     fontWeight: FontWeight.w600,
