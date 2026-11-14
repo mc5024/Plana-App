@@ -8464,6 +8464,24 @@ abstract class AppLocalizations {
   /// **'模型回了一段空的'**
   String get modelEmptyReply;
 
+  /// No description provided for @backendUnset.
+  ///
+  /// In zh, this message translates to:
+  /// **'未配置后端地址'**
+  String get backendUnset;
+
+  /// No description provided for @noDataIn.
+  ///
+  /// In zh, this message translates to:
+  /// **'{secs} 秒内没有收到数据'**
+  String noDataIn(String secs);
+
+  /// No description provided for @channelEndedEarly.
+  ///
+  /// In zh, this message translates to:
+  /// **'连接在收到结果前结束了'**
+  String get channelEndedEarly;
+
   /// No description provided for @modelBadDraw.
   ///
   /// In zh, this message translates to:

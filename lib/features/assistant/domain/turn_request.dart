@@ -28,7 +28,6 @@ class AgentTurnRequest {
     required this.imageModel,
     this.image,
     this.history = const [],
-    this.historyTurns = 20,
     this.canvas,
     this.customRules,
     this.modeKeys = const [],
@@ -38,7 +37,6 @@ class AgentTurnRequest {
     this.resources = const {},
     this.think = ThinkLevel.auto,
     this.stream = true,
-    this.backendModel = '',
   });
 
   final String userText;
@@ -46,9 +44,8 @@ class AgentTurnRequest {
   /// 用户这轮附的图(原始字节)。
   final Uint8List? image;
 
-  /// 已完成回合的历史 `[{role, content}]`,已按 [historyTurns] 截好。
+  /// 已完成回合的历史 `[{role, content}]`,已按上下文轮数截好。
   final List<Map<String, String>> history;
-  final int historyTurns;
 
   /// null = 这轮不给画布。
   final CanvasSnapshot? canvas;
@@ -75,7 +72,4 @@ class AgentTurnRequest {
 
   final ThinkLevel think;
   final bool stream;
-
-  /// 后端渠道 key;空串 = 后端的全局默认。只有后端那条用。
-  final String backendModel;
 }

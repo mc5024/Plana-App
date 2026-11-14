@@ -19,11 +19,15 @@ class LlmRequest {
     required this.system,
     required this.messages,
     this.think = ThinkLevel.auto,
+    this.turnStart = 0,
   });
 
   final String system;
   final List<LlmMessage> messages;
   final ThinkLevel think;
+
+  /// `messages[turnStart]` 是本轮的用户消息,前面是历史,后面是这一轮里的工具往返与回灌。
+  final int turnStart;
 }
 
 /// 模型支持什么。界面按它置灰对应的设置。

@@ -5223,6 +5223,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get modelEmptyReply => 'The model returned an empty reply';
 
   @override
+  String get backendUnset => 'No backend address is set';
+
+  @override
+  String noDataIn(String secs) {
+    return 'No data received within $secs s';
+  }
+
+  @override
+  String get channelEndedEarly =>
+      'The connection closed before the reply arrived';
+
+  @override
   String modelBadDraw(String count) {
     return 'The draw block was still malformed after $count rewrites. The model\'s last reply:';
   }

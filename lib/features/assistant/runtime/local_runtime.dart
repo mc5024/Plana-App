@@ -1,5 +1,6 @@
-/// 自定义接口那条:在本机跑 agent 循环。规则、工具、资料、占位符、账本全在手机上做;
-/// 只有工具的联网来源(语义搜词、Wiki 摘要)会请求后端的 `/api/tags/*`。
+/// 在本机跑 agent 循环:规则、工具、资料、占位符、账本、回复解析与重试全在手机上做。
+/// 模型经 [LlmProvider]:自定义接口直连,后端模型经后端的模型通道。工具的联网来源
+/// (语义搜词、Wiki 摘要、角色候选筛选)请求后端的公开接口。
 ///
 /// 一轮最多尝试几次,每次都和上一次真的不一样:原样 → 剥图 → 再剥预取资料块(有什么剥什么,
 /// 至少重掷一次)。一次尝试里,工具结果和写坏的出图块回灌给模型接着跑;回复像拒绝就原地重掷。
@@ -49,9 +50,10 @@ const _maxRerolls = 2;
 /// 降级动作,按代价从小到大;第 n 次尝试叠加前 n-1 个。
 enum _Degrade { image, prefetch }
 
-class DirectAgentRuntime implements AgentRuntime {
-  DirectAgentRuntime({
+class LocalAgentRuntime implements AgentRuntime {
+  LocalAgentRuntime({
     required this.provider,
+    this.route = AgentTrace.routeCustom,
     this.offline,
     this.online,
     this.tools = kAgentTools,
@@ -59,6 +61,9 @@ class DirectAgentRuntime implements AgentRuntime {
   });
 
   final LlmProvider provider;
+
+  @override
+  final String route;
 
   /// 离线词库;null = 读不出来。
   final TagLookup? offline;
@@ -70,9 +75,6 @@ class DirectAgentRuntime implements AgentRuntime {
   final List<AgentTool> tools;
 
   final ToolProtocol protocol;
-
-  @override
-  String get route => AgentTrace.routeCustom;
 
   @override
   Stream<AgentEvent> run(AgentTurnRequest req, {AgentTrace? trace}) async* {
@@ -177,8 +179,11 @@ class DirectAgentRuntime implements AgentRuntime {
         ];
       }
 
+      // 逐字显示要设置开着、模型也能边写边吐
+      final live = req.stream && provider.capabilities.streaming;
       final turn = _Turn(
         req: req,
+        live: live,
         trace: trace,
         client: client,
         provider: provider,
@@ -225,7 +230,7 @@ class DirectAgentRuntime implements AgentRuntime {
             'error': '$e',
             'degrade': [for (final d in steps.take(attempt + 1)) d.name],
           });
-          if (req.stream) yield const AgentDelta();
+          if (live) yield const AgentDelta();
         }
       }
     } finally {
@@ -233,9 +238,10 @@ class DirectAgentRuntime implements AgentRuntime {
     }
   }
 
-  /// 密钥不对、没有这个模型:换个说法再问也一样。
+  /// 密钥不对、没有这个模型、后端那边已经判死的:换个说法再问也一样。
   static bool _retryable(Object e) =>
-      !(e is AgentFailure && const {401, 403, 404}.contains(e.status));
+      !(e is AgentFailure &&
+          (!e.retryable || const {401, 403, 404}.contains(e.status)));
 
   /// 预取失败不拖垮这一轮:没有这块资料,模型还能自己调工具查。
   static Future<ToolBlock?> _prefetch(AgentTool t, ToolContext ctx) async {
@@ -260,6 +266,7 @@ class _Refused implements Exception {
 class _Turn {
   _Turn({
     required this.req,
+    required this.live,
     required this.trace,
     required this.client,
     required this.provider,
@@ -274,6 +281,9 @@ class _Turn {
   });
 
   final AgentTurnRequest req;
+
+  /// 逐字显示:每帧推给气泡。
+  final bool live;
   final AgentTrace? trace;
   final http.Client client;
   final LlmProvider provider;
@@ -302,13 +312,18 @@ class _Turn {
       final hopStart = trace?.sinceStart() ?? 0;
       var raw = '';
       await for (final c in provider.chat(
-        LlmRequest(system: system, messages: msgs, think: req.think),
+        LlmRequest(
+          system: system,
+          messages: msgs,
+          think: req.think,
+          turnStart: base.length - 1,
+        ),
         client: client,
-        stream: req.stream,
+        stream: live,
       )) {
         raw = c.text;
         // 关着逐字显示时一帧都不推:气泡老老实实转圈到出结果
-        if (req.stream) yield liveDeltaOf(c);
+        if (live) yield liveDeltaOf(c);
       }
       final hop = <String, Object?>{
         't': hopStart,
@@ -369,7 +384,7 @@ class _Turn {
           rerolls++;
           // 原地重掷:什么都不回灌,同一份上下文再要一次。拒绝的话进了上下文,
           // 模型看着自己刚说过的更容易顺着说下去
-          if (req.stream) yield const AgentDelta();
+          if (live) yield const AgentDelta();
           continue;
         }
       }

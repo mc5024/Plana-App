@@ -46,12 +46,25 @@ class SearchCharacterTool extends AgentTool {
     ToolSource('semantic', () => l10nNow.toolSourceSemantic, online: true),
   ];
 
-  /// 原话里按中文名点到的角色 → [角色候选] 块(离线词库字面匹配)。
+  /// 原话里按中文名点到的角色 → [角色候选] 块(离线词库字面匹配)。开着语义搜词时
+  /// 再交后端逐条判一遍,名字撞上的别的角色丢掉。
   @override
   Future<ToolBlock?> prefetch(ToolContext ctx) async {
     final offline = ctx.offline;
     if (offline == null || !ctx.sourceOn(name, 'offline')) return null;
-    final rows = await offline.roleCandidates(ctx.userText);
+    var rows = await offline.roleCandidates(ctx.userText);
+    final online = ctx.online;
+    if (rows.isNotEmpty && online != null && ctx.sourceOn(name, 'semantic')) {
+      final kept = await online.filterRoles(ctx.userText, [
+        for (final r in rows) r.tag,
+      ]);
+      if (kept != null) {
+        rows = [
+          for (final r in rows)
+            if (kept.contains(r.tag)) r,
+        ];
+      }
+    }
     if (rows.isEmpty) return null;
     return ToolBlock(
       [
@@ -75,9 +88,8 @@ class SearchCharacterTool extends AgentTool {
     final online = ctx.online;
     final offline = ctx.offline;
     // 只给出处是在列一个作品的角色,语义搜词按相关度只回十几条,做不了这个
-    final semantic = online != null &&
-            query.isNotEmpty &&
-            ctx.sourceOn(name, 'semantic')
+    final semantic =
+        online != null && query.isNotEmpty && ctx.sourceOn(name, 'semantic')
         ? await online.characters('$origin $query'.trim())
         : const <SemanticHit>[];
     final local = offline != null && ctx.sourceOn(name, 'offline')

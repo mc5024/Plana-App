@@ -23,6 +23,7 @@ import '../../core/store/prefs_store.dart';
 import 'custom_endpoint.dart';
 import 'llm/http_provider.dart' show llmProviderFor;
 import 'llm/llm_provider.dart' show LlmCapabilities;
+import 'llm/plana_channel_provider.dart' show kChannelCapabilities;
 
 /// label 里括号那段(线路/渠道说明)。中英文括号都收。
 final _paren = RegExp(r'[（(].*?[)）]');
@@ -288,11 +289,8 @@ final assistantEndpointProvider = Provider<CustomEndpoint?>((ref) {
   return null;
 });
 
-/// 后端渠道:思考深度由服务端按渠道定,回复整段返回。
-const kBackendCapabilities = LlmCapabilities(streaming: false, thinking: false);
-
 /// 当前选的模型支持什么。界面据此置灰思考等级、逐字显示。
 final assistantCapabilitiesProvider = Provider<LlmCapabilities>((ref) {
   final e = ref.watch(assistantEndpointProvider);
-  return e == null ? kBackendCapabilities : llmProviderFor(e).capabilities;
+  return e == null ? kChannelCapabilities : llmProviderFor(e).capabilities;
 });

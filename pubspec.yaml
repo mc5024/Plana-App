@@ -127,9 +127,7 @@ flutter:
     - assets/prompts/nai5.json
     # AI 助手发给模型的固定文字:工具调用约定(tool_layer)、出图代码块格式(output_format)、
     # 零碎文字(texts.yaml)、各工具的说明(tools/)。见 lib/features/assistant/runtime/prompt_assets.dart。
-    # tool_layer_backend 只给后端模型那条用(服务端自己的工具)。
     - assets/prompts/tool_layer.md
-    - assets/prompts/tool_layer_backend.md
     - assets/prompts/output_format.md
     - assets/prompts/texts.yaml
     - assets/prompts/tools/

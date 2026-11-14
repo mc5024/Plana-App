@@ -27,12 +27,13 @@ import 'package:plana_app/features/assistant/llm/gemini_provider.dart';
 import 'package:plana_app/features/assistant/llm/http_provider.dart';
 import 'package:plana_app/features/assistant/llm/llm_image.dart';
 import 'package:plana_app/features/assistant/llm/llm_provider.dart';
+import 'package:plana_app/features/assistant/llm/plana_channel_provider.dart';
+import 'package:plana_app/features/assistant/runtime/agent_runtime.dart';
 import 'package:plana_app/features/assistant/domain/turn_request.dart';
 import 'package:plana_app/features/assistant/presets/preset_rule.dart';
 import 'package:plana_app/features/assistant/protocol/fenced_protocol.dart';
 import 'package:plana_app/features/assistant/protocol/reply_parser.dart';
 import 'package:plana_app/features/assistant/protocol/tool_protocol.dart';
-import 'package:plana_app/features/assistant/runtime/direct_runtime.dart';
 import 'package:plana_app/features/assistant/runtime/ledger.dart';
 import 'package:plana_app/features/assistant/runtime/placeholders.dart';
 import 'package:plana_app/features/assistant/runtime/prompt_assets.dart';
@@ -113,10 +114,14 @@ class _FakeOffline implements TagLookup {
 }
 
 class _FakeOnline implements OnlineTags {
-  _FakeOnline({this.hits = const []});
+  _FakeOnline({this.hits = const [], this.kept});
 
   final List<SemanticHit> hits;
   final asked = <String>[];
+
+  /// 角色候选筛选的结果;null = 判不了。
+  final List<String>? kept;
+  final filtered = <List<String>>[];
 
   @override
   Future<List<SemanticHit>> characters(String query, {int limit = 10}) async {
@@ -126,6 +131,12 @@ class _FakeOnline implements OnlineTags {
 
   @override
   Future<String?> wiki(String tag) async => null;
+
+  @override
+  Future<List<String>?> filterRoles(String userText, List<String> tags) async {
+    filtered.add(tags);
+    return kept;
+  }
 }
 
 /// 第一次查询一直等到第二次查询开始:两个调用串着跑就会卡死。
@@ -146,6 +157,10 @@ class _GatedOnline implements OnlineTags {
 
   @override
   Future<String?> wiki(String tag) async => null;
+
+  @override
+  Future<List<String>?> filterRoles(String userText, List<String> tags) async =>
+      null;
 }
 
 Future<GenerateNotifier> _notifier() async {
@@ -1390,6 +1405,7 @@ void main() {
       Map<String, Map<String, String>> remembered = const {},
       ToolSettings settings = const ToolSettings(),
       TagLookup? offline,
+      OnlineTags? online,
     }) => ToolContext(
       userText: text,
       settings: settings,
@@ -1398,6 +1414,7 @@ void main() {
       ocs: ocs,
       remembered: remembered,
       offline: offline,
+      online: online,
     );
 
     test('编号不分大小写、名字去掉空白标点再比,没内容的条目不认', () {
@@ -1508,6 +1525,52 @@ void main() {
         ),
         isNull,
       );
+    });
+
+    test('[角色候选] 开着语义搜词时交后端筛,判不了就全留;语义关着不问', () async {
+      final offline = _FakeOffline(
+        roles: const [
+          (tag: 'flandre_scarlet', zh: '芙兰朵露', count: 58619, category: 4),
+          (tag: 'fran_(ff12)', zh: '芙兰', count: 546, category: 4),
+        ],
+      );
+      final kept = _FakeOnline(kept: ['flandre_scarlet']);
+      final b = await const SearchCharacterTool().prefetch(
+        ctx('画芙兰', offline: offline, online: kept),
+      );
+      expect(kept.filtered, [
+        ['flandre_scarlet', 'fran_(ff12)'],
+      ]);
+      expect(b!.text, contains('flandre_scarlet'));
+      expect(b.text, isNot(contains('fran_(ff12)')));
+
+      final none = await const SearchCharacterTool().prefetch(
+        ctx(
+          '画芙兰',
+          offline: offline,
+          online: _FakeOnline(kept: const []),
+        ),
+      );
+      expect(none, isNull, reason: '全被筛掉就不给块');
+
+      final unsure = await const SearchCharacterTool().prefetch(
+        ctx('画芙兰', offline: offline, online: _FakeOnline()),
+      );
+      expect(unsure!.text, contains('fran_(ff12)'));
+
+      final off = _FakeOnline(kept: const []);
+      final local = await const SearchCharacterTool().prefetch(
+        ctx(
+          '画芙兰',
+          offline: offline,
+          online: off,
+          settings: const ToolSettings(
+            disabledSources: {'search_character/semantic'},
+          ),
+        ),
+      );
+      expect(off.filtered, isEmpty);
+      expect(local!.text, contains('fran_(ff12)'));
     });
 
     test('旧账本里只记下第一行的多行画师串,按本地库补全', () {
@@ -1703,6 +1766,19 @@ void main() {
       headers: {'content-type': 'application/json; charset=utf-8'},
     );
 
+    http.Response channelSays(String text) => http.Response(
+      ': open\n\nevent: final\ndata: ${jsonEncode({'text': text, 'reasoning': ''})}\n\n',
+      200,
+      headers: {'content-type': 'text/event-stream; charset=utf-8'},
+    );
+
+    http.Response channelError(Map<String, Object?> data) => http.Response(
+      ': open\n\nevent: error\ndata: ${jsonEncode(data)}\n\n',
+      200,
+      headers: {'content-type': 'text/event-stream; charset=utf-8'},
+    );
+
+    /// [backend] 为 true 时走后端的模型通道,否则直连 [endpoint]。
     Future<List<AgentEvent>> run(
       MockClient mock, {
       String userRequest = '用 D11 画小小纺',
@@ -1710,10 +1786,15 @@ void main() {
       TagLookup? offline,
       OnlineTags? online,
       bool stream = true,
+      bool backend = false,
     }) => http.runWithClient(
       () =>
-          DirectAgentRuntime(
-                provider: llmProviderFor(endpoint),
+          agentRuntimeFor(
+                endpoint: backend ? null : endpoint,
+                backendBase: 'https://plana.test',
+                sessionId: 'sid',
+                backendModel: 'glm',
+                imageModel: 'nai_v45_full',
                 offline: offline,
                 online: online,
               )
@@ -2082,6 +2163,107 @@ void main() {
       expect(n, 3);
     });
 
+    test('后端模型:经模型通道跑同一个循环,一跳一个请求,历史与本轮分开发', () async {
+      final bodies = <Map<String, dynamic>>[];
+      final others = <String>[];
+      final auth = <String?>{};
+      final mock = MockClient((req) async {
+        if (req.url.toString() != 'https://plana.test/api/agent/channel') {
+          others.add('${req.url}');
+          return http.Response('{}', 404);
+        }
+        auth.add(req.headers['Authorization']);
+        bodies.add(jsonDecode(req.body) as Map<String, dynamic>);
+        return channelSays(
+          bodies.length == 1
+              ? '```tool_call\n{"name": "search_artist", "arguments": {"artist_ids": ["B7"]}}\n```'
+              : '画好了\n```nai_draw\n{"positive": "__ARTIST_B7__, 1girl"}\n```',
+        );
+      });
+      final events = await run(mock, backend: true);
+
+      expect(others, isEmpty);
+      expect(auth, {'Bearer sid'});
+      expect(bodies, hasLength(2));
+      expect(bodies.first['model'], 'glm');
+      expect(bodies.first['image_model'], 'nai_v45_full');
+      expect(bodies.first['system'], contains('[可用工具]'));
+      expect(
+        [for (final m in bodies.first['history'] as List) m['role']],
+        ['user', 'assistant'],
+      );
+      expect(
+        [for (final m in bodies.last['messages'] as List) m['role']],
+        ['user', 'assistant', 'user'],
+        reason: '本轮的工具往返跟在用户那条后面',
+      );
+      expect(bodies.last['turn_id'], bodies.first['turn_id']);
+      final done = events.whereType<AgentDone>().single.result;
+      expect(done.positive, 'artist:rella, 1girl');
+      expect(done.replyText, '画好了');
+      expect(
+        agentRuntimeFor(
+          endpoint: null,
+          backendBase: 'https://plana.test',
+          sessionId: '',
+          backendModel: '',
+          imageModel: 'nai_v45_full',
+        ).route,
+        AgentTrace.routeBackend,
+      );
+    });
+
+    test('后端判为拒绝且重掷用尽、后端自己拒掉的请求:都不再降级重试', () async {
+      var n = 0;
+      final refused = MockClient((req) async {
+        n++;
+        return channelError({'message': '重掷 2 次后仍判为拒绝生成', 'code': 'refused'});
+      });
+      await expectLater(
+        run(refused, backend: true),
+        throwsA(
+          isA<AgentFailure>().having(
+            (e) => e.message,
+            'message',
+            '重掷 2 次后仍判为拒绝生成',
+          ),
+        ),
+      );
+      expect(n, 1);
+
+      n = 0;
+      final limited = MockClient((req) async {
+        n++;
+        return http.Response(
+          '{"detail": "生成太频繁了"}',
+          429,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      await expectLater(
+        run(limited, backend: true),
+        throwsA(isA<AgentFailure>()),
+      );
+      expect(n, 1);
+    });
+
+    test('后端模型上游一时出错:照常降级重试', () async {
+      var n = 0;
+      final mock = MockClient((req) async {
+        n++;
+        return n == 1
+            ? channelError({
+                'message': 'status_code: 503, model error: busy',
+                'code': 'upstream',
+                'status': 503,
+              })
+            : channelSays('好');
+      });
+      final events = await run(mock, backend: true);
+      expect(n, 2);
+      expect(events.whereType<AgentDone>().single.result.replyText, '好');
+    });
+
     test('出图轮不判拒绝', () async {
       var n = 0;
       final mock = MockClient((req) async {
@@ -2093,6 +2275,118 @@ void main() {
       final events = await run(mock);
       expect(n, 1);
       expect(events.whereType<AgentDone>().single.result.positive, '1girl');
+    });
+  });
+
+  group('后端模型通道', () {
+    PlanaChannelProvider provider() => PlanaChannelProvider(
+      baseUrl: 'https://plana.test',
+      sessionId: '',
+      model: 'glm',
+      imageModel: 'nai_v5_full',
+      turnId: 't1',
+    );
+    const sse = {'content-type': 'text/event-stream; charset=utf-8'};
+
+    Future<List<LlmText>> chat(http.Response r) => provider()
+        .chat(
+          const LlmRequest(
+            system: 's',
+            messages: [(role: 'user', content: 'x', image: null)],
+          ),
+          client: MockClient((req) async => r),
+        )
+        .toList();
+
+    test('请求体:messages 在 turnStart 处切成历史与本轮,图跟着本轮那条', () {
+      final body = provider().requestBody(
+        const LlmRequest(
+          system: 'sys',
+          messages: [
+            (role: 'user', content: '上一轮', image: null),
+            (role: 'assistant', content: '嗯', image: null),
+            (
+              role: 'user',
+              content: '照这张画',
+              image: (mime: 'image/png', data: 'AAAA'),
+            ),
+            (role: 'assistant', content: '查一下', image: null),
+          ],
+          turnStart: 2,
+        ),
+      );
+      expect(body['history'], [
+        {'role': 'user', 'content': '上一轮'},
+        {'role': 'assistant', 'content': '嗯'},
+      ]);
+      expect(body['messages'], [
+        {
+          'role': 'user',
+          'content': '照这张画',
+          'image': {'mime': 'image/png', 'data': 'AAAA'},
+        },
+        {'role': 'assistant', 'content': '查一下'},
+      ]);
+      expect(body['system'], 'sys');
+      expect(body['turn_id'], 't1');
+      expect(body['image_model'], 'nai_v5_full');
+    });
+
+    test('心跳行不认,final 一帧给全文与原生思考', () async {
+      final frames = await chat(
+        http.Response(
+          ': open\n\n: ping\n\nevent: final\ndata: {"text": "好的", "reasoning": "想"}\n\n',
+          200,
+          headers: sse,
+        ),
+      );
+      expect(frames, [(text: '好的', reasoning: '想')]);
+    });
+
+    test('error 事件原样报;重掷过的拒绝、等满的超时不再降级重试,上游错可以', () async {
+      Future<AgentFailure> failure(Map<String, Object?> data) async {
+        try {
+          await chat(
+            http.Response(
+              'event: error\ndata: ${jsonEncode(data)}\n\n',
+              200,
+              headers: sse,
+            ),
+          );
+        } on AgentFailure catch (e) {
+          return e;
+        }
+        fail('应该抛 AgentFailure');
+      }
+
+      final refused = await failure({'message': '判为拒绝', 'code': 'refused'});
+      expect((refused.message, refused.retryable), ('判为拒绝', false));
+      final timeout = await failure({'message': '没有回复', 'code': 'timeout'});
+      expect(timeout.retryable, isFalse);
+      final upstream = await failure({
+        'message': 'status_code: 429, model error: quota',
+        'code': 'upstream',
+        'status': 429,
+      });
+      expect(upstream.message, 'status_code: 429, model error: quota');
+      expect((upstream.status, upstream.retryable), (429, true));
+    });
+
+    test('后端自己拒的 HTTP 错不重试,网关错可以;没等到结果就断了要报', () async {
+      for (final (status, retry) in [(413, false), (429, false), (502, true)]) {
+        await expectLater(
+          chat(http.Response('{"detail": "x"}', status)),
+          throwsA(
+            isA<AgentFailure>()
+                .having((e) => e.status, 'status', status)
+                .having((e) => e.retryable, 'retryable', retry),
+          ),
+        );
+      }
+      await expectLater(
+        chat(http.Response(': open\n\n', 200, headers: sse)),
+        throwsA(isA<AgentFailure>()),
+      );
     });
   });
 

@@ -25,13 +25,18 @@ abstract interface class TagLookup {
 /// 语义搜词的一条。[zh] 是中文名(可能连着出处等别名),[wiki] 是一句话介绍,可能为空。
 typedef SemanticHit = ({String tag, String zh, int count, String wiki});
 
-/// 联网的标签服务,与编辑页补全共用后端 `/api/tags/*`。拿不到一律返回空,不抛。
+/// 联网的标签服务:语义搜词、Wiki 摘要与编辑页补全共用后端 `/api/tags/*`,角色候选筛选走
+/// `/api/agent/role-filter`。拿不到一律返回空,不抛。
 abstract interface class OnlineTags {
   /// 语义搜角色,按名字整体查,不拆词。
   Future<List<SemanticHit>> characters(String query, {int limit = 10});
 
   /// tag 的 Wiki 摘要。
   Future<String?> wiki(String tag);
+
+  /// 字面预匹配出的候选角色交给后端逐条判是不是用户说的那个,返回留下的 tag(原顺序);
+  /// 判不了返回 null,调用方全留。
+  Future<List<String>?> filterRoles(String userText, List<String> tags);
 }
 
 /// 一轮里工具能用到的东西。

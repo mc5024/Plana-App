@@ -431,14 +431,20 @@ class AssistantController extends Notifier<AssistantState> {
     if (ref.read(genSettingsProvider).value?.genNotify ?? true) {
       LiveProgress.instance.beginAssistant();
     }
+    final imageModel = agentImageModel(g.params.model);
     final runtime = agentRuntimeFor(
       endpoint: endpoint,
       backendBase: base,
       sessionId: sid,
+      backendModel: ref.read(assistantModelKeyProvider),
+      imageModel: imageModel,
       offline: ref.read(offlineTagsProvider),
       online: base.isEmpty
           ? null
-          : CompletionOnlineTags(ref.read(tagCompletionProvider)),
+          : CompletionOnlineTags(
+              ref.read(tagCompletionProvider),
+              sessionId: sid,
+            ),
     );
     // 记录跟着这条提问一起开:下面还要等灵感库、规则,这期间按了停止也得收尾
     final trace = _traces.begin(route: runtime.route, userText: trimmed);
@@ -451,7 +457,6 @@ class AssistantController extends Notifier<AssistantState> {
       toolSettings = const ToolSettings();
     }
 
-    final imageModel = agentImageModel(g.params.model);
     final family = rulesFamilyOf(imageModel);
     List<PresetRule>? custom;
     try {
@@ -493,7 +498,6 @@ class AssistantController extends Notifier<AssistantState> {
       userText: trimmed,
       image: image,
       history: history,
-      historyTurns: settings.historyTurns,
       canvas: canvas ? canvasSnapshotOf(g) : null,
       imageModel: imageModel,
       customRules: custom,
@@ -504,7 +508,6 @@ class AssistantController extends Notifier<AssistantState> {
       resources: latestResources(state.msgs),
       think: settings.thinkLevel,
       stream: settings.stream,
-      backendModel: ref.read(assistantModelKeyProvider),
     );
     // 上面几处 await 期间可能已经点了停止,或者又发了一条:这一轮作废。
     // runtime 只有 listen 才发请求,在这儿拦住就不花钱。
@@ -549,14 +552,6 @@ class AssistantController extends Notifier<AssistantState> {
                   state.copyWith(liveText: text, liveReasoning: reasoning),
                   persist: false,
                 );
-              case AgentDegraded():
-                tools.add(
-                  ToolTrace(
-                    name: kDegradedTool,
-                    summary: l10nNow.degradedToSafe,
-                  ),
-                );
-                _set(state.copyWith(liveTools: List.of(tools)), persist: false);
               case AgentDone(:final result):
                 _finish(result, tools, canvas, picked, noDraw, sourceCanvasId);
             }
@@ -647,28 +642,19 @@ class AssistantController extends Notifier<AssistantState> {
   ) {
     LiveProgress.instance.endAssistant(success: true, keep: !_appForeground);
     // 产出先当成一份「提议」挂在这条消息上,用户在结果卡上点「导入」才落地。
-    // 服务端包给 web 芯片的 `<<artist:…>>` 标记在这儿剥掉。
-    final stripped = r.hasDraw
+    final proposal = r.hasDraw
         ? DrawProposal(
-            positive: stripArtistMarkers(r.positive),
+            positive: r.positive,
             negative: r.negative,
-            characters: [
-              for (final c in r.characters)
-                AgentCharacter(
-                  name: c.name,
-                  positive: stripArtistMarkers(c.positive),
-                  negative: c.negative,
-                  position: c.position,
-                ),
-            ],
+            characters: r.characters,
           )
         : null;
-    final draw = stripped == null
+    final draw = proposal == null
         ? null
         : DrawProposal(
-            positive: stripped.positive,
-            negative: withArtistNegatives(stripped, _libArtists()),
-            characters: stripped.characters,
+            positive: proposal.positive,
+            negative: withArtistNegatives(proposal, _libArtists()),
+            characters: proposal.characters,
           );
     final text = r.replyText.trim().isNotEmpty
         ? r.replyText.trim()

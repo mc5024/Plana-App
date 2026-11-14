@@ -4809,6 +4809,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get modelEmptyReply => '模型回了一段空的';
 
   @override
+  String get backendUnset => '未配置后端地址';
+
+  @override
+  String noDataIn(String secs) {
+    return '$secs 秒内没有收到数据';
+  }
+
+  @override
+  String get channelEndedEarly => '连接在收到结果前结束了';
+
+  @override
   String modelBadDraw(String count) {
     return '出图块重写 $count 次仍不对,模型最后一次的原文:';
   }
