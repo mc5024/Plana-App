@@ -650,7 +650,7 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
     );
   }
 
-  /// 带字那两枚共用的尺寸:描边和实心混排,高度圆角不统一一眼就看得出参差。
+  /// 带字那两枚共用的尺寸:浅底和实心混排,高度圆角不统一一眼就看得出参差。
   /// 内边距收到 8 —— M3 带图标的默认是左 16 右 24,那 32px 是压垮它的那根;
   /// 省下来的富余留给系统字号放大(放大到 1.2 倍才开始吃省略号)。
   static const _labeledStyle = ButtonStyle(
@@ -672,10 +672,17 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
     shape: WidgetStatePropertyAll(CircleBorder()),
   );
 
+  /// 非主动作的浅底配色(收藏 / 复制 / 导入 / 换一个),与「加入提示词」的实心
+  /// 主色分两级。
+  ButtonStyle _quietStyle(ColorScheme scheme) => FilledButton.styleFrom(
+    backgroundColor: scheme.surfaceContainerHighest,
+    foregroundColor: scheme.onSurfaceVariant,
+  );
+
   /// 复制。不留字(见 [_bottomActions]);纸叠图标够常见,长按还有 tooltip 兜底。
   Widget _copyButton(CodexEntry e) => Tooltip(
     message: context.l10n.copyPrompt,
-    child: OutlinedButton(
+    child: FilledButton(
       onPressed: () async {
         await Clipboard.setData(ClipboardData(text: e.fullText));
         if (mounted) {
@@ -683,7 +690,7 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
           hintSnack(context, context.l10n.promptCopied, icon: Icons.copy);
         }
       },
-      style: _iconOnlyStyle,
+      style: _iconOnlyStyle.merge(_quietStyle(context.scheme)),
       child: const Icon(Icons.copy, size: 20),
     ),
   );
@@ -702,9 +709,9 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
         child: CircularProgressIndicator(strokeWidth: 2, value: v),
       ),
     );
-    return OutlinedButton.icon(
+    return FilledButton.icon(
       onPressed: _imgCount > 0 && !_importing ? _importOriginal : null,
-      style: _labeledStyle,
+      style: _labeledStyle.merge(_quietStyle(context.scheme)),
       icon: !icons
           ? null
           : _importing
@@ -787,12 +794,12 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
 
   /// 随机模式的「换一个」:整宽独占一行 —— 随机页的主循环就是它,
   /// 挤进下面那行会和主行动抢眼。
-  Widget _rerollButton() => FilledButton.tonalIcon(
+  Widget _rerollButton() => FilledButton.icon(
     onPressed: _reroll,
     style: FilledButton.styleFrom(
       minimumSize: const Size(double.infinity, 46),
       shape: const StadiumBorder(),
-    ),
+    ).merge(_quietStyle(context.scheme)),
     icon: const Icon(Icons.casino_outlined, size: 18),
     label: Text(context.l10n.shuffleAnother),
   );
@@ -833,14 +840,14 @@ class _DetailSheetState extends ConsumerState<_DetailSheet>
     final on = ref
         .watch(codexFavKeysProvider)
         .contains(codexFavKey(widget.codex.id, e.id));
-    return OutlinedButton(
+    return FilledButton(
       onPressed: () => _toggleFav(e),
-      // 只有开关色是动的,尺寸走 [_iconOnlyStyle](54 收到 44:那 10px 给了
+      // 只有图标色是动的,尺寸走 [_iconOnlyStyle](54 收到 44:那 10px 给了
       // 「加入提示词」)
       style: _iconOnlyStyle.merge(
-        OutlinedButton.styleFrom(
+        FilledButton.styleFrom(
+          backgroundColor: scheme.surfaceContainerHighest,
           foregroundColor: on ? scheme.primary : scheme.onSurfaceVariant,
-          side: BorderSide(color: on ? scheme.primary : scheme.outlineVariant),
         ),
       ),
       child: Icon(

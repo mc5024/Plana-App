@@ -13,7 +13,7 @@ import '../../l10n/l10n.dart';
 /// - 第二层「取消选择」(定宽)+ [primary] 主动作(占满剩余宽度)。
 ///
 /// [compact] 时压成一行:✕ 取消 + [actions] + [destructive](都用
-/// [SelectionIconButton])+ 占满剩余宽度的 [primary]。
+/// [SelectionIconButton] 浅底圆钮)+ 占满剩余宽度的 [primary]。
 ///
 /// 尺寸基准取自灵感页:大按钮 48 高、24 圆角,底色 surfaceContainer。
 /// 没有任何选中时整条收起([visible] = false),把屏幕还给列表。
@@ -191,8 +191,8 @@ class SelectionPill extends StatelessWidget {
   }
 }
 
-/// 一行底栏([SelectionBar.compact])里的圆形描边图标钮,与主动作同高。
-/// [color] 非空即破坏性配色。
+/// 一行底栏([SelectionBar.compact])里的圆形浅底图标钮,与主动作同高。
+/// [color] 非空即破坏性配色(只染图标)。
 class SelectionIconButton extends StatelessWidget {
   const SelectionIconButton({
     super.key,
@@ -217,14 +217,8 @@ class SelectionIconButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: Colors.transparent,
-        shape: CircleBorder(
-          side: BorderSide(
-            color: color != null
-                ? color!.withValues(alpha: .5)
-                : scheme.outlineVariant,
-          ),
-        ),
+        color: scheme.surfaceContainerHighest,
+        shape: const CircleBorder(),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
