@@ -47,12 +47,15 @@ class TagLibraryState {
   bool isRemoved(String key) =>
       kRemovableBuiltins.contains(key) && hidden.contains(key);
 
-  /// 全部页签,含藏起来的:内置四类 → 自定义 → 法典 的默认顺序,再按 [order] 重排。
+  /// 全部页签,含藏起来的:角色 / 画风 / 场景 → 法典 → 自定义 → 其他 的默认顺序,
+  /// 再按 [order] 重排。
   List<String> get tabKeys {
     final all = [
-      for (final d in kTagCategoryDefs) d.webId,
-      for (final d in customDefs) d.webId,
+      for (final d in kTagCategoryDefs)
+        if (d.webId != 'other') d.webId,
       kCodexTabKey,
+      for (final d in customDefs) d.webId,
+      'other',
     ];
     return [
       for (final k in order)
