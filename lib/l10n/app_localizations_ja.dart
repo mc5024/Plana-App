@@ -4670,31 +4670,16 @@ class AppLocalizationsJa extends AppLocalizations {
   String get toolSearchArtist => '查画风';
 
   @override
-  String get toolSearchArtistDesc => '按编号或名字取你的画风库';
-
-  @override
   String get toolSearchOc => '查 OC';
-
-  @override
-  String get toolSearchOcDesc => '按名字查你的 OC 库';
 
   @override
   String get toolSearchCharacter => '查角色';
 
   @override
-  String get toolSearchCharacterDesc => '查动漫、游戏角色的 tag';
-
-  @override
   String get toolLookupTag => '查 tag';
 
   @override
-  String get toolLookupTagDesc => '查某个 tag 是什么意思';
-
-  @override
   String get toolSourceOffline => '离线词库';
-
-  @override
-  String get toolSourceOfflineDesc => '在手机上查,不联网';
 
   @override
   String get toolSourceSemantic => '语义搜词';

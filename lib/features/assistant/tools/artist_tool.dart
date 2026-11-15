@@ -18,9 +18,6 @@ class SearchArtistTool extends AgentTool {
   String get label => l10nNow.toolSearchArtist;
 
   @override
-  String get desc => l10nNow.toolSearchArtistDesc;
-
-  @override
   IconData get icon => Icons.palette_outlined;
 
   @override

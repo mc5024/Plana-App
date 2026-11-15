@@ -77,9 +77,8 @@ abstract class AgentTool {
   /// 模型调用时写的名字,也是设置里的键。
   String get name;
 
-  /// 工具页上的名字和一句话说明。
+  /// 工具页上的名字。
   String get label;
-  String get desc;
 
   IconData get icon;
 

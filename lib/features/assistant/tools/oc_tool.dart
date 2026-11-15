@@ -18,9 +18,6 @@ class SearchOcTool extends AgentTool {
   String get label => l10nNow.toolSearchOc;
 
   @override
-  String get desc => l10nNow.toolSearchOcDesc;
-
-  @override
   IconData get icon => Icons.person_outline;
 
   @override

@@ -23,7 +23,7 @@ import '../presets/rules_library.dart';
 import '../rules_page.dart';
 import '../tools/tool_registry.dart';
 import '../tools/tool_settings.dart';
-import 'tools_sheet.dart';
+import '../tools_page.dart';
 import '../../../l10n/l10n.dart';
 
 Future<void> showAssistantSettings(BuildContext context) async {
@@ -145,7 +145,11 @@ class _SettingsSheet extends ConsumerWidget {
             value: tools == null
                 ? ''
                 : context.l10n.toolsEnabledN(enabledTools(tools).length),
-            onTap: () => showToolsSheet(context),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const AssistantToolsPage(),
+              ),
+            ),
           ),
           settingSection(context, context.l10n.settingRules),
           SettingNavRow(

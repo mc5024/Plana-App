@@ -8206,23 +8206,11 @@ abstract class AppLocalizations {
   /// **'查画风'**
   String get toolSearchArtist;
 
-  /// No description provided for @toolSearchArtistDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'按编号或名字取你的画风库'**
-  String get toolSearchArtistDesc;
-
   /// No description provided for @toolSearchOc.
   ///
   /// In zh, this message translates to:
   /// **'查 OC'**
   String get toolSearchOc;
-
-  /// No description provided for @toolSearchOcDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'按名字查你的 OC 库'**
-  String get toolSearchOcDesc;
 
   /// No description provided for @toolSearchCharacter.
   ///
@@ -8230,35 +8218,17 @@ abstract class AppLocalizations {
   /// **'查角色'**
   String get toolSearchCharacter;
 
-  /// No description provided for @toolSearchCharacterDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'查动漫、游戏角色的 tag'**
-  String get toolSearchCharacterDesc;
-
   /// No description provided for @toolLookupTag.
   ///
   /// In zh, this message translates to:
   /// **'查 tag'**
   String get toolLookupTag;
 
-  /// No description provided for @toolLookupTagDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'查某个 tag 是什么意思'**
-  String get toolLookupTagDesc;
-
   /// No description provided for @toolSourceOffline.
   ///
   /// In zh, this message translates to:
   /// **'离线词库'**
   String get toolSourceOffline;
-
-  /// No description provided for @toolSourceOfflineDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'在手机上查,不联网'**
-  String get toolSourceOfflineDesc;
 
   /// No description provided for @toolSourceSemantic.
   ///

@@ -10,12 +10,7 @@ import 'tool_context.dart';
 /// 前几条结果去拉 Wiki 摘要。每条一个请求,多了慢。
 const _wikiTop = 3;
 
-const _categories = {
-  'general': 0,
-  'copyright': 3,
-  'character': 4,
-  'meta': 5,
-};
+const _categories = {'general': 0, 'copyright': 3, 'character': 4, 'meta': 5};
 
 String _categoryName(int c) => switch (c) {
   0 => 'general',
@@ -34,9 +29,6 @@ class LookupTagTool extends AgentTool {
 
   @override
   String get label => l10nNow.toolLookupTag;
-
-  @override
-  String get desc => l10nNow.toolLookupTagDesc;
 
   @override
   IconData get icon => Icons.menu_book_outlined;
