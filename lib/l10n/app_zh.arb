@@ -875,6 +875,7 @@
   "genNotify": "生成通知",
   "streamingGen": "流式生成",
   "straightAlpha": "透明图直通 Alpha",
+  "keepImageFormat": "保持图片格式",
   "autoRetry": "限流后自动重试",
   "retryDelay": "重试间隔",
   "secondsN": "{n} 秒",

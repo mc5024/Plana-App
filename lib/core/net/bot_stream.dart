@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show compute;
+
 import '../util/log.dart';
+import '../util/webp_to_png.dart';
 import 'backend_client.dart';
 import 'bot_socket.dart';
 import 'gen_abort.dart';
@@ -73,6 +76,8 @@ Future<List<Uint8List>> streamBotTask({
   void Function(String note, int pct)? onStage,
   void Function(String msg)? onWarning,
   GenAbort? abort,
+  // 成图保持后端发来的 WebP,不还原成 PNG(生成设置「保持图片格式」)
+  bool keepWebp = false,
   // 必须**大于**服务端的 MODAL_ANIMA_GEN_TIMEOUT(现 720s),否则这边先喊超时、
   // 服务端却还在跑并占着并发槽,用户看到的是一条比真实情况更早也更没用的错误。
   // 13 分钟留了 60s 余量吸收轮询间隔与网络往返(与 web botService 同值)。
@@ -108,31 +113,53 @@ Future<List<Uint8List>> streamBotTask({
   var fetching = false;
   // WS 推来的成图(序号 → 字节),先于完成消息到达。收齐了就不用再下载。
   final pushed = <int, Uint8List>{};
+
+  /// 提交时声明了 result_format=webp(见 BackendClient.botGenerate):NAI 的成图是原样的
+  /// 无损 WebP,按 [keepWebp] 原样交或还原成 PNG。本地还原不了就取后端现转的 PNG。
+  Future<Uint8List> toPng(Uint8List b, String url) async {
+    if (keepWebp || !isWebp(b)) return b;
+    try {
+      return await compute(webpToPng, b);
+    } catch (e) {
+      logi('[bot] $taskId WebP 本地还原失败,改取后端还原的 PNG: $e');
+      return client.fetchResultImage('$url?fmt=png');
+    }
+  }
+
+  Future<void> finish(List<Uint8List> raw, List<String> urls, String via) async {
+    try {
+      final out = await Future.wait([
+        for (var i = 0; i < raw.length; i++) toPng(raw[i], urls[i]),
+      ]);
+      logi(
+        '[bot] $taskId done$via: ${out.length} 张 / '
+        '${raw.fold<int>(0, (a, b) => a + b.length)}B',
+      );
+      if (!completer.isCompleted) completer.complete(out);
+    } catch (e) {
+      fail(e is BackendException ? e : BackendException('取结果图失败: $e'));
+    }
+  }
+
   Future<void> done(List<String> urls) async {
     if (completer.isCompleted || fetching) return;
     fetching = true;
     if (pushed.length == urls.length &&
         Iterable<int>.generate(urls.length).every(pushed.containsKey)) {
-      final out = [for (var i = 0; i < urls.length; i++) pushed[i]!];
-      logi(
-        '[bot] $taskId done(WS 推送): ${out.length} 张 / '
-        '${out.fold<int>(0, (a, b) => a + b.length)}B',
+      await finish(
+        [for (var i = 0; i < urls.length; i++) pushed[i]!],
+        urls,
+        '(WS 推送)',
       );
-      completer.complete(out);
       return;
     }
     for (var attempt = 0; attempt < 2; attempt++) {
       if (completer.isCompleted) return;
+      final List<Uint8List> raw;
       try {
-        final out = await Future.wait([
+        raw = await Future.wait([
           for (final u in urls) client.fetchResultImage(u),
         ]);
-        logi(
-          '[bot] $taskId done: ${out.length} 张 / '
-          '${out.fold<int>(0, (a, b) => a + b.length)}B',
-        );
-        if (!completer.isCompleted) completer.complete(out);
-        return;
       } catch (e) {
         if (attempt == 0) {
           logi('[bot] $taskId 取结果图失败,重试一次: $e');
@@ -140,7 +167,10 @@ Future<List<Uint8List>> streamBotTask({
           continue;
         }
         fail(e is BackendException ? e : BackendException('取结果图失败: $e'));
+        return;
       }
+      await finish(raw, urls, '');
+      return;
     }
   }
 

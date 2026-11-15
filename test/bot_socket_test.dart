@@ -100,6 +100,41 @@ void main() {
     });
   });
 
+  test('成图是 WebP(推帧或下载):交出去的是还原好的 PNG', () async {
+    final webp = File('test/fixtures/nai_sample.webp').readAsBytesSync();
+    for (final push in [true, false]) {
+      await withRealHttp(() async {
+        final b = await _fakeBackend(webp, pushResult: push);
+        addTearDown(() => b.server.close(force: true));
+        final base = 'http://127.0.0.1:${b.server.port}';
+        final out = await streamBotTask(
+          baseUrl: base,
+          sessionId: 'sid',
+          taskId: push ? 'aaaa1111aaaa1111' : 'bbbb2222bbbb2222',
+          client: BackendClient(base),
+        );
+        expect(out.single.sublist(0, 4), [0x89, 0x50, 0x4e, 0x47]);
+      });
+    }
+  });
+
+  test('生成设置选了保持 WebP:成图原样交', () async {
+    final webp = File('test/fixtures/nai_sample.webp').readAsBytesSync();
+    await withRealHttp(() async {
+      final b = await _fakeBackend(webp, pushResult: true);
+      addTearDown(() => b.server.close(force: true));
+      final base = 'http://127.0.0.1:${b.server.port}';
+      final out = await streamBotTask(
+        baseUrl: base,
+        sessionId: 'sid',
+        taskId: 'cccc3333cccc3333',
+        client: BackendClient(base),
+        keepWebp: true,
+      );
+      expect(out.single, webp);
+    });
+  });
+
   test('旧服务端不推成图帧:照旧按 URL 下载', () async {
     await withRealHttp(() async {
       final b = await _fakeBackend(png, pushResult: false);

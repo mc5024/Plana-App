@@ -4,10 +4,12 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:image/image.dart' as img;
 
 import '../../core/util/png_meta.dart';
+import '../../core/util/webp_to_png.dart';
 import 'save_settings.dart';
 
 /// 按保存设置处理图片字节(对齐 web `processImageForSave`):
-/// - PNG + 原始:原字节直出;PNG + 清除/自定义:走 png_meta 写入端;
+/// - PNG + 原始:原字节直出(图库里存的是 WebP 的无损还原成 PNG,像素 / 隐写 / 参数不变);
+///   PNG + 清除/自定义:走 png_meta 写入端;
 /// - JPG:重编码(透明合白底),有损无元数据,清除/自定义等同。
 /// 估算大小 = 真实走一遍取长度,估算即实际。
 Future<Uint8List> processForSave(Uint8List bytes, SaveSettings o) async {
@@ -18,7 +20,7 @@ Future<Uint8List> processForSave(Uint8List bytes, SaveSettings o) async {
     ));
   }
   return switch (o.meta) {
-    SaveMeta.original => bytes,
+    SaveMeta.original => isWebp(bytes) ? compute(webpToPng, bytes) : bytes,
     SaveMeta.clean => cleanImagePng(bytes),
     SaveMeta.custom => writeCustomMetadataPng(bytes, o.customPrompt),
   };

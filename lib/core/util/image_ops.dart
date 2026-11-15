@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:image/image.dart' as img;
 
 import 'transparency.dart' show rgbaHasAlpha;
+import 'webp_to_png.dart' show isWebp, webpToPng;
 
 /// 解码图片像素尺寸 (宽, 高)。
 Future<(int, int)> decodeImageSize(Uint8List bytes) async {
@@ -32,7 +33,8 @@ bool isNaiImageFormat(Uint8List b) {
       (at(0, 'RIFF'.codeUnits) && at(8, 'WEBP'.codeUnits));
 }
 
-/// 转成 PNG:本来就是 PNG 的原样返回,其余格式(JPEG / WebP 等)解码后重编码。
+/// 转成 PNG:本来就是 PNG 的原样返回;WebP 无损还原(像素 / alpha 隐写 / 参数都在,
+/// 见 webp_to_png);其余格式(JPEG 等)解码后重编码。
 Future<Uint8List> ensurePng(Uint8List src) async {
   const sig = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
   var isPng = src.length >= sig.length;
@@ -40,6 +42,11 @@ Future<Uint8List> ensurePng(Uint8List src) async {
     isPng = src[i] == sig[i];
   }
   if (isPng) return src;
+  if (isWebp(src)) {
+    try {
+      return await compute(webpToPng, src);
+    } catch (_) {} // 有损 / 动图之类 webpToPng 解不了的,走下面通用那条
+  }
   final codec = await ui.instantiateImageCodec(src);
   final frame = await codec.getNextFrame();
   final img = frame.image;

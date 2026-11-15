@@ -3,6 +3,7 @@ library;
 
 import 'dart:typed_data';
 
+import '../../core/util/webp_to_png.dart' show webpSizeOf;
 import 'res_rules.dart' show kFreePixelThreshold;
 
 const Object _unset = Object();
@@ -315,6 +316,9 @@ class InpaintJob {
   final w = d.getUint32(16), h = d.getUint32(20);
   return w > 0 && h > 0 ? (w, h) : null;
 }
+
+/// 成图宽高(PNG / WebP 都只读文件头);两种都不是给 null。
+(int, int)? imageSizeOf(Uint8List b) => pngSizeOf(b) ?? webpSizeOf(b);
 
 /// 局部重绘贴回:成图(发送尺寸)缩回 [region] 大小,按羽化遮罩混回原图。
 class InpaintPaste {

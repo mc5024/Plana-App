@@ -1290,6 +1290,8 @@ class BackendClient {
       'params': params,
       'image_backend': imageBackend,
       'client_request_id': ?clientRequestId,
+      // NAI 成图原样(无损 WebP)发过来,streamBotTask 里还原成 PNG;旧后端忽略这个字段
+      'result_format': 'webp',
     };
     Future<Map<String, dynamic>> submit() async {
       if (!_noMultipart.contains(baseUrl)) {

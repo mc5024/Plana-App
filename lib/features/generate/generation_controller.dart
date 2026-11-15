@@ -702,6 +702,7 @@ class GenerationNotifier extends Notifier<GenPool> {
           presetId: preset.presetId,
           qualityToggle: preset.qualityToggle,
           straightAlpha: _straightAlpha,
+          imageFormat: _keepWebp ? 'webp' : 'png',
           thirdParty: run.base.isNotEmpty,
           vibes: [
             for (final v in prepared)
@@ -847,6 +848,9 @@ class GenerationNotifier extends Notifier<GenPool> {
 
   /// 直连走不走流式端点(见 [GenSettings.streamGen])。bot 线不看这个。
   bool get _streamGen => ref.read(genSettingsProvider).value?.streamGen ?? true;
+
+  /// 成图保持 WebP(见 [GenSettings.keepWebp]):直连按它填 image_format,bot 线据此决定还原不还原。
+  bool get _keepWebp => ref.read(genSettingsProvider).value?.keepWebp ?? false;
 
   /// 这一单**实际**按多大的图计价。Max ✨ 放大重绘的输出尺寸是**服务端**定的,
   /// params 里还留着原图尺寸 —— 按原尺寸估会系统性少算(边长 ×2 = 四倍像素),
@@ -1184,6 +1188,7 @@ class GenerationNotifier extends Notifier<GenPool> {
           sessionId: session.sessionId,
           taskId: sub.taskId!,
           client: client,
+          keepWebp: _keepWebp,
           onProgress: (step, tot, preview, text) {
             // 采样前那段服务端报 total=0,照抄的话会把建任务时按档位算好的
             // 总步数抹成 0,进度条分母就没了
@@ -1462,7 +1467,7 @@ class GenerationNotifier extends Notifier<GenPool> {
   /// 重绘的成图必须和发送尺寸一致。对不上 = 服务端拿预览帧(约 1/8 大)顶了成图,
   /// 贴回去只会在框角留一小块缩略图。
   Future<void> _expectSendSize(GenerateState s, Uint8List bytes) async {
-    final size = pngSizeOf(bytes) ?? await decodeImageSize(bytes);
+    final size = imageSizeOf(bytes) ?? await decodeImageSize(bytes);
     if (size != (s.params.width, s.params.height)) throw const _PreviewOnly();
   }
 
@@ -1512,7 +1517,7 @@ class GenerationNotifier extends Notifier<GenPool> {
       } catch (e) {
         logd('[gen] inpaint blend failed: $e'); // 混合失败退化为成图原样入库
       }
-    } else if (pngSizeOf(bytes) case (final pw, final ph)) {
+    } else if (imageSizeOf(bytes) case (final pw, final ph)) {
       // 按成图实际尺寸记:Max 放大重绘、Anima 重绘放大的出图都比请求宽高大
       w = pw;
       h = ph;

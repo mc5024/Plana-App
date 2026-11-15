@@ -2426,6 +2426,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get straightAlpha => '透明图直通 Alpha';
 
   @override
+  String get keepImageFormat => '保持图片格式';
+
+  @override
   String get autoRetry => '限流后自动重试';
 
   @override

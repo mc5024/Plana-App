@@ -2636,6 +2636,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get straightAlpha => 'Straight Alpha for Transparency';
 
   @override
+  String get keepImageFormat => 'Keep Image Format';
+
+  @override
   String get autoRetry => 'Auto-retry When Rate Limited';
 
   @override

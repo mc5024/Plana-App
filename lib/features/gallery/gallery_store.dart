@@ -8,7 +8,8 @@ import 'dart:typed_data';
 import '../../core/store/atomic_file.dart';
 import '../../core/store/blob_store.dart';
 import '../../core/util/image_ops.dart';
-import '../generate/models.dart' show GenerateState;
+import '../../core/util/webp_to_png.dart' show isWebp;
+import '../generate/models.dart' show GenerateState, imageSizeOf;
 import '../generate/state_codec.dart';
 import 'models.dart';
 
@@ -23,7 +24,8 @@ typedef GallerySearchMeta = ({
   List<String> folds,
 });
 
-/// 图库持久化(`<support>/gallery/`):每张结果 `images/<id>.png` 原图 +
+/// 图库持久化(`<support>/gallery/`):每张结果 `images/<id>.png` 原图(生成设置选了保持
+/// WebP 的是 `<id>.webp`)+
 /// `thumbs/<id>.jpg` 缩略图(带透明的是 .png)+ `inputs/<id>.json` 参数快照(参考图外置
 /// blob 仓),旁挂 index.json(顺序/选中/发号器/回收站)。启动只读索引,像素
 /// 按需懒读——重启不丢图,也不把整库塞回内存。
@@ -40,6 +42,15 @@ class GalleryStore {
   File get _indexFile => File('${_root.path}/index.json');
 
   File _imageFile(String id) => File('${_imagesDir.path}/$id.png');
+  File _imageWebp(String id) => File('${_imagesDir.path}/$id.webp');
+
+  /// 盘上那张原图(PNG 优先);都没有给 null。
+  Future<File?> _existingImage(String id) async {
+    for (final f in [_imageFile(id), _imageWebp(id)]) {
+      if (await f.exists()) return f;
+    }
+    return null;
+  }
   File _thumbPng(String id) => File('${_thumbsDir.path}/$id.png');
   File _thumbJpg(String id) => File('${_thumbsDir.path}/$id.jpg');
   File _inputFile(String id) => File('${_inputsDir.path}/$id.json');
@@ -144,8 +155,8 @@ class GalleryStore {
       }
       var t = 0;
       try {
-        final f = _imageFile(r.id);
-        if (await f.exists()) {
+        final f = await _existingImage(r.id);
+        if (f != null) {
           t = (await f.stat()).modified.millisecondsSinceEpoch;
         }
       } catch (_) {}
@@ -179,7 +190,10 @@ class GalleryStore {
     try {
       final files = <File>[];
       await for (final ent in _imagesDir.list()) {
-        if (ent is File && ent.path.endsWith('.png')) files.add(ent);
+        if (ent is File &&
+            (ent.path.endsWith('.png') || ent.path.endsWith('.webp'))) {
+          files.add(ent);
+        }
       }
       int numOf(File f) {
         final m = _seqRe.firstMatch(_idOf(f));
@@ -189,7 +203,7 @@ class GalleryStore {
       files.sort((a, b) => numOf(a).compareTo(numOf(b))); // 还原生成先后
       for (final f in files) {
         final id = _idOf(f);
-        final (w, h) = await _pngSize(f);
+        final (w, h) = await _imageSize(f);
         var t = 0;
         try {
           t = (await f.stat()).modified.millisecondsSinceEpoch;
@@ -223,20 +237,19 @@ class GalleryStore {
 
   static String _idOf(File f) {
     final n = f.uri.pathSegments.last;
-    return n.substring(0, n.length - 4); // 去 .png
+    return n.substring(0, n.lastIndexOf('.')); // 去 .png / .webp
   }
 
-  /// 只读 PNG 头拿宽高(IHDR 里 offset 16/20),不解码整图。
-  static Future<(int, int)> _pngSize(File f) async {
+  /// 只读文件头拿宽高(PNG 的 IHDR / WebP 的 VP8X 等),不解码整图。
+  static Future<(int, int)> _imageSize(File? f) async {
+    if (f == null) return (0, 0);
     try {
       final head = <int>[];
-      await for (final chunk in f.openRead(0, 24)) {
+      await for (final chunk in f.openRead(0, 30)) {
         head.addAll(chunk);
-        if (head.length >= 24) break;
+        if (head.length >= 30) break;
       }
-      if (head.length < 24) return (0, 0);
-      final bd = ByteData.sublistView(Uint8List.fromList(head));
-      return (bd.getUint32(16), bd.getUint32(20));
+      return imageSizeOf(Uint8List.fromList(head)) ?? (0, 0);
     } catch (_) {
       return (0, 0);
     }
@@ -266,7 +279,10 @@ class GalleryStore {
     return _enqueue(() async {
       // 全部走原子写:半截 PNG 会变成永远打不开的坏图,半截快照 JSON 会让
       // 「重新生成」读不出参数(见 atomic_file.dart)
-      await writeBytesAtomic(_imageFile(r.id), bytes);
+      await writeBytesAtomic(
+        isWebp(bytes) ? _imageWebp(r.id) : _imageFile(r.id),
+        bytes,
+      );
       try {
         await _writeThumb(r.id, await makeThumb(bytes));
       } catch (_) {} // 缩略图失败不阻断,读取端退回原图
@@ -337,6 +353,7 @@ class GalleryStore {
       for (final id in ids) {
         for (final f in [
           _imageFile(id),
+          _imageWebp(id),
           _thumbJpg(id),
           _thumbPng(id),
           _inputFile(id),
@@ -376,8 +393,8 @@ class GalleryStore {
 
   Future<Uint8List?> readImage(String id) async {
     try {
-      final f = _imageFile(id);
-      if (!await f.exists()) return null;
+      final f = await _existingImage(id);
+      if (f == null) return null;
       return await f.readAsBytes();
     } catch (_) {
       return null;
@@ -405,7 +422,7 @@ class GalleryStore {
     final bd = ByteData.sublistView(png);
     final tw = bd.getUint32(16), th = bd.getUint32(20);
     if (math.min(tw, th) >= kThumbShortSide) return false;
-    final (w, h) = await _pngSize(_imageFile(id));
+    final (w, h) = await _imageSize(await _existingImage(id));
     if (w <= 0 || h <= 0) return false;
     return math.min(w, h) > math.min(tw, th) || (tw == th && w != h);
   }
@@ -433,7 +450,7 @@ class GalleryStore {
       unawaited(
         _enqueue(() async {
           // 排队期间图被删了就不写,免得留下孤儿缩略图
-          if (await _imageFile(id).exists()) await _writeThumb(id, thumb);
+          if (await _existingImage(id) != null) await _writeThumb(id, thumb);
         }),
       );
       return thumb.bytes;

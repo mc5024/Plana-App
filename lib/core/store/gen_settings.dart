@@ -11,6 +11,7 @@ import 'prefs_store.dart';
 /// [genNotify]:生成进度前台通知(可上灵动岛/状态栏胶囊),默认开。
 /// [streamGen]:直连流式生成(逐步预览),默认开;关了改走一次性端点。
 /// [notifyPrimed]:首启的通知说明页是否已过(过了就不再挡在进主界面之前)。
+/// [keepWebp]:成图保持 NAI 的无损 WebP(默认 false = 存 PNG)。
 class GenSettings {
   const GenSettings({
     this.retryOn429 = true,
@@ -20,6 +21,7 @@ class GenSettings {
     this.notifyPrimed = false,
     this.straightAlpha = true,
     this.streamGen = true,
+    this.keepWebp = false,
   });
 
   final bool retryOn429;
@@ -43,6 +45,11 @@ class GenSettings {
   /// 官方默认直通,这里跟随。只在模型支持透明时随请求发出。
   final bool straightAlpha;
 
+  /// 成图保持图片格式:true = 存 NAI 给的无损 WebP(体积约小三成),false = 存 PNG。
+  /// 直连按它填 `image_format`;bot 线后端始终发 WebP,false 时在本地还原成 PNG
+  /// (见 bot_stream)。像素、alpha 隐写和参数两种格式一样;保存 / 分享时按「保存格式」出。
+  final bool keepWebp;
+
   GenSettings copyWith({
     bool? retryOn429,
     int? retryDelaySecs,
@@ -51,6 +58,7 @@ class GenSettings {
     bool? notifyPrimed,
     bool? straightAlpha,
     bool? streamGen,
+    bool? keepWebp,
   }) => GenSettings(
     retryOn429: retryOn429 ?? this.retryOn429,
     retryDelaySecs: retryDelaySecs ?? this.retryDelaySecs,
@@ -59,6 +67,7 @@ class GenSettings {
     notifyPrimed: notifyPrimed ?? this.notifyPrimed,
     straightAlpha: straightAlpha ?? this.straightAlpha,
     streamGen: streamGen ?? this.streamGen,
+    keepWebp: keepWebp ?? this.keepWebp,
   );
 
   static int _intIn(Object? v, int fallback, int min, int max) {
@@ -76,6 +85,7 @@ class GenSettings {
         ? j['straightAlpha'] as bool
         : true,
     streamGen: j['streamGen'] is bool ? j['streamGen'] as bool : true,
+    keepWebp: j['keepWebp'] == true,
   );
 
   Map<String, dynamic> toJson() => {
@@ -86,6 +96,7 @@ class GenSettings {
     'notifyPrimed': notifyPrimed,
     'straightAlpha': straightAlpha,
     'streamGen': streamGen,
+    'keepWebp': keepWebp,
   };
 
   @override
@@ -97,7 +108,8 @@ class GenSettings {
       other.genNotify == genNotify &&
       other.notifyPrimed == notifyPrimed &&
       other.straightAlpha == straightAlpha &&
-      other.streamGen == streamGen;
+      other.streamGen == streamGen &&
+      other.keepWebp == keepWebp;
 
   @override
   int get hashCode => Object.hash(
@@ -108,6 +120,7 @@ class GenSettings {
     notifyPrimed,
     straightAlpha,
     streamGen,
+    keepWebp,
   );
 }
 

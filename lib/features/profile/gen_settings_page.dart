@@ -99,6 +99,28 @@ class GenSettingsPage extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 16),
+          SettingsLabel(context.l10n.keepImageFormat),
+          SettingsCard(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(value: false, label: Text('PNG')),
+                      ButtonSegment(value: true, label: Text('WebP')),
+                    ],
+                    selected: {s.keepWebp},
+                    onSelectionChanged: (v) =>
+                        patch((x) => x.copyWith(keepWebp: v.first)),
+                    showSelectedIcon: false,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
           const _ModulesSection(),
           const SizedBox(height: 16),
           SettingsLabel(context.l10n.galleryDefaultSave),

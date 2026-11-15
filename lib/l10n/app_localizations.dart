@@ -4360,6 +4360,12 @@ abstract class AppLocalizations {
   /// **'透明图直通 Alpha'**
   String get straightAlpha;
 
+  /// No description provided for @keepImageFormat.
+  ///
+  /// In zh, this message translates to:
+  /// **'保持图片格式'**
+  String get keepImageFormat;
+
   /// No description provided for @autoRetry.
   ///
   /// In zh, this message translates to:

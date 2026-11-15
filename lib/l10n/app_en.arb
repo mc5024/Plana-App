@@ -732,6 +732,7 @@
   "genNotify": "Generation Notifications",
   "streamingGen": "Streaming Preview",
   "straightAlpha": "Straight Alpha for Transparency",
+  "keepImageFormat": "Keep Image Format",
   "autoRetry": "Auto-retry When Rate Limited",
   "retryDelay": "Retry Delay",
   "secondsN": "{n} s",

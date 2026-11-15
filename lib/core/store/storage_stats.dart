@@ -57,12 +57,17 @@ Future<int> _sizeOf(FileSystemEntity ent) async {
   return 0;
 }
 
-Future<int?> _countIn(Directory d, {String? suffix}) async {
+Future<int?> _countIn(
+  Directory d, {
+  String? suffix,
+  List<String>? suffixes,
+}) async {
+  final ends = suffixes ?? [?suffix];
   try {
     if (!await d.exists()) return 0;
     var n = 0;
     await for (final e in d.list(followLinks: false)) {
-      if (suffix == null || e.path.endsWith(suffix)) n++;
+      if (ends.isEmpty || ends.any(e.path.endsWith)) n++;
     }
     return n;
   } catch (_) {
@@ -108,7 +113,7 @@ Future<StorageReport> scanStorage() async {
       bytes: await _sizeOf(sub('gallery')),
       count: await _countIn(
         Directory('${sup.path}/gallery/images'),
-        suffix: '.png',
+        suffixes: const ['.png', '.webp'],
       ),
     ),
     StorageCategory(

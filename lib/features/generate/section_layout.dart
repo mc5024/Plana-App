@@ -2,20 +2,25 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../../core/util/png_meta.dart' show withPngITxt;
+import '../../core/util/webp_to_png.dart' show isWebp, withWebpText;
 import 'models.dart';
 import 'prompt_sections.dart' show joinSections;
 
-/// 主提示词分区随图保存:PNG 里另加一个 iTXt 块,官方的 Comment 与 alpha
-/// 隐写都不动。只存进了载荷的那几格(见 [GenerateState.composedSections])。
+/// 主提示词分区随图保存:PNG 里另加一个 iTXt 块(WebP 是本 app 的自定义块,
+/// 还原成 PNG 时变回同名文字块),官方的 Comment 与 alpha 隐写都不动。
+/// 只存进了载荷的那几格(见 [GenerateState.composedSections])。
 const kSectionLayoutKey = 'plana:sections';
 
-/// 把 [rows] 写进 PNG;没有分区、不是 PNG 或写失败原样返回。
-Uint8List withSectionLayout(Uint8List png, List<PromptSection> rows) {
-  if (rows.isEmpty) return png;
+/// 把 [rows] 写进图片(PNG / WebP);没有分区、别的格式或写失败原样返回。
+Uint8List withSectionLayout(Uint8List image, List<PromptSection> rows) {
+  if (rows.isEmpty) return image;
   try {
-    return withPngITxt(png, kSectionLayoutKey, encodeSectionLayout(rows));
+    final text = encodeSectionLayout(rows);
+    return isWebp(image)
+        ? withWebpText(image, kSectionLayoutKey, text)
+        : withPngITxt(image, kSectionLayoutKey, text);
   } catch (_) {
-    return png;
+    return image;
   }
 }
 

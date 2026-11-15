@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 import 'package:msgpack_dart/msgpack_dart.dart' as msgpack;
 
+import '../util/webp_to_png.dart' show isWebp;
 import 'backend_config.dart' show kDefaultBackendBase;
 import 'gen_abort.dart';
 import 'nai_chat_compat.dart';
@@ -595,19 +596,22 @@ class NaiClient {
     return naiChatImage(text);
   }
 
-  /// 从响应字节取 PNG:直接是 PNG(魔数 89 50 4E 47)就用,否则当 zip 解出第一个 png。
+  /// 从响应字节取成图:直接是 PNG / WebP(请求里 image_format 填了 webp)就用,
+  /// 否则当 zip 解出第一张。
   Uint8List _pngFromMaybeZip(Uint8List bytes) {
-    if (bytes.length > 8 &&
-        bytes[0] == 0x89 &&
-        bytes[1] == 0x50 &&
-        bytes[2] == 0x4E &&
-        bytes[3] == 0x47) {
+    if ((bytes.length > 8 &&
+            bytes[0] == 0x89 &&
+            bytes[1] == 0x50 &&
+            bytes[2] == 0x4E &&
+            bytes[3] == 0x47) ||
+        isWebp(bytes)) {
       return bytes;
     }
     try {
       final zip = ZipDecoder().decodeBytes(bytes);
       for (final f in zip.files) {
-        if (f.isFile && f.name.toLowerCase().endsWith('.png')) {
+        final name = f.name.toLowerCase();
+        if (f.isFile && (name.endsWith('.png') || name.endsWith('.webp'))) {
           return Uint8List.fromList(f.content as List<int>);
         }
       }

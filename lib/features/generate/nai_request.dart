@@ -167,6 +167,9 @@ Map<String, double> _center(String? pos, {InpaintPaste? crop}) {
   /// 官方默认直通,见生成设置里的同名开关。
   bool straightAlpha = true,
 
+  /// 成图格式:`png` 或 `webp`(无损,见生成设置「保持图片格式」)。
+  String imageFormat = 'png',
+
   /// 这把 Key 走的是第三方地址(`NaiKey.endpoint` 非空)。
   bool thirdParty = false,
   List<EncodedVibe> vibes = const [],
@@ -288,7 +291,7 @@ Map<String, double> _center(String? pos, {InpaintPaste? crop}) {
     'negative_prompt': s.negativePrompt,
     'deliberate_euler_ancestral_bug': false,
     'prefer_brownian': true,
-    'image_format': 'png',
+    'image_format': imageFormat,
     'stream': 'msgpack',
   };
 
