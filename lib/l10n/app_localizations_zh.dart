@@ -4673,28 +4673,16 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get toolSearchArtist => '查画风';
+  String get toolSearchArtist => '使用画风库';
 
   @override
-  String get toolSearchOc => '查 OC';
+  String get toolSearchOc => '使用角色库';
 
   @override
-  String get toolSearchCharacter => '查角色';
+  String get toolSearchCharacter => '搜索角色';
 
   @override
-  String get toolLookupTag => '查 tag';
-
-  @override
-  String get toolSourceOffline => '离线词库';
-
-  @override
-  String get toolSourceSemantic => '语义搜词';
-
-  @override
-  String get toolSourceWiki => 'Wiki 摘要';
-
-  @override
-  String get toolSourceOnline => '经 Plana 后端查询';
+  String get toolLookupTag => '搜索 tag';
 
   @override
   String randomN(int n) {

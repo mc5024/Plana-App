@@ -1,4 +1,4 @@
-/// 工具页:一个工具一张卡,卡头是工具开关,来源和选项排在卡里(工具关着时淡显)。
+/// 工具页:一个工具一张卡,卡头是工具开关,附带的选项排在卡里(工具关着时淡显)。
 /// 版式与「我的」里的设置页同源([SettingsCard])。
 library;
 
@@ -56,18 +56,6 @@ class _ToolCard extends ConsumerWidget {
           value: on,
           onChanged: (v) => n.setTool(t.name, v),
         ),
-        if (t.sources.length > 1)
-          for (final src in t.sources)
-            _SubRow(
-              icon: src.online
-                  ? Icons.cloud_outlined
-                  : Icons.smartphone_outlined,
-              title: src.label,
-              note: src.online ? context.l10n.toolSourceOnline : null,
-              value: settings.sourceOn(t.name, src.id),
-              enabled: on,
-              onChanged: (v) => n.setSource(t.name, src.id, v),
-            ),
         for (final o in t.options)
           _SubRow(
             icon: Icons.tune,
@@ -132,7 +120,7 @@ class _ToolRow extends StatelessWidget {
   }
 }
 
-/// 卡里的一行来源 / 选项:和卡头的名字对齐,[note] 是标题下的一行小字。
+/// 卡里的一行选项:和卡头的名字对齐,[note] 是标题下的一行小字。
 class _SubRow extends StatelessWidget {
   const _SubRow({
     required this.icon,

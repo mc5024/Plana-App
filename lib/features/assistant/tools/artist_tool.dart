@@ -7,7 +7,7 @@ import 'tool_context.dart';
 
 const kArtistBlock = '[画师串]';
 
-/// 查画风:用户画风库里的画师串。给模型的是占位符,完整串留在本机。
+/// 使用画风库:用户画风库里的画师串。给模型的是占位符,完整串留在本机。
 class SearchArtistTool extends AgentTool {
   const SearchArtistTool();
 

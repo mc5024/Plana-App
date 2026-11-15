@@ -8215,50 +8215,26 @@ abstract class AppLocalizations {
   /// No description provided for @toolSearchArtist.
   ///
   /// In zh, this message translates to:
-  /// **'查画风'**
+  /// **'使用画风库'**
   String get toolSearchArtist;
 
   /// No description provided for @toolSearchOc.
   ///
   /// In zh, this message translates to:
-  /// **'查 OC'**
+  /// **'使用角色库'**
   String get toolSearchOc;
 
   /// No description provided for @toolSearchCharacter.
   ///
   /// In zh, this message translates to:
-  /// **'查角色'**
+  /// **'搜索角色'**
   String get toolSearchCharacter;
 
   /// No description provided for @toolLookupTag.
   ///
   /// In zh, this message translates to:
-  /// **'查 tag'**
+  /// **'搜索 tag'**
   String get toolLookupTag;
-
-  /// No description provided for @toolSourceOffline.
-  ///
-  /// In zh, this message translates to:
-  /// **'离线词库'**
-  String get toolSourceOffline;
-
-  /// No description provided for @toolSourceSemantic.
-  ///
-  /// In zh, this message translates to:
-  /// **'语义搜词'**
-  String get toolSourceSemantic;
-
-  /// No description provided for @toolSourceWiki.
-  ///
-  /// In zh, this message translates to:
-  /// **'Wiki 摘要'**
-  String get toolSourceWiki;
-
-  /// No description provided for @toolSourceOnline.
-  ///
-  /// In zh, this message translates to:
-  /// **'经 Plana 后端查询'**
-  String get toolSourceOnline;
 
   /// No description provided for @randomN.
   ///

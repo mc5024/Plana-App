@@ -19,19 +19,6 @@ class ToolParam {
   final bool required;
 }
 
-/// 工具背后的一个数据来源,工具页上可以单独开关。
-class ToolSource {
-  ToolSource(this.id, this._label, {this.online = false});
-
-  final String id;
-  final String Function() _label;
-
-  /// 走 Plana 后端。
-  final bool online;
-
-  String get label => _label();
-}
-
 /// 工具附带的一个选项(开关),默认关。
 class ToolOption {
   ToolOption(this.id, this._label, this._desc);
@@ -83,9 +70,6 @@ abstract class AgentTool {
   IconData get icon;
 
   List<ToolParam> get params;
-
-  /// 可以单独开关的来源;空 = 只有一个来源,工具页不单列。
-  List<ToolSource> get sources => const [];
 
   /// 附带的选项。
   List<ToolOption> get options => const [];

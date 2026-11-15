@@ -5075,28 +5075,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get toolSearchArtist => 'Style Lookup';
+  String get toolSearchArtist => 'Use Style Library';
 
   @override
-  String get toolSearchOc => 'OC Lookup';
+  String get toolSearchOc => 'Use Character Library';
 
   @override
-  String get toolSearchCharacter => 'Character Lookup';
+  String get toolSearchCharacter => 'Character Search';
 
   @override
-  String get toolLookupTag => 'Tag Lookup';
-
-  @override
-  String get toolSourceOffline => 'Offline Dictionary';
-
-  @override
-  String get toolSourceSemantic => 'Semantic Search';
-
-  @override
-  String get toolSourceWiki => 'Wiki Summary';
-
-  @override
-  String get toolSourceOnline => 'Queried via the Plana backend';
+  String get toolLookupTag => 'Tag Search';
 
   @override
   String randomN(int n) {

@@ -20,7 +20,7 @@ String _categoryName(int c) => switch (c) {
   _ => '',
 };
 
-/// 查 tag:某个 tag / 角色 / 作品是什么意思。来源:离线词库(本机)、Wiki 摘要(经后端)。
+/// 搜索 tag:某个 tag / 角色 / 作品是什么意思。离线词库(本机)找 tag,Wiki 摘要(经后端)补释义。
 class LookupTagTool extends AgentTool {
   const LookupTagTool();
 
@@ -41,22 +41,16 @@ class LookupTagTool extends AgentTool {
   ];
 
   @override
-  List<ToolSource> get sources => [
-    ToolSource('offline', () => l10nNow.toolSourceOffline),
-    ToolSource('wiki', () => l10nNow.toolSourceWiki, online: true),
-  ];
-
-  @override
   Future<ToolOutcome> call(ToolContext ctx, Map<String, dynamic> args) async {
     final query = '${args['query'] ?? ''}'.trim();
     if (query.isEmpty) return const ToolOutcome([]);
     final category = _categories['${args['category'] ?? ''}'.trim()];
     final limit = intArg(args['limit'], 10).clamp(1, 20);
     final offline = ctx.offline;
-    final wiki = ctx.sourceOn(name, 'wiki') ? ctx.online : null;
+    final wiki = ctx.online;
 
     final List<TagRecord> found;
-    if (offline != null && ctx.sourceOn(name, 'offline')) {
+    if (offline != null) {
       found = await offline.tags(query, category: category, limit: limit);
     } else if (wiki != null) {
       // 没有离线词库可查:把原话当成 tag 直接问 Wiki

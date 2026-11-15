@@ -1,4 +1,4 @@
-/// 工具页的开关:哪些工具、哪些来源关着,哪些附带选项开着。工具和来源默认全开,选项默认关。
+/// 工具页的开关:哪些工具关着,哪些附带选项开着。工具默认全开,选项默认关。
 library;
 
 import 'dart:convert';
@@ -13,65 +13,53 @@ const _key = 'assistant_tools';
 /// 旧版助手设置的键:「资料库范围」「OC 占位符」原先存在那里。
 const _legacyKey = 'assistant_settings';
 
-/// 查 OC 的「OC 使用占位符」选项。
+/// 使用角色库的「OC 使用占位符」选项。
 const kOcPlaceholdersOption = 'search_oc/placeholders';
 
 class ToolSettings {
   const ToolSettings({
     this.disabledTools = const {},
-    this.disabledSources = const {},
     this.enabledOptions = const {},
   });
 
   /// 关掉的工具名。记关着的,以后新加的工具默认开着。
   final Set<String> disabledTools;
 
-  /// 关掉的来源,`工具名/来源 id`。
-  final Set<String> disabledSources;
-
   /// 开着的附带选项,`工具名/选项 id`。
   final Set<String> enabledOptions;
 
   bool toolOn(String tool) => !disabledTools.contains(tool);
 
-  bool sourceOn(String tool, String source) =>
-      !disabledSources.contains('$tool/$source');
-
   bool optionOn(String tool, String option) =>
       enabledOptions.contains('$tool/$option');
 
-  /// 查 OC:OC 只给模型占位符,出图前展开。
+  /// 使用角色库:OC 只给模型占位符,出图前展开。
   bool get ocPlaceholders => enabledOptions.contains(kOcPlaceholdersOption);
 
   ToolSettings copyWith({
     Set<String>? disabledTools,
-    Set<String>? disabledSources,
     Set<String>? enabledOptions,
   }) => ToolSettings(
     disabledTools: disabledTools ?? this.disabledTools,
-    disabledSources: disabledSources ?? this.disabledSources,
     enabledOptions: enabledOptions ?? this.enabledOptions,
   );
 
   Map<String, dynamic> toJson() => {
     'disabledTools': disabledTools.toList()..sort(),
-    'disabledSources': disabledSources.toList()..sort(),
     'enabledOptions': enabledOptions.toList()..sort(),
   };
 
   factory ToolSettings.fromJson(Map<String, dynamic> j) => ToolSettings(
     disabledTools: _set(j['disabledTools']),
-    disabledSources: _set(j['disabledSources']),
     enabledOptions: _set(j['enabledOptions']),
   );
 
-  /// 旧版助手设置 → 工具设置:资料库范围选「不使用」的,关掉查画风、查 OC 和查角色的离线词库;
+  /// 旧版助手设置 → 工具设置:资料库范围选「不使用」的,关掉使用画风库、使用角色库;
   /// OC 占位符原样带过来。
   factory ToolSettings.fromLegacy(Map<String, dynamic> j) {
     final none = j['libraryScope'] == 'none';
     return ToolSettings(
       disabledTools: none ? const {'search_artist', 'search_oc'} : const {},
-      disabledSources: none ? const {'search_character/offline'} : const {},
       enabledOptions: j['ocPlaceholders'] == true
           ? const {kOcPlaceholdersOption}
           : const {},
@@ -144,12 +132,6 @@ class ToolSettingsNotifier extends AsyncNotifier<ToolSettings> {
 
   Future<void> setTool(String tool, bool on) => _patch(
     (s) => s.copyWith(disabledTools: _toggled(s.disabledTools, tool, !on)),
-  );
-
-  Future<void> setSource(String tool, String source, bool on) => _patch(
-    (s) => s.copyWith(
-      disabledSources: _toggled(s.disabledSources, '$tool/$source', !on),
-    ),
   );
 
   Future<void> setOption(String tool, String option, bool on) => _patch(

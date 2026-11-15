@@ -76,6 +76,4 @@ class ToolContext {
 
   /// 联网的标签服务;null = 没有后端地址。
   final OnlineTags? online;
-
-  bool sourceOn(String tool, String source) => settings.sourceOn(tool, source);
 }

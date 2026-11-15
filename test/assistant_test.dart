@@ -1492,16 +1492,14 @@ void main() {
         b!.text,
         '[角色候选]\nshiroko_(blue_archive) → 中文: 砂狼白子 / 出处: blue archive',
       );
-      const off = ToolSettings(disabledSources: {'search_character/offline'});
       expect(
-        await const SearchCharacterTool().prefetch(
-          ctx('画白子', offline: offline, settings: off),
-        ),
+        await const SearchCharacterTool().prefetch(ctx('画白子')),
         isNull,
+        reason: '离线词库读不出来就不给块',
       );
     });
 
-    test('[角色候选] 开着语义搜词时交后端筛,判不了就全留;语义关着不问', () async {
+    test('[角色候选] 有后端时交后端筛,判不了就全留', () async {
       final offline = _FakeOffline(
         roles: const [
           (tag: 'flandre_scarlet', zh: '芙兰朵露', count: 58619, category: 4),
@@ -1532,19 +1530,10 @@ void main() {
       );
       expect(unsure!.text, contains('fran_(ff12)'));
 
-      final off = _FakeOnline(kept: const []);
       final local = await const SearchCharacterTool().prefetch(
-        ctx(
-          '画芙兰',
-          offline: offline,
-          online: off,
-          settings: const ToolSettings(
-            disabledSources: {'search_character/semantic'},
-          ),
-        ),
+        ctx('画芙兰', offline: offline),
       );
-      expect(off.filtered, isEmpty);
-      expect(local!.text, contains('fran_(ff12)'));
+      expect(local!.text, contains('fran_(ff12)'), reason: '没有后端就不筛');
     });
 
     test('旧账本里只记下第一行的多行画师串,按本地库补全', () {
@@ -2797,13 +2786,10 @@ void main() {
   });
 
   group('工具设置', () {
-    test('默认工具和来源全开,选项全关', () {
+    test('默认工具全开,选项全关', () {
       const s = ToolSettings();
       for (final t in kAgentTools) {
         expect(s.toolOn(t.name), isTrue);
-        for (final src in t.sources) {
-          expect(s.sourceOn(t.name, src.id), isTrue);
-        }
         for (final o in t.options) {
           expect(s.optionOn(t.name, o.id), isFalse);
         }
@@ -2814,39 +2800,37 @@ void main() {
       );
     });
 
-    test('关掉的工具不算;来源全关的工具也不算', () {
-      const s = ToolSettings(
-        disabledTools: {'search_oc'},
-        disabledSources: {'lookup_tag/offline', 'lookup_tag/wiki'},
-      );
+    test('关掉的工具不算', () {
+      const s = ToolSettings(disabledTools: {'search_oc'});
       expect(
         [for (final t in enabledTools(s)) t.name],
-        ['search_artist', 'search_character'],
+        ['search_artist', 'search_character', 'lookup_tag'],
       );
     });
 
-    test('存得下也读得回来', () {
+    test('存得下也读得回来;旧存档里的来源开关不认', () {
       const s = ToolSettings(
         disabledTools: {'search_oc'},
-        disabledSources: {'search_character/semantic'},
         enabledOptions: {kOcPlaceholdersOption},
       );
       final back = ToolSettings.fromJson(s.toJson());
       expect(back.toolOn('search_oc'), isFalse);
-      expect(back.sourceOn('search_character', 'semantic'), isFalse);
       expect(back.ocPlaceholders, isTrue);
       expect(ToolSettings.fromJson(const {}).ocPlaceholders, isFalse);
+      final old = ToolSettings.fromJson(const {
+        'disabledSources': ['lookup_tag/offline', 'lookup_tag/wiki'],
+      });
+      expect(enabledTools(old), hasLength(kAgentTools.length));
     });
 
-    test('旧版设置迁过来:资料库「不使用」关掉查画风、查 OC 和查角色的离线词库,OC 占位符照带', () {
+    test('旧版设置迁过来:资料库「不使用」关掉使用画风库、使用角色库,OC 占位符照带', () {
       final none = ToolSettings.fromLegacy(const {
         'libraryScope': 'none',
         'ocPlaceholders': true,
       });
       expect(none.toolOn('search_artist'), isFalse);
       expect(none.toolOn('search_oc'), isFalse);
-      expect(none.sourceOn('search_character', 'offline'), isFalse);
-      expect(none.sourceOn('search_character', 'semantic'), isTrue);
+      expect(none.toolOn('search_character'), isTrue);
       expect(none.ocPlaceholders, isTrue);
       final all = ToolSettings.fromLegacy(const {'libraryScope': 'all'});
       expect(enabledTools(all), hasLength(kAgentTools.length));

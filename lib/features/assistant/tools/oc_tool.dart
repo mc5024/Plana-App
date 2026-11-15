@@ -7,7 +7,7 @@ import 'tool_context.dart';
 
 const kOcBlock = '[OC 角色]';
 
-/// 查 OC:用户 OC 库里的角色,按名字 / 别名关键词匹配。开着 OC 占位符时只给模型占位符。
+/// 使用角色库:用户 OC 库里的角色,按名字 / 别名关键词匹配。开着 OC 占位符时只给模型占位符。
 class SearchOcTool extends AgentTool {
   const SearchOcTool();
 

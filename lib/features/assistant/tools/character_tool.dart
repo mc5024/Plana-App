@@ -17,7 +17,7 @@ final _originSuffix = RegExp(r'_\(([^()]+)\)$');
 String originOfTag(String tag) =>
     _originSuffix.firstMatch(tag)?.group(1)?.replaceAll('_', ' ') ?? '';
 
-/// 查角色:动漫 / 游戏角色的 Danbooru tag。来源:离线词库(本机)、语义搜词(经后端)。
+/// 搜索角色:动漫 / 游戏角色的 Danbooru tag。离线词库(本机)和语义搜词(经后端)两路一起查。
 class SearchCharacterTool extends AgentTool {
   const SearchCharacterTool();
 
@@ -37,21 +37,15 @@ class SearchCharacterTool extends AgentTool {
     ToolParam('limit', 'integer'),
   ];
 
-  @override
-  List<ToolSource> get sources => [
-    ToolSource('offline', () => l10nNow.toolSourceOffline),
-    ToolSource('semantic', () => l10nNow.toolSourceSemantic, online: true),
-  ];
-
-  /// 原话里按中文名点到的角色 → [角色候选] 块(离线词库字面匹配)。开着语义搜词时
+  /// 原话里按中文名点到的角色 → [角色候选] 块(离线词库字面匹配)。有后端时
   /// 再交后端逐条判一遍,名字撞上的别的角色丢掉。
   @override
   Future<ToolBlock?> prefetch(ToolContext ctx) async {
     final offline = ctx.offline;
-    if (offline == null || !ctx.sourceOn(name, 'offline')) return null;
+    if (offline == null) return null;
     var rows = await offline.roleCandidates(ctx.userText);
     final online = ctx.online;
-    if (rows.isNotEmpty && online != null && ctx.sourceOn(name, 'semantic')) {
+    if (rows.isNotEmpty && online != null) {
       final kept = await online.filterRoles(ctx.userText, [
         for (final r in rows) r.tag,
       ]);
@@ -85,11 +79,10 @@ class SearchCharacterTool extends AgentTool {
     final online = ctx.online;
     final offline = ctx.offline;
     // 只给出处是在列一个作品的角色,语义搜词按相关度只回十几条,做不了这个
-    final semantic =
-        online != null && query.isNotEmpty && ctx.sourceOn(name, 'semantic')
+    final semantic = online != null && query.isNotEmpty
         ? await online.characters('$origin $query'.trim())
         : const <SemanticHit>[];
-    final local = offline != null && ctx.sourceOn(name, 'offline')
+    final local = offline != null
         ? await offline.characters(
             query: query,
             origin: origin,

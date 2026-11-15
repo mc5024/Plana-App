@@ -514,8 +514,6 @@ class AssistantController extends Notifier<AssistantState> {
       'mode_keys': modeKeys,
       'no_draw': noDraw,
       'tools': [for (final t in enabledTools(toolSettings)) t.name],
-      if (toolSettings.disabledSources.isNotEmpty)
-        'disabled_sources': toolSettings.disabledSources.toList(),
       'oc_placeholders': toolSettings.ocPlaceholders,
       'history_turns': settings.historyTurns,
       'history_entries': history.length,
