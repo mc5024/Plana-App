@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/auth/auth_mode.dart';
+import '../../core/auth/bot_session_store.dart';
 import '../../core/auth/nai_keys.dart';
 import '../../core/auth/token_probe.dart';
 import '../../core/auth/token_store.dart';
@@ -16,7 +17,9 @@ import '../../core/store/gen_settings.dart';
 import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_settings.dart';
+import '../../core/ui/expand_body.dart';
 import '../../core/ui/theme_swatches.dart';
+import '../profile/bot_auth_panel.dart';
 import '../profile/widgets/credential_login_sheet.dart';
 import '../profile/widgets/token_status.dart';
 import '../shell/float_theme_intro.dart';
@@ -113,9 +116,12 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
     final last = _index == _pageCount - 1;
     final mode = ref.watch(authModeProvider).value;
     final hasToken = (ref.watch(tokenProvider).value ?? '').isNotEmpty;
+    final hasBot = ref.watch(botSessionProvider).value != null;
 
-    // 接入页存了令牌才放行,没存只能走「暂时跳过」;已在用 Bot 生成的(重看)直接放行。
-    final needPick = _index == 2 && !hasToken && mode != AuthMode.bot;
+    // 接入页存了令牌或完成 Bot 授权才放行,都没有只能走「暂时跳过」;
+    // 已在用 Bot 生成的(重看)直接放行。
+    final needPick =
+        _index == 2 && !hasToken && !hasBot && mode != AuthMode.bot;
     final notifyPage = _index == 3;
 
     return Scaffold(
@@ -465,6 +471,10 @@ class _AppearanceStep extends ConsumerWidget {
 
 // ── 3 接入(就地配完,不跳页) ────────────────
 
+/// 接入页的三个选项。官方 / 第三方都是直连令牌([AuthMode.token]),
+/// 第三方的地址跟令牌一起存(见 [NaiKey.endpoint])。
+enum _Route { official, third, bot }
+
 class _AccessStep extends ConsumerStatefulWidget {
   const _AccessStep({required this.active});
 
@@ -480,8 +490,11 @@ class _AccessStepState extends ConsumerState<_AccessStep> {
   bool _obscure = true;
   bool _saving = false;
 
-  /// 直连卡里选的是第三方接口(地址跟这把令牌一起存,见 [NaiKey.endpoint])。
-  bool _third = false;
+  late _Route _route = ref.read(authModeProvider).value == AuthMode.bot
+      ? _Route.bot
+      : _Route.official;
+
+  bool get _third => _route == _Route.third;
 
   /// 第三方接口的请求格式。
   NaiApiFormat _format = NaiApiFormat.nai;
@@ -523,16 +536,26 @@ class _AccessStepState extends ConsumerState<_AccessStep> {
     Haptics.selection();
   }
 
-  /// 官方 ↔ 第三方。切过去先把探测结果清掉 —— 那是刚才查官方留下的,
-  /// 挂在第三方那一栏下面就是张冠李戴。
-  void _switchThird(bool third) {
-    if (third == _third) return;
+  /// 换选项。官方 ↔ 第三方先把探测结果清掉 —— 那是刚才查官方留下的,
+  /// 挂在第三方那一栏下面就是张冠李戴。选中的那条已经配好就直接切过去,
+  /// 没配好的等保存令牌 / 授权成功时再切。
+  void _select(_Route route) {
+    if (route == _route) return;
+    final wasThird = _third;
     setState(() {
-      _third = third;
+      _route = route;
       _urlError = null;
     });
-    _probe.reset();
-    if (!third) _probe.input(_tokenCtrl.text);
+    if (_third != wasThird) {
+      _probe.reset();
+      if (!_third) _probe.input(_tokenCtrl.text);
+    }
+    final auth = ref.read(authModeProvider.notifier);
+    if (route == _Route.bot) {
+      if (ref.read(botSessionProvider).value != null) auth.set(AuthMode.bot);
+    } else if ((ref.read(tokenProvider).value ?? '').isNotEmpty) {
+      auth.set(AuthMode.token);
+    }
     Haptics.selection();
   }
 
@@ -618,252 +641,289 @@ class _AccessStepState extends ConsumerState<_AccessStep> {
 
   @override
   Widget build(BuildContext context) {
-    final savedToken = (ref.watch(tokenProvider).value ?? '').isNotEmpty;
+    final keys = ref.watch(naiKeysStoreProvider).value ?? const <NaiKey>[];
+    final session = ref.watch(botSessionProvider).value;
     final scheme = context.scheme;
+    final saved = context.l10n.statusSaved;
 
     return _Step(
       active: widget.active,
       icon: Icons.key,
       title: context.l10n.accessMethod,
-      desc: context.l10n.changeLaterInProfile,
-      child: _AccessCard(
-        icon: Icons.vpn_key,
-        title: context.l10n.directNaiToken,
-        note: savedToken ? context.l10n.statusSaved : null,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 官方 / 第三方:同一种接入方式的两台机器,做成卡内分段。
-            SizedBox(
-              width: double.infinity,
-              child: SegmentedButton<bool>(
-                segments: [
-                  ButtonSegment(
-                    value: false,
-                    label: Text(context.l10n.official),
-                  ),
-                  ButtonSegment(
-                    value: true,
-                    label: Text(context.l10n.thirdParty),
-                  ),
-                ],
-                selected: {_third},
-                showSelectedIcon: false,
-                // 卡内地方紧,收掉点按区外扩的那圈留白 —— 不收的话这一条
-                // 会比下面的输入框还高。
-                style: SegmentedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  textStyle: context.texts.labelMedium,
-                ),
-                onSelectionChanged: (v) => _switchThird(v.first),
-              ),
+      desc: context.l10n.subscriptionRequired,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _AccessCard(
+            icon: Icons.vpn_key,
+            title: context.l10n.directNaiToken,
+            note: keys.any((k) => !k.isThirdParty) ? saved : null,
+            selected: _route == _Route.official,
+            onSelect: () => _select(_Route.official),
+            child: _tokenForm(context, scheme, third: false),
+          ),
+          const SizedBox(height: 10),
+          _AccessCard(
+            icon: Icons.hub_outlined,
+            title: context.l10n.thirdPartyApi,
+            note: keys.any((k) => k.isThirdParty) ? saved : null,
+            selected: _third,
+            onSelect: () => _select(_Route.third),
+            child: _tokenForm(context, scheme, third: true),
+          ),
+          const SizedBox(height: 10),
+          // 卡内直接取码授权;授权成功由面板把接入方式切到 Bot
+          _AccessCard(
+            icon: Icons.smart_toy_outlined,
+            title: context.l10n.useBotAccount,
+            note: session != null ? '已授权' : null,
+            selected: _route == _Route.bot,
+            onSelect: () => _select(_Route.bot),
+            child: BotAuthPanel(
+              key: const ValueKey('welcome-bot-auth'),
+              idleBuilder: (start, loading) => session != null
+                  ? Text(
+                      '账号 ${session.botUserId ?? '—'}',
+                      style: context.texts.labelMedium!.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    )
+                  : FilledButton.icon(
+                      onPressed: start,
+                      icon: loading
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.smart_toy_outlined, size: 18),
+                      label: const Text('获取授权码'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(46),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(23),
+                        ),
+                      ),
+                    ),
             ),
-            // 直连是本机直打 NovelAI:网络到不了官网,令牌填对了也一样
-            // 生成不了 —— 官方那一路就地给代理开关。第三方那一路打的是它
-            // 自己那台,代理管不着,只留一句说明。
-            AnimatedSize(
-              duration: Motion.fast,
-              curve: Motion.standard,
-              alignment: Alignment.topCenter,
-              child: _third
-                  ? Padding(
-                      padding: const EdgeInsets.fromLTRB(0, 9, 0, 9),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 官方 / 第三方两张卡的表单(共用同一组输入控制器,按 [third] 换栏位)。
+  Widget _tokenForm(
+    BuildContext context,
+    ColorScheme scheme, {
+    required bool third,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      // 直连是本机直打 NovelAI:网络到不了官网,令牌填对了也一样
+      // 生成不了 —— 官方那一路就地给代理开关。第三方那一路打的是它
+      // 自己那台,代理管不着,只留一句说明。
+      AnimatedSize(
+        duration: Motion.fast,
+        curve: Motion.standard,
+        alignment: Alignment.topCenter,
+        child: third
+            ? Padding(
+                padding: const EdgeInsets.only(bottom: 9),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SegmentedButton<NaiApiFormat>(
+                      segments: [
+                        for (final f in NaiApiFormat.values)
+                          ButtonSegment(value: f, label: Text(f.label)),
+                      ],
+                      selected: {_format},
+                      showSelectedIcon: false,
+                      style: SegmentedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        textStyle: context.texts.labelMedium,
+                      ),
+                      onSelectionChanged: (v) {
+                        setState(() => _format = v.first);
+                        Haptics.selection();
+                      },
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _format.hint,
+                      style: context.texts.labelSmall!.copyWith(
+                        color: scheme.outline,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Expanded(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SegmentedButton<NaiApiFormat>(
-                            segments: [
-                              for (final f in NaiApiFormat.values)
-                                ButtonSegment(value: f, label: Text(f.label)),
-                            ],
-                            selected: {_format},
-                            showSelectedIcon: false,
-                            style: SegmentedButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              textStyle: context.texts.labelMedium,
-                            ),
-                            onSelectionChanged: (v) {
-                              setState(() => _format = v.first);
-                              Haptics.selection();
-                            },
-                          ),
-                          const SizedBox(height: 6),
                           Text(
-                            _format.hint,
+                            context.l10n.naiProxy,
+                            style: context.texts.labelMedium!.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            kNaiProxyHint,
                             style: context.texts.labelSmall!.copyWith(
                               color: scheme.outline,
                             ),
                           ),
                         ],
                       ),
-                    )
-                  : Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  context.l10n.naiProxy,
-                                  style: context.texts.labelMedium!.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  kNaiProxyHint,
-                                  style: context.texts.labelSmall!.copyWith(
-                                    color: scheme.outline,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Switch(
-                            value: ref.watch(naiProxyProvider),
-                            onChanged: _setProxy,
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
-                          ),
-                        ],
-                      ),
                     ),
-            ),
-            // 两种表单高矮不同,换分段时补成过渡,不然整张卡会啪地跳一下。
-            AnimatedSize(
-              duration: Motion.fast,
-              curve: Motion.standard,
-              alignment: Alignment.topCenter,
-              child: _third
-                  ? Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: TextField(
-                        controller: _urlCtrl,
-                        autocorrect: false,
-                        enableSuggestions: false,
-                        keyboardType: TextInputType.url,
-                        textInputAction: TextInputAction.next,
-                        style: mono(context, size: 12),
-                        decoration: _fieldDec(
-                          scheme,
-                          _format == NaiApiFormat.openai
-                              ? 'https://example.com/v1'
-                              : 'https://example.com',
-                          suffix: IconButton(
-                            onPressed: () => _paste(_urlCtrl),
-                            icon: const Icon(Icons.content_paste, size: 18),
-                            color: scheme.onSurfaceVariant,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-            TextField(
-              controller: _tokenCtrl,
-              obscureText: _obscure,
-              autocorrect: false,
-              enableSuggestions: false,
-              keyboardType: TextInputType.visiblePassword,
-              style: mono(context, size: 12),
-              decoration: _fieldDec(
-                scheme,
-                _third ? context.l10n.apiKey : 'pst-… / eyJ…',
-                suffix: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      onPressed: () => _paste(_tokenCtrl),
-                      icon: const Icon(Icons.content_paste, size: 18),
-                      color: scheme.onSurfaceVariant,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    IconButton(
-                      onPressed: () => setState(() => _obscure = !_obscure),
-                      icon: Icon(
-                        _obscure ? Icons.visibility : Icons.visibility_off,
-                        size: 18,
-                      ),
-                      color: scheme.onSurfaceVariant,
-                      visualDensity: VisualDensity.compact,
+                    Switch(
+                      value: ref.watch(naiProxyProvider),
+                      onChanged: _setProxy,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                // 第三方不查账户状态,那一格就空着,只在地址填不成形时
-                // 摆一行红字 —— 借现成的空位说话,不给卡再加一段高度。
-                Expanded(
-                  child: _third
-                      ? Text(
-                          _urlError ?? '',
-                          style: context.texts.labelSmall!.copyWith(
-                            color: scheme.error,
-                          ),
-                        )
-                      : tokenStatusLine(
-                          context,
-                          _probe,
-                          onRetry: () => _probe.run(_tokenCtrl.text),
-                        ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.tonal(
-                  onPressed: _canSave ? _saveToken : null,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(72, 38),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  child: Text(
-                    _saving ? context.l10n.jobSaving : context.l10n.save,
+      ),
+      AnimatedSize(
+        duration: Motion.fast,
+        curve: Motion.standard,
+        alignment: Alignment.topCenter,
+        child: third
+            ? Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: TextField(
+                  controller: _urlCtrl,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  keyboardType: TextInputType.url,
+                  textInputAction: TextInputAction.next,
+                  style: mono(context, size: 12),
+                  decoration: _fieldDec(
+                    scheme,
+                    _format == NaiApiFormat.openai
+                        ? 'https://example.com/v1'
+                        : 'https://example.com',
+                    suffix: IconButton(
+                      onPressed: () => _paste(_urlCtrl),
+                      icon: const Icon(Icons.content_paste, size: 18),
+                      color: scheme.onSurfaceVariant,
+                      visualDensity: VisualDensity.compact,
+                    ),
                   ),
                 ),
-              ],
-            ),
-            // 邮箱登录只在官方那一路露出:中转站不发 NAI 账号,
-            // 摆在第三方下面等于给一条走不通的路。
-            if (!_third)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: _credentialLogin,
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                  ),
-                  icon: const Icon(Icons.mail_outline, size: 15),
-                  label: Text(context.l10n.noTokenUseLogin),
-                ),
+              )
+            : const SizedBox.shrink(),
+      ),
+      TextField(
+        controller: _tokenCtrl,
+        obscureText: _obscure,
+        autocorrect: false,
+        enableSuggestions: false,
+        keyboardType: TextInputType.visiblePassword,
+        style: mono(context, size: 12),
+        decoration: _fieldDec(
+          scheme,
+          third ? context.l10n.apiKey : 'pst-… / eyJ…',
+          suffix: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                onPressed: () => _paste(_tokenCtrl),
+                icon: const Icon(Icons.content_paste, size: 18),
+                color: scheme.onSurfaceVariant,
+                visualDensity: VisualDensity.compact,
               ),
-          ],
+              IconButton(
+                onPressed: () => setState(() => _obscure = !_obscure),
+                icon: Icon(
+                  _obscure ? Icons.visibility : Icons.visibility_off,
+                  size: 18,
+                ),
+                color: scheme.onSurfaceVariant,
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
         ),
       ),
-    );
-  }
+      const SizedBox(height: 10),
+      Row(
+        children: [
+          // 第三方不查账户状态,那一格就空着,只在地址填不成形时
+          // 摆一行红字 —— 借现成的空位说话,不给卡再加一段高度。
+          Expanded(
+            child: third
+                ? Text(
+                    _urlError ?? '',
+                    style: context.texts.labelSmall!.copyWith(
+                      color: scheme.error,
+                    ),
+                  )
+                : tokenStatusLine(
+                    context,
+                    _probe,
+                    onRetry: () => _probe.run(_tokenCtrl.text),
+                  ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.tonal(
+            onPressed: _canSave ? _saveToken : null,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(72, 38),
+              visualDensity: VisualDensity.compact,
+            ),
+            child: Text(_saving ? context.l10n.jobSaving : context.l10n.save),
+          ),
+        ],
+      ),
+      // 邮箱登录只在官方那一路露出:中转站不发 NAI 账号,
+      // 摆在第三方下面等于给一条走不通的路。
+      if (!third)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _credentialLogin,
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+            ),
+            icon: const Icon(Icons.mail_outline, size: 15),
+            label: Text(context.l10n.noTokenUseLogin),
+          ),
+        ),
+    ],
+  );
 }
 
-/// 接入卡(轻量描边式):不填底色,表单直接排在卡内、不再套第二层容器。
+/// 接入卡(轻量描边式,三选一):收起时只有标题行,选中加主色描边 + 对勾
+/// 并展开表单;表单直接排在卡内、不再套第二层容器。
 class _AccessCard extends StatelessWidget {
   const _AccessCard({
     required this.icon,
     required this.title,
+    required this.selected,
+    required this.onSelect,
     required this.child,
     this.note,
   });
 
   final IconData icon;
   final String title;
+  final bool selected;
+  final VoidCallback onSelect;
+
+  /// 选中后展开的表单。
   final Widget child;
 
-  /// 右侧状态角标(已保存)。
+  /// 右侧状态角标(已保存 / 已授权)。
   final String? note;
 
   @override
@@ -871,44 +931,87 @@ class _AccessCard extends StatelessWidget {
     final scheme = context.scheme;
     final float = context.skin.float;
     // 浮卡样式:白卡描发丝边
-    return Container(
+    return AnimatedContainer(
+      duration: Motion.fast,
+      curve: Motion.standard,
       decoration: BoxDecoration(
         color: float ? scheme.surfaceContainerLow : null,
         borderRadius: BorderRadius.circular(16),
-        border: switch (context.skin.edge) {
-          final edge? => Border.all(color: edge),
-          null when float => null,
-          null => Border.all(width: 1.5, color: scheme.outlineVariant),
-        },
+        border: selected
+            ? Border.all(width: 1.5, color: scheme.primary)
+            : switch (context.skin.edge) {
+                final edge? => Border.all(color: edge),
+                null when float => null,
+                null => Border.all(width: 1.5, color: scheme.outlineVariant),
+              },
       ),
-      padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: scheme.primary),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  title,
-                  style: context.texts.titleSmall!.copyWith(
-                    fontWeight: FontWeight.w600,
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            InkWell(
+              onTap: onSelect,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(13, 13, 13, 13),
+                child: Row(
+                  children: [
+                    Icon(
+                      icon,
+                      size: 18,
+                      color: selected
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: context.texts.titleSmall!.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: selected
+                              ? scheme.onSurface
+                              : scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    if (note != null)
+                      Text(
+                        note!,
+                        style: context.texts.labelSmall!.copyWith(
+                          color: scheme.tertiary,
+                        ),
+                      ),
+                    if (selected) ...[
+                      const SizedBox(width: 6),
+                      Icon(Icons.check_circle, size: 16, color: scheme.primary),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            // 三张卡一直挂着、按比例展开收起;对称曲线让一张长多少另一张
+            // 就缩多少,总高度单调变化,居中的页面不会上下晃。
+            // 卡内后续的高度变化(取到授权码等)交给里面的 AnimatedSize。
+            ExpandBody(
+              expanded: selected,
+              curve: Curves.easeInOutCubic,
+              child: ExcludeFocus(
+                excluding: !selected,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(13, 0, 13, 13),
+                  child: AnimatedSize(
+                    duration: Motion.medium,
+                    curve: Motion.standard,
+                    alignment: Alignment.topCenter,
+                    child: child,
                   ),
                 ),
               ),
-              if (note != null)
-                Text(
-                  note!,
-                  style: context.texts.labelSmall!.copyWith(
-                    color: scheme.tertiary,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          child,
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

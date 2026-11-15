@@ -602,6 +602,7 @@ class _RouteCard extends StatelessWidget {
                       value: AuthMode.bot,
                       label: Text(context.l10n.useBotAccount),
                       icon: const Icon(Icons.smart_toy_outlined, size: 16),
+                      enabled: botReady,
                     ),
                   ],
                   selected: {mode},

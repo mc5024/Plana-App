@@ -7,8 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/auth/auth_mode.dart';
 import '../../core/auth/bot_session_store.dart';
 import '../../core/net/backend_client.dart';
+import '../../core/store/app_stores.dart';
 import '../../core/theme/app_theme.dart';
-import '../generate/widgets/common.dart' show hintSnack;
+import '../generate/widgets/common.dart' show confirmDialog, hintSnack;
 import '../../core/util/haptics.dart';
 
 /// Bot 绑定码授权面板(内嵌在「账号与接入」的 Bot 卡里):
@@ -36,7 +37,23 @@ class _BotAuthPanelState extends ConsumerState<BotAuthPanel> {
     super.dispose();
   }
 
+  /// 首次取码前弹一次资格提醒,点「知道了」后记下不再弹
+  static const _noticeKey = 'bot_auth_notice_seen';
+
   Future<void> _getCode() async {
+    final prefs = ref.read(prefsStoreProvider);
+    if (prefs.get(_noticeKey) != '1') {
+      final ok = await confirmDialog(
+        context,
+        title: '提醒',
+        message: '该功能专为“秘密基地”使用,仅好友邀请制开放,在 DC 或官方群求助也不能获得该资格。',
+        confirmLabel: '知道了',
+        danger: false,
+      );
+      if (!ok || !mounted) return;
+      await prefs.write(key: _noticeKey, value: '1');
+      if (!mounted) return;
+    }
     setState(() => _loading = true);
     try {
       final r = await ref.read(backendClientProvider).authGenerate();
@@ -126,7 +143,7 @@ class _BotAuthPanelState extends ConsumerState<BotAuthPanel> {
       onCopy: () {
         // 复制完整指令(含 web授权 前缀),粘贴到 QQ 直接发送即可
         Clipboard.setData(ClipboardData(text: 'web授权$code'));
-        hintSnack(context, '已复制,粘贴发给 Bot', icon: Icons.check_circle_outline);
+        hintSnack(context, '已复制,粘贴发给秘密基地', icon: Icons.check_circle_outline);
       },
       onCancel: () {
         _timer?.cancel();
@@ -165,7 +182,7 @@ class _CodePanel extends StatelessWidget {
             child: Column(
               children: [
                 Text(
-                  '复制指令发送给 Bot',
+                  '复制指令发送给秘密基地',
                   style: context.texts.bodySmall!.copyWith(
                     color: scheme.onPrimaryContainer.withValues(alpha: .8),
                   ),

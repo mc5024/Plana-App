@@ -4753,7 +4753,7 @@ abstract class AppLocalizations {
   /// No description provided for @directToken.
   ///
   /// In zh, this message translates to:
-  /// **'直连 Token'**
+  /// **'API Token'**
   String get directToken;
 
   /// No description provided for @useBotAccount.
@@ -4911,6 +4911,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'第三方'**
   String get thirdParty;
+
+  /// No description provided for @thirdPartyApi.
+  ///
+  /// In zh, this message translates to:
+  /// **'第三方接口'**
+  String get thirdPartyApi;
 
   /// No description provided for @loginAndAdd.
   ///
@@ -5128,16 +5134,16 @@ abstract class AppLocalizations {
   /// **'生成接入方式'**
   String get accessMethod;
 
-  /// No description provided for @changeLaterInProfile.
+  /// No description provided for @subscriptionRequired.
   ///
   /// In zh, this message translates to:
-  /// **'之后可在「我的」里改'**
-  String get changeLaterInProfile;
+  /// **'必须拥有官方或中转订阅才能进行生成'**
+  String get subscriptionRequired;
 
   /// No description provided for @directNaiToken.
   ///
   /// In zh, this message translates to:
-  /// **'直连 NovelAI Token'**
+  /// **'官方订阅'**
   String get directNaiToken;
 
   /// No description provided for @official.
@@ -8623,13 +8629,13 @@ abstract class AppLocalizations {
   /// No description provided for @pickEndpointFirst.
   ///
   /// In zh, this message translates to:
-  /// **'先选一个模型接口'**
+  /// **'还没有可用的模型'**
   String get pickEndpointFirst;
 
   /// No description provided for @builtinUnavailableBody.
   ///
   /// In zh, this message translates to:
-  /// **'内置模型暂未开放,可以先用你自己的模型接口,\n资料只用本地库。'**
+  /// **'先添加一个自己的模型接口'**
   String get builtinUnavailableBody;
 
   /// No description provided for @selectEndpoint.

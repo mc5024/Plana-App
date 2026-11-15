@@ -2653,7 +2653,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get genMethod => '生成方式';
 
   @override
-  String get directToken => '直连 Token';
+  String get directToken => 'API Token';
 
   @override
   String get useBotAccount => '使用 Bot 账户';
@@ -2740,6 +2740,9 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get thirdParty => '第三方';
+
+  @override
+  String get thirdPartyApi => '第三方接口';
 
   @override
   String get loginAndAdd => '登录并添加';
@@ -2856,10 +2859,10 @@ class AppLocalizationsJa extends AppLocalizations {
   String get accessMethod => '生成接入方式';
 
   @override
-  String get changeLaterInProfile => '之后可在「我的」里改';
+  String get subscriptionRequired => '必须拥有官方或中转订阅才能进行生成';
 
   @override
-  String get directNaiToken => '直连 NovelAI Token';
+  String get directNaiToken => '官方订阅';
 
   @override
   String get official => '官方';
@@ -4894,10 +4897,10 @@ class AppLocalizationsJa extends AppLocalizations {
   String get goChangeModel => '去换模型';
 
   @override
-  String get pickEndpointFirst => '先选一个模型接口';
+  String get pickEndpointFirst => '还没有可用的模型';
 
   @override
-  String get builtinUnavailableBody => '内置模型暂未开放,可以先用你自己的模型接口,\n资料只用本地库。';
+  String get builtinUnavailableBody => '先添加一个自己的模型接口';
 
   @override
   String get selectEndpoint => '选择模型接口';

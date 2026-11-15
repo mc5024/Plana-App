@@ -2887,7 +2887,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get genMethod => 'Generation Method';
 
   @override
-  String get directToken => 'Direct Token';
+  String get directToken => 'API Token';
 
   @override
   String get useBotAccount => 'Bot Account';
@@ -2978,6 +2978,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get thirdParty => 'Third-party';
+
+  @override
+  String get thirdPartyApi => 'Third-party API';
 
   @override
   String get loginAndAdd => 'Log In & Add';
@@ -3095,10 +3098,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accessMethod => 'How to Generate';
 
   @override
-  String get changeLaterInProfile => 'You can change this later in Profile';
+  String get subscriptionRequired =>
+      'An official or relay subscription is required to generate';
 
   @override
-  String get directNaiToken => 'NovelAI Token (Direct)';
+  String get directNaiToken => 'Official Subscription';
 
   @override
   String get official => 'Official';
@@ -5314,11 +5318,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get goChangeModel => 'Change Model';
 
   @override
-  String get pickEndpointFirst => 'Pick a model endpoint first';
+  String get pickEndpointFirst => 'No models available yet';
 
   @override
-  String get builtinUnavailableBody =>
-      'The built-in model isn\'t available yet. Use your own model endpoint for now;\nlookups use the local library only.';
+  String get builtinUnavailableBody => 'Add your own model endpoint first';
 
   @override
   String get selectEndpoint => 'Select Model Endpoint';
