@@ -8212,12 +8212,6 @@ abstract class AppLocalizations {
   /// **'{n} 个已开'**
   String toolsEnabledN(int n);
 
-  /// No description provided for @imageModels.
-  ///
-  /// In zh, this message translates to:
-  /// **'图像模型'**
-  String get imageModels;
-
   /// No description provided for @imageModelField.
   ///
   /// In zh, this message translates to:
@@ -9337,7 +9331,7 @@ abstract class AppLocalizations {
   /// No description provided for @planaBackend.
   ///
   /// In zh, this message translates to:
-  /// **'Plana 后端'**
+  /// **'Plana Bot'**
   String get planaBackend;
 
   /// No description provided for @freeModels.

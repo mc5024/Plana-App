@@ -4673,9 +4673,6 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
-  String get imageModels => '图像模型';
-
-  @override
   String get imageModelField => '出图模型';
 
   @override
@@ -5306,7 +5303,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get chatMode => '对话模式';
 
   @override
-  String get planaBackend => 'Plana 后端';
+  String get planaBackend => 'Plana Bot';
 
   @override
   String get freeModels => '免费模型';

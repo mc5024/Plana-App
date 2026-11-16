@@ -89,11 +89,20 @@ void main() {
     test('后端渠道在前、接口的在后;没授权的后端渠道用不了', () {
       final plana = parsePlanaImageChannels({
         'channels': [
-          {'key': 'big_gpt', 'name': 'GPT Image'},
+          {
+            'key': 'big_gpt',
+            'name': 'GPT Image',
+            'model': 'GPT Image 2.5 Sunburst',
+          },
+          // 老后端没给 model:用显示名
           {'key': 'doubao', 'name': 'Seedream'},
         ],
         'authorized': true,
       });
+      expect(plana.channels.map((c) => c.name), [
+        'GPT Image 2.5 Sunburst',
+        'Seedream',
+      ]);
       final all = imageModelChoices(plana, const [_openai, _gemini]);
       expect(all.map((c) => c.key), [
         'plana:big_gpt',

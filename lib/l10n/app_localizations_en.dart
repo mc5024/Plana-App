@@ -5075,9 +5075,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get imageModels => 'Image models';
-
-  @override
   String get imageModelField => 'Image models';
 
   @override
@@ -5759,7 +5756,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatMode => 'Chat Mode';
 
   @override
-  String get planaBackend => 'Plana Backend';
+  String get planaBackend => 'Plana Bot';
 
   @override
   String get freeModels => 'Free Models';
