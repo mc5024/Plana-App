@@ -128,6 +128,12 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
         ),
         const SizedBox(height: 16),
         SettingsLabel(l.ruleSectionsLabel),
+        // 首尾各一颗:顶上这颗加在最前;一段都没有时只留底下那颗
+        if (rules.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _addButton(() => _add(rules, atStart: true)),
+          ),
       ],
     );
     return ReorderableListView.builder(
@@ -135,12 +141,7 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
       header: header,
       footer: Padding(
         padding: const EdgeInsets.only(top: 2),
-        child: FilledButton.tonalIcon(
-          onPressed: () => _add(rules),
-          icon: const Icon(Icons.add, size: 18),
-          label: Text(l.addRuleSection),
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
-        ),
+        child: _addButton(() => _add(rules)),
       ),
       itemCount: cards.length,
       proxyDecorator: (child, _, _) => Material(
@@ -387,7 +388,15 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
     return _commit(next);
   }
 
-  Future<void> _add(List<PresetRule> rules) async {
+  Widget _addButton(VoidCallback onPressed) => FilledButton.tonalIcon(
+    onPressed: onPressed,
+    icon: const Icon(Icons.add, size: 18),
+    label: Text(context.l10n.addRuleSection),
+    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+  );
+
+  /// 新加一段:先起名再写内容;[atStart] = 加在最前,否则接在最后。
+  Future<void> _add(List<PresetRule> rules, {bool atStart = false}) async {
     final name = await _askSectionName('');
     if (name == null || !mounted) return;
     final edited = await Navigator.push<List<PresetRule>>(
@@ -399,7 +408,8 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
         ),
       ),
     );
-    if (edited != null) await _commit([...rules, ...edited]);
+    if (edited == null) return;
+    await _commit(atStart ? [...edited, ...rules] : [...rules, ...edited]);
   }
 
   /// 点名字改名(只有认不出的段,内置段归在组里不单独改名)。
