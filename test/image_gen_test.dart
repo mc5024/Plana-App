@@ -422,9 +422,11 @@ void main() {
 
     test('点到或沿用出图模型才写进系统提示;只回出图块也算回复', () async {
       final systems = <String>[];
+      final asks = <String>[];
       final mock = MockClient((r) async {
         final body = jsonDecode(r.body) as Map;
         systems.add((body['messages'] as List).first['content'] as String);
+        asks.add((body['messages'] as List).last['content'] as String);
         return http.Response(
           jsonEncode({
             'choices': [
@@ -485,6 +487,10 @@ void main() {
       await run('GPT Image');
       expect(systems.single, contains('上一轮用出图模型 GPT Image 出了图'));
       expect(systems.single, isNot(contains('提到了')));
+      // 点到的那轮用户消息末尾再点一次,沿用的那轮不加
+      expect(asks.first, startsWith('用 GPT 画一只橘猫'));
+      expect(asks.first, contains('[生成图片] 这句话点名了出图模型 GPT Image（「gpt」）'));
+      expect(asks.last, '用 GPT 画一只橘猫');
 
       systems.clear();
       await run('');

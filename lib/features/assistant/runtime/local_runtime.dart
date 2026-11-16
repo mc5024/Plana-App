@@ -161,10 +161,21 @@ class LocalAgentRuntime implements AgentRuntime {
         placeholders ? collapse(req.userText) : req.userText,
         collapse(canvasBlock),
       ].where((s) => s.isNotEmpty);
+      // 原话点到了出图模型:在用户消息末尾再点一次,规则和外壳都只认 nai_draw
+      final imageHint = req.imageGenModel.isEmpty || req.imageGenTrigger.isEmpty
+          ? ''
+          : texts.get('image_gen_hint', {
+              'model': req.imageGenModel,
+              'trigger': req.imageGenTrigger,
+            });
 
       // 本轮这条用户消息。重发时剥掉图,末尾补一句说明
       List<LlmMessage> messagesFor({required bool noImage}) {
-        final parts = [...asked, if (block.isNotEmpty) block];
+        final parts = [
+          ...asked,
+          if (block.isNotEmpty) block,
+          if (imageHint.isNotEmpty) imageHint,
+        ];
         if (noImage) {
           if (parts.isEmpty) parts.add(texts.get('retry_image_only'));
           parts.add(texts.get('retry_no_image'));

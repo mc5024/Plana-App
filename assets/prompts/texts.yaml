@@ -50,6 +50,9 @@ image_gen_trigger: >-
   用户这句话里提到了「{trigger}」，也就是出图模型 {model}：用户是要 {model} 出图或改图时写 image_gen；这个词只是画面内容（比如画里有根香蕉）就照常写 nai_draw，别写 image_gen。
 image_gen_follow: >-
   上一轮用出图模型 {model} 出了图：这轮用户要接着改那张图时写 image_gen（refs 带 "last"）；要写 NAI 提示词或只是聊天就别写。
+# 原话点到出图模型的那一轮,补在用户消息末尾:规则和外壳都只认 nai_draw,光靠系统提示末尾那段压不住
+image_gen_hint: >-
+  [生成图片] 这句话点名了出图模型 {model}（「{trigger}」）。要它出图或改图的话，这一轮判定意图时算作「出图模型」：正文照常说 1~3 句，然后按 [生成图片] 的写法输出 ```image_gen 代码块，不写 nai_draw（用户同时还要 NAI 提示词时才两样都写）。
 
 # 出图模型那块读不出来
 image_gen_bad: >-
