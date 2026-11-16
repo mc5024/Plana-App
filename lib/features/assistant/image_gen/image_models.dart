@@ -44,12 +44,11 @@ typedef PlanaImageChannels = ({
   bool authorized,
 });
 
-/// 名字显示后端给的实际模型 id(`model`);老后端没给就用显示名。
 PlanaImageChannels parsePlanaImageChannels(Map<String, dynamic> j) => (
   channels: [
     for (final c in (j['channels'] as List? ?? const []))
       if (c is Map && '${c['key'] ?? ''}'.isNotEmpty)
-        (key: '${c['key']}', name: '${c['model'] ?? c['name'] ?? c['key']}'),
+        (key: '${c['key']}', name: '${c['name'] ?? c['key']}'),
   ],
   authorized: j['authorized'] == true,
 );
