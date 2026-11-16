@@ -431,6 +431,9 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
   late List<String> _imageModels = [...?_src?.imageModels];
   final _imageInput = TextEditingController();
 
+  /// 出图模型 → 自己填的触发词;没填的按模型 id 算。
+  late Map<String, List<String>> _imageTriggers = {...?_src?.imageTriggers};
+
   /// 点过「自定义」、地址还空着时也亮着它。
   bool _customPicked = false;
 
@@ -536,6 +539,10 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
       model: models.firstOrNull ?? '',
       models: models,
       imageModels: _allImageModels,
+      imageTriggers: {
+        for (final m in _allImageModels)
+          if (_imageTriggers[m] case final t? when t.isNotEmpty) m: t,
+      },
       apiPath: _path.text.trim(),
       headers: parseHeaderLines(_headers.text).headers,
     );
@@ -626,6 +633,50 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
     setState(() {
       _setList(image, [..._listOf(image)]..remove(m));
       _result = null;
+    });
+    _changed();
+  }
+
+  /// 改出图模型 [m] 的触发词:逗号、顿号或换行隔开,留空 = 按模型 id 算。
+  Future<void> _editTriggers(String m) async {
+    final c = TextEditingController(
+      text: (_imageTriggers[m] ?? const []).join(', '),
+    );
+    final v = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(m, style: mono(ctx, size: 15, weight: FontWeight.w600)),
+        content: TextField(
+          controller: c,
+          autofocus: true,
+          decoration: InputDecoration(
+            isDense: true,
+            labelText: ctx.l10n.triggerWords,
+            hintText: m,
+          ),
+          onSubmitted: (t) => Navigator.pop(ctx, t),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(ctx.l10n.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, c.text),
+            child: Text(ctx.l10n.save),
+          ),
+        ],
+      ),
+    );
+    c.dispose();
+    if (v == null || !mounted) return;
+    final words = [
+      for (final w in v.split(RegExp(r'[,，、;；\n]')))
+        if (w.trim().isNotEmpty) w.trim(),
+    ];
+    setState(() {
+      _imageTriggers = {..._imageTriggers}..remove(m);
+      if (words.isNotEmpty) _imageTriggers[m] = words;
     });
     _changed();
   }
@@ -935,8 +986,8 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
     onSelected: (_) => onTap(),
   );
 
-  /// 一行:左边短标签,右边控件。标签对齐控件第一行的中线,[top] 按控件高度给。
-  /// 模型那一格:已添加的一排可删的芯片 + 手填 / 从列表选。[image] = 出图模型。
+  /// 模型那一格:已添加的一排可删的芯片 + 手填 / 从列表选。[image] = 出图模型,
+  /// 芯片上带着触发词,点一下改。
   Widget _modelsRow(String label, {bool image = false}) {
     final scheme = context.scheme;
     final list = _listOf(image);
@@ -955,8 +1006,14 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
                 children: [
                   for (final m in list)
                     InputChip(
-                      label: Text(m, style: mono(context, size: 12)),
+                      label: Text(
+                        image && _imageTriggers[m] != null
+                            ? '$m · ${_imageTriggers[m]!.join(context.l10n.listSep)}'
+                            : m,
+                        style: mono(context, size: 12),
+                      ),
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      onPressed: image ? () => _editTriggers(m) : null,
                       onDeleted: () => _removeModel(m, image: image),
                       deleteButtonTooltipMessage: context.l10n.remove,
                     ),
@@ -1004,6 +1061,7 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
     );
   }
 
+  /// 一行:左边短标签,右边控件。标签对齐控件第一行的中线,[top] 按控件高度给。
   Widget _row(String label, Widget child, {double top = 15}) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 4),
     child: Row(

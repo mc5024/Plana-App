@@ -23,8 +23,6 @@ import '../../generate/widgets/common.dart' show dropFocusSoon;
 import '../agent_model.dart';
 import '../custom_endpoint.dart';
 import '../endpoints_page.dart';
-import '../image_gen/image_models.dart';
-import '../tools/tool_settings.dart';
 import '../../../l10n/l10n.dart';
 
 Future<void> showModelSheet(BuildContext context) async {
@@ -134,204 +132,122 @@ class _ModelSheet extends ConsumerWidget {
     ref.read(assistantModelPrefProvider.notifier).set(key);
     Navigator.pop(context);
   }
-}
 
-/// 一行。选中时左边图标换成对勾并整行染色 —— 一列小对勾要挨个找,
-/// 染色那行扫一眼就看见。
-Widget _row(
-  BuildContext context, {
-  required IconData icon,
-  required String title,
-  required VoidCallback? onTap,
-  String? subtitle,
-  String? badge,
-  bool selected = false,
-  bool dim = false,
-  bool accent = false,
-  VoidCallback? onEdit,
-}) {
-  final scheme = context.scheme;
-  final solid = selected && context.skin.float;
-  final fg = solid
-      ? scheme.onPrimary
-      : selected || accent
-      ? scheme.primary
-      : (dim ? scheme.outline : null);
-  return ListTile(
-    onTap: onTap,
-    selected: selected,
-    selectedTileColor: context.skin.float
+  /// 一行。选中时左边图标换成对勾并整行染色 —— 一列小对勾要挨个找,
+  /// 染色那行扫一眼就看见。
+  Widget _row(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+    String? subtitle,
+    String? badge,
+    bool selected = false,
+    bool dim = false,
+    bool accent = false,
+    VoidCallback? onEdit,
+  }) {
+    final scheme = context.scheme;
+    final solid = selected && context.skin.float;
+    final fg = solid
+        ? scheme.onPrimary
+        : selected || accent
         ? scheme.primary
-        : scheme.primaryContainer.withValues(alpha: .35),
-    contentPadding: const EdgeInsets.only(left: 20, right: 8),
-    leading: Icon(
-      selected ? Icons.check_circle : icon,
-      size: 21,
-      color: selected ? fg : (dim ? scheme.outline : fg),
-    ),
-    title: Row(
-      children: [
-        Flexible(
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: context.texts.bodyLarge!.copyWith(
-              fontWeight: selected || accent
-                  ? FontWeight.w700
-                  : FontWeight.w500,
-              color: fg,
-            ),
-          ),
-        ),
-        if (badge != null) ...[
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: solid
-                  ? scheme.onPrimary.withValues(alpha: .2)
-                  : scheme.secondaryContainer,
-              borderRadius: BorderRadius.circular(5),
-            ),
-            child: Text(
-              badge,
-              style: context.texts.labelSmall!.copyWith(
-                color: solid ? scheme.onPrimary : scheme.onSecondaryContainer,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ],
-    ),
-    subtitle: subtitle == null
-        ? null
-        : Text(
-            subtitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: context.texts.labelSmall!.copyWith(
-              color: solid
-                  ? scheme.onPrimary.withValues(alpha: .8)
-                  : scheme.outline,
-            ),
-          ),
-    trailing: onEdit == null
-        ? null
-        : IconButton(
-            tooltip: context.l10n.edit,
-            visualDensity: VisualDensity.compact,
-            icon: Icon(
-              Icons.edit_outlined,
-              size: 18,
-              color: solid ? scheme.onPrimary : scheme.onSurfaceVariant,
-            ),
-            onPressed: onEdit,
-          ),
-  );
-}
-
-Widget _note(
-  BuildContext context,
-  String text, {
-  required VoidCallback onRetry,
-}) => Padding(
-  padding: const EdgeInsets.fromLTRB(20, 8, 8, 4),
-  child: Row(
-    children: [
-      Expanded(
-        child: Text(
-          text,
-          style: context.texts.bodySmall!.copyWith(
-            color: context.scheme.onSurfaceVariant,
-            height: 1.6,
-          ),
-        ),
+        : (dim ? scheme.outline : null);
+    return ListTile(
+      onTap: onTap,
+      selected: selected,
+      selectedTileColor: context.skin.float
+          ? scheme.primary
+          : scheme.primaryContainer.withValues(alpha: .35),
+      contentPadding: const EdgeInsets.only(left: 20, right: 8),
+      leading: Icon(
+        selected ? Icons.check_circle : icon,
+        size: 21,
+        color: selected ? fg : (dim ? scheme.outline : fg),
       ),
-      TextButton(onPressed: onRetry, child: Text(context.l10n.retry)),
-    ],
-  ),
-);
-
-/// 选「生成图片」用哪个出图模型:Plana 后端的渠道(免费额度,要 Bot 授权),
-/// 或者接口里填的出图模型。行和选模型那个弹层同一种。
-Future<void> showImageModelSheet(BuildContext context) async {
-  await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: false,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: .18),
-    builder: (_) => const _ImageModelSheet(),
-  );
-  dropFocusSoon();
-}
-
-class _ImageModelSheet extends ConsumerWidget {
-  const _ImageModelSheet();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final plana = ref.watch(planaImageChannelsProvider);
-    final current = ref.watch(activeImageModelProvider)?.key ?? '';
-    final endpoints = ref.watch(customEndpointsProvider).value ?? const [];
-    final channels = plana.value?.channels ?? const [];
-    final authorized = plana.value?.authorized ?? false;
-    void pick(String key) {
-      ref.read(toolSettingsProvider.notifier).setImageModel(key);
-      Navigator.pop(context);
-    }
-
-    return SettingSheet(
-      title: context.l10n.imageModelField,
-      children: [
-        if (!plana.hasValue)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 26),
-            child: Center(child: CircularProgressIndicator()),
-          )
-        else if (channels.isNotEmpty) ...[
-          settingSection(context, context.l10n.planaBackend),
-          for (final c in channels)
-            _row(
-              context,
-              icon: Icons.cloud_outlined,
-              title: c.name,
-              // 没授权的只说暂未开放,不引导去授权
-              subtitle: !authorized
-                  ? context.l10n.notAvailableYet
-                  : c.remaining == null
-                  ? null
-                  : context.l10n.timesLeft(c.remaining!),
-              dim: !authorized,
-              selected: authorized && '$kPlanaImagePrefix${c.key}' == current,
-              onTap: authorized
-                  ? () => pick('$kPlanaImagePrefix${c.key}')
-                  : null,
-            ),
-        ],
-        settingSection(context, context.l10n.myEndpoints),
-        for (final e in endpoints)
-          if (e.canDraw)
-            for (final m in e.imageModels)
-              _row(
-                context,
-                icon: Icons.bolt_outlined,
-                title: m,
-                subtitle: e.displayName,
-                selected: customModelKey(e.id, m) == current,
-                onTap: () => pick(customModelKey(e.id, m)),
-                onEdit: () => openEndpointsPage(context, editId: e.id),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.texts.bodyLarge!.copyWith(
+                fontWeight: selected || accent
+                    ? FontWeight.w700
+                    : FontWeight.w500,
+                color: fg,
               ),
-        _row(
-          context,
-          icon: Icons.add,
-          title: context.l10n.addImageModel,
-          accent: true,
-          onTap: () => openEndpointsPage(context),
-        ),
-      ],
+            ),
+          ),
+          if (badge != null) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: solid
+                    ? scheme.onPrimary.withValues(alpha: .2)
+                    : scheme.secondaryContainer,
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: Text(
+                badge,
+                style: context.texts.labelSmall!.copyWith(
+                  color: solid ? scheme.onPrimary : scheme.onSecondaryContainer,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+      subtitle: subtitle == null
+          ? null
+          : Text(
+              subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.texts.labelSmall!.copyWith(
+                color: solid
+                    ? scheme.onPrimary.withValues(alpha: .8)
+                    : scheme.outline,
+              ),
+            ),
+      trailing: onEdit == null
+          ? null
+          : IconButton(
+              tooltip: context.l10n.edit,
+              visualDensity: VisualDensity.compact,
+              icon: Icon(
+                Icons.edit_outlined,
+                size: 18,
+                color: solid ? scheme.onPrimary : scheme.onSurfaceVariant,
+              ),
+              onPressed: onEdit,
+            ),
     );
   }
+
+  Widget _note(
+    BuildContext context,
+    String text, {
+    required VoidCallback onRetry,
+  }) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 8, 8, 4),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            text,
+            style: context.texts.bodySmall!.copyWith(
+              color: context.scheme.onSurfaceVariant,
+              height: 1.6,
+            ),
+          ),
+        ),
+        TextButton(onPressed: onRetry, child: Text(context.l10n.retry)),
+      ],
+    ),
+  );
 }

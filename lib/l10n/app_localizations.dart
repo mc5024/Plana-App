@@ -8233,7 +8233,7 @@ abstract class AppLocalizations {
   /// No description provided for @imageGenNoModel.
   ///
   /// In zh, this message translates to:
-  /// **'没有能用的出图模型,到工具页里选一个'**
+  /// **'这个出图模型现在用不了'**
   String get imageGenNoModel;
 
   /// No description provided for @imageGenNoImage.
@@ -8248,11 +8248,11 @@ abstract class AppLocalizations {
   /// **'添加出图模型'**
   String get addImageModel;
 
-  /// No description provided for @timesLeft.
+  /// No description provided for @triggerWords.
   ///
   /// In zh, this message translates to:
-  /// **'剩 {n} 次'**
-  String timesLeft(int n);
+  /// **'触发词'**
+  String get triggerWords;
 
   /// No description provided for @toolSearchArtist.
   ///

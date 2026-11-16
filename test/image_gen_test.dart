@@ -109,6 +109,7 @@ void main() {
       at: 0,
       draw: DrawProposal(positive: 'cat'),
       imageGen: ImageGenSpec(prompt: '画猫', refs: [kImageRefAttached]),
+      imageModel: 'plana:big_gpt',
     );
 
     test('回带时总带 image_gen,nai_draw 看 withDraw', () {
@@ -130,13 +131,22 @@ void main() {
         jsonDecode(jsonEncode(m.toJson())) as Map<String, dynamic>,
       );
       expect(back.imageGen!.toJson(), m.imageGen!.toJson());
+      expect(back.imageModel, 'plana:big_gpt');
     });
   });
 
   group('出图模型', () {
-    test('接口的出图模型单独存;只有出图模型也能出图,Claude 格式不出图', () {
-      final back = CustomEndpoint.fromJson(_openai.toJson())!;
+    test('接口的出图模型和触发词单独存;只有出图模型也能出图,Claude 格式不出图', () {
+      final e = _openai.copyWith(
+        imageTriggers: {
+          'gpt-image-1': ['小g', 'gpt'],
+        },
+      );
+      final back = CustomEndpoint.fromJson(e.toJson())!;
       expect(back.imageModels, ['gpt-image-1']);
+      expect(back.triggersOf('gpt-image-1'), ['小g', 'gpt']);
+      // 没填触发词的拿模型 id 当触发词
+      expect(_openai.triggersOf('gpt-image-1'), ['gpt-image-1']);
       expect(back.canDraw, isTrue);
       expect(back.usable, isFalse);
       expect(
@@ -146,45 +156,68 @@ void main() {
       expect(_openai.copyWith(apiKey: '').canDraw, isFalse);
     });
 
-    test('工具设置记住选的出图模型,工具默认开', () {
-      final s = ToolSettings.fromJson(
-        const ToolSettings(imageModel: 'plana:big_gpt').toJson(),
-      );
-      expect(s.imageModel, 'plana:big_gpt');
+    test('生成图片默认开,生成前确认默认关', () {
+      const s = ToolSettings();
       expect(s.toolOn(kImageGenTool), isTrue);
       expect(s.optionOn(kImageGenTool, kImageGenConfirm), isFalse);
     });
 
-    test('选过且能用的优先,否则第一个能用的;没授权的后端渠道不算', () {
+    test('原话里提到哪个就用哪个:最早出现的优先,不分大小写;没授权的后端渠道不算', () {
       final plana = parsePlanaImageChannels({
         'channels': [
-          {'key': 'big_gpt', 'name': 'GPT Image', 'remaining': 120},
+          {
+            'key': 'big_gpt',
+            'name': 'GPT Image',
+            'triggers': ['gpt'],
+          },
+          {
+            'key': 'official',
+            'name': 'Nano Banana Pro',
+            'triggers': ['香蕉', 'banana'],
+          },
+          // 老后端没带触发词:拿名字顶上
           {'key': 'doubao', 'name': 'Seedream'},
         ],
         'authorized': true,
       });
-      expect(plana.channels.first.remaining, 120);
-      expect(plana.channels.last.remaining, isNull);
-      final all = imageModelChoices(plana, const [_openai, _gemini]);
+      expect(plana.channels.last.triggers, ['Seedream']);
+      final gemini = _gemini.copyWith(
+        imageTriggers: {
+          'gemini-image': ['双子'],
+        },
+      );
+      final all = imageModelChoices(plana, [_openai, gemini]);
       expect(all.map((c) => c.key), [
         'plana:big_gpt',
+        'plana:official',
         'plana:doubao',
         'custom:o/gpt-image-1',
         'custom:g/gemini-image',
       ]);
-      expect(pickImageModel(all, 'custom:g/gemini-image')!.endpoint!.id, 'g');
-      expect(pickImageModel(all, '')!.key, 'plana:big_gpt');
-      // 模型删了:回落到同一个接口里剩下的
-      expect(pickImageModel(all, 'custom:g/old')!.key, 'custom:g/gemini-image');
+      String? hit(String text) => matchImageModel(all, text)?.choice.key;
+      expect(hit('用 GPT 画一只橘猫'), 'plana:big_gpt');
+      expect(matchImageModel(all, '用 GPT 画')!.trigger, 'gpt');
+      expect(hit('香蕉把这张图改成夜景,别用 gpt'), 'plana:official');
+      expect(hit('seedream 来一张'), 'plana:doubao');
+      expect(hit('双子画个猫'), 'custom:g/gemini-image');
+      // 同一处取更长的:gpt-image-1 比 gpt 长
+      expect(hit('gpt-image-1 画个猫'), 'custom:o/gpt-image-1');
+      expect(hit('画一只橘猫'), isNull);
 
-      final anon = (channels: plana.channels, authorized: false);
-      final anonAll = imageModelChoices(anon, const [_openai]);
-      expect(anonAll.first.available, isFalse);
+      expect(imageModelOf(all, 'custom:g/gemini-image')!.endpoint!.id, 'g');
+      expect(imageModelOf(all, 'custom:g/old'), isNull);
+
+      final anon = imageModelChoices(
+        (channels: plana.channels, authorized: false),
+        const [_openai],
+      );
+      expect(anon.first.available, isFalse);
+      expect(matchImageModel(anon, '用 gpt 画'), isNull);
+      expect(imageModelOf(anon, 'plana:big_gpt'), isNull);
       expect(
-        pickImageModel(anonAll, 'plana:big_gpt')!.key,
+        matchImageModel(anon, 'gpt-image-1')!.choice.key,
         'custom:o/gpt-image-1',
       );
-      expect(pickImageModel(imageModelChoices(anon, const []), ''), isNull);
     });
   });
 
@@ -387,7 +420,7 @@ void main() {
       model: 'm',
     );
 
-    test('选了出图模型才写进系统提示;只回出图块也算回复', () async {
+    test('点到或沿用出图模型才写进系统提示;只回出图块也算回复', () async {
       final systems = <String>[];
       final mock = MockClient((r) async {
         final body = jsonDecode(r.body) as Map;
@@ -406,38 +439,52 @@ void main() {
           headers: _json,
         );
       });
-      Future<List<AgentEvent>> run(String model) => http.runWithClient(
-        () =>
-            agentRuntimeFor(
-                  endpoint: chat,
-                  backendBase: '',
-                  sessionId: '',
-                  backendModel: '',
-                  imageModel: 'nai_v45_full',
-                )
-                .run(
-                  AgentTurnRequest(
-                    userText: '用 GPT 画一只橘猫',
-                    imageModel: 'nai_v45_full',
-                    customRules: const [
-                      PresetRule(name: 'role', content: '你是画师'),
-                    ],
-                    tools: ToolSettings(
-                      disabledTools: {for (final t in kAgentTools) t.name},
-                    ),
-                    stream: false,
-                    imageGenModel: model,
-                  ),
-                )
-                .toList(),
-        () => mock,
-      );
+      Future<List<AgentEvent>> run(String model, {String trigger = ''}) =>
+          http.runWithClient(
+            () =>
+                agentRuntimeFor(
+                      endpoint: chat,
+                      backendBase: '',
+                      sessionId: '',
+                      backendModel: '',
+                      imageModel: 'nai_v45_full',
+                    )
+                    .run(
+                      AgentTurnRequest(
+                        userText: '用 GPT 画一只橘猫',
+                        imageModel: 'nai_v45_full',
+                        customRules: const [
+                          PresetRule(name: 'role', content: '你是画师'),
+                        ],
+                        tools: ToolSettings(
+                          disabledTools: {for (final t in kAgentTools) t.name},
+                        ),
+                        stream: false,
+                        imageGenModel: model,
+                        imageGenTrigger: trigger,
+                      ),
+                    )
+                    .toList(),
+            () => mock,
+          );
 
-      final done = (await run('GPT Image')).whereType<AgentDone>().single;
+      final done = (await run(
+        'GPT Image',
+        trigger: 'gpt',
+      )).whereType<AgentDone>().single;
       expect(done.result.imageGen!.prompt, '画一只橘猫');
       expect(done.result.hasDraw, isFalse);
       expect(systems.single, contains('```image_gen'));
-      expect(systems.single, contains('GPT Image'));
+      expect(
+        systems.single,
+        contains('提到了「gpt」,也就是出图模型 GPT Image'.replaceAll(',', '，')),
+      );
+
+      // 没点到、沿用上一轮的:说明换成「接着改那张图」
+      systems.clear();
+      await run('GPT Image');
+      expect(systems.single, contains('上一轮用出图模型 GPT Image 出了图'));
+      expect(systems.single, isNot(contains('提到了')));
 
       systems.clear();
       await run('');

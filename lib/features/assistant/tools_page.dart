@@ -9,11 +9,11 @@ import '../../core/theme/app_theme.dart';
 import '../../core/util/haptics.dart';
 import '../../l10n/l10n.dart';
 import '../profile/widgets/settings_ui.dart';
+import 'endpoints_page.dart' show openEndpointsPage;
 import 'image_gen/image_models.dart';
 import 'tools/agent_tool.dart';
 import 'tools/tool_registry.dart';
 import 'tools/tool_settings.dart';
-import 'widgets/model_sheet.dart' show showImageModelSheet;
 
 class AssistantToolsPage extends ConsumerWidget {
   const AssistantToolsPage({super.key});
@@ -41,6 +41,7 @@ class AssistantToolsPage extends ConsumerWidget {
 }
 
 /// 生成图片:不是查资料的工具,模型在回复里写出图块,App 拿去调出图模型。
+/// 不在这里选模型:列出能用的出图模型和各自的触发词,原话里提到哪个就用哪个。
 class _ImageGenCard extends ConsumerWidget {
   const _ImageGenCard({required this.settings});
 
@@ -50,7 +51,7 @@ class _ImageGenCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final n = ref.read(toolSettingsProvider.notifier);
     final on = settings.toolOn(kImageGenTool);
-    final model = ref.watch(activeImageModelProvider);
+    final models = ref.watch(imageModelChoicesProvider);
     return _CardShell(
       header: _ToolRow(
         icon: Icons.image_outlined,
@@ -60,11 +61,25 @@ class _ImageGenCard extends ConsumerWidget {
       ),
       enabled: on,
       options: [
+        for (final m in models)
+          _PickRow(
+            title: m.name,
+            // 没授权的后端渠道只说暂未开放,不引导去授权
+            value: m.available
+                ? m.triggers.join(context.l10n.listSep)
+                : context.l10n.notAvailableYet,
+            enabled: on,
+            // 接口里的点进去改触发词
+            onTap: m.endpoint == null
+                ? null
+                : () => openEndpointsPage(context, editId: m.endpoint!.id),
+          ),
         _PickRow(
-          title: context.l10n.imageModelField,
-          value: model?.name ?? context.l10n.notSet,
+          title: context.l10n.addImageModel,
+          value: '',
+          accent: true,
           enabled: on,
-          onTap: () => showImageModelSheet(context),
+          onTap: () => openEndpointsPage(context),
         ),
         _SubRow(
           title: context.l10n.imageGenConfirm,
@@ -203,52 +218,66 @@ class _ToolRow extends StatelessWidget {
 /// 浅底里一行的最低高度:开关行、点开选的行一样高。
 const _optionMinHeight = 52.0;
 
-/// 浅底里点开选一项的一行:右边是选着的值。
+/// 浅底里一行:标题 + 右边的值,能点的带箭头。[accent] = 操作行(主色字)。
 class _PickRow extends StatelessWidget {
   const _PickRow({
     required this.title,
     required this.value,
     required this.enabled,
-    required this.onTap,
+    this.onTap,
+    this.accent = false,
   });
 
   final String title;
   final String value;
   final bool enabled;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool accent;
 
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
+    final tap = onTap;
     return InkWell(
-      onTap: enabled ? onTap : null,
+      onTap: enabled ? tap : null,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: _optionMinHeight),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 10, 0),
-          child: Row(
-            children: [
-              Text(
-                title,
-                style: context.texts.bodyMedium!.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  value,
-                  textAlign: TextAlign.end,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.texts.bodyMedium!.copyWith(
-                    color: scheme.onSurfaceVariant,
+          padding: EdgeInsets.fromLTRB(14, 0, tap == null ? 14 : 10, 0),
+          child: LayoutBuilder(
+            builder: (context, box) => Row(
+              children: [
+                // 标题最多占六成宽(模型 id 长),不把右边的触发词挤没
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: box.maxWidth * .6),
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.texts.bodyMedium!.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: accent ? scheme.primary : null,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              Icon(Icons.chevron_right, size: 20, color: scheme.outline),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    value,
+                    textAlign: TextAlign.end,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.texts.bodyMedium!.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                if (tap != null) ...[
+                  const SizedBox(width: 4),
+                  Icon(Icons.chevron_right, size: 20, color: scheme.outline),
+                ],
+              ],
+            ),
           ),
         ),
       ),

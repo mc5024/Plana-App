@@ -1,17 +1,17 @@
-/// 「生成图片」能选的出图模型:后端渠道(免费额度,要 Bot 授权)在前,各接口里填的
+/// 「生成图片」能用的出图模型:后端渠道(免费额度,要 Bot 授权)在前,各接口里填的
 /// 出图模型在后。后端那张表由服务端下发,不在 App 里写死。
 ///
-/// 选中的存 key:后端渠道 `plana:<渠道>`,接口沿用对话模型那套 `custom:<接口 id>/<模型>`。
+/// 不在设置里选:每个模型带几个触发词,用户原话里提到哪个就用哪个([matchImageModel])。
+/// 一轮用的哪个记在 AI 消息上,存 key:后端渠道 `plana:<渠道>`,接口沿用对话模型那套
+/// `custom:<接口 id>/<模型>`。
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/bot_session_store.dart';
 import '../../../core/net/backend_client.dart';
-import '../agent_model.dart'
-    show customEndpointIdOf, customModelKey, customModelOf;
+import '../agent_model.dart' show customModelKey;
 import '../custom_endpoint.dart';
-import '../tools/tool_settings.dart';
 
 const kPlanaImagePrefix = 'plana:';
 
@@ -20,8 +20,8 @@ class ImageModelChoice {
     required this.key,
     required this.name,
     required this.model,
+    required this.triggers,
     this.endpoint,
-    this.remaining,
     this.available = true,
   });
 
@@ -31,19 +31,21 @@ class ImageModelChoice {
   /// 后端渠道 key / 接口里的模型 id。
   final String model;
 
+  /// 用户原话里出现(不分大小写)就用这个模型。
+  final List<String> triggers;
+
   /// 走哪个接口;null = 后端渠道。
   final CustomEndpoint? endpoint;
-
-  /// 后端渠道所在额度池的剩余次数;不知道为 null。
-  final int? remaining;
 
   /// 后端渠道没有 Bot 授权时为 false。
   final bool available;
 }
 
+typedef PlanaImageChannel = ({String key, String name, List<String> triggers});
+
 /// `GET /api/agent/image/channels` 的响应。
 typedef PlanaImageChannels = ({
-  List<({String key, String name, int? remaining})> channels,
+  List<PlanaImageChannel> channels,
   bool authorized,
 });
 
@@ -54,7 +56,10 @@ PlanaImageChannels parsePlanaImageChannels(Map<String, dynamic> j) => (
         (
           key: '${c['key']}',
           name: '${c['name'] ?? c['key']}',
-          remaining: (c['remaining'] as num?)?.toInt(),
+          triggers: [
+            for (final t in (c['triggers'] as List? ?? [c['name'] ?? c['key']]))
+              if ('$t'.trim().isNotEmpty) '$t'.trim(),
+          ],
         ),
   ],
   authorized: j['authorized'] == true,
@@ -70,10 +75,7 @@ final planaImageChannelsProvider = FutureProvider<PlanaImageChannels>((
       await ref.watch(backendClientProvider).agentImageChannels(sid),
     );
   } catch (_) {
-    return (
-      channels: const <({String key, String name, int? remaining})>[],
-      authorized: false,
-    );
+    return (channels: const <PlanaImageChannel>[], authorized: false);
   }
 });
 
@@ -81,12 +83,12 @@ List<ImageModelChoice> imageModelChoices(
   PlanaImageChannels? plana,
   List<CustomEndpoint> endpoints,
 ) => [
-  for (final c in plana?.channels ?? const [])
+  for (final c in plana?.channels ?? const <PlanaImageChannel>[])
     ImageModelChoice(
       key: '$kPlanaImagePrefix${c.key}',
       name: c.name,
       model: c.key,
-      remaining: c.remaining,
+      triggers: c.triggers,
       available: plana!.authorized,
     ),
   for (final e in endpoints)
@@ -96,24 +98,42 @@ List<ImageModelChoice> imageModelChoices(
           key: customModelKey(e.id, m),
           name: m,
           model: m,
+          triggers: e.triggersOf(m),
           endpoint: e,
         ),
 ];
 
-/// 选着的那个:[pinned] 在表里且能用就是它,否则第一个能用的;都不能用为 null。
-ImageModelChoice? pickImageModel(List<ImageModelChoice> all, String pinned) {
+/// [text] 里点到的出图模型:能用的里触发词出现得最早的那个,同一处的取更长的触发词。
+/// 一个都没点到为 null。
+({ImageModelChoice choice, String trigger})? matchImageModel(
+  List<ImageModelChoice> all,
+  String text,
+) {
+  final lower = text.toLowerCase();
+  ({ImageModelChoice choice, String trigger})? best;
+  var bestAt = -1;
   for (final c in all) {
-    if (c.key == pinned && c.available) return c;
-  }
-  // 接口还在、模型被删了:同一个接口里剩下的第一个
-  final id = customEndpointIdOf(pinned);
-  if (id != null && customModelOf(pinned) != null) {
-    for (final c in all) {
-      if (c.endpoint?.id == id) return c;
+    if (!c.available) continue;
+    for (final t in c.triggers) {
+      final word = t.trim();
+      if (word.isEmpty) continue;
+      final at = lower.indexOf(word.toLowerCase());
+      if (at < 0) continue;
+      if (best == null ||
+          at < bestAt ||
+          (at == bestAt && word.length > best.trigger.length)) {
+        best = (choice: c, trigger: word);
+        bestAt = at;
+      }
     }
   }
+  return best;
+}
+
+/// [key] 对应的那个,不在了或用不了为 null。
+ImageModelChoice? imageModelOf(List<ImageModelChoice> all, String? key) {
   for (final c in all) {
-    if (c.available) return c;
+    if (c.key == key && c.available) return c;
   }
   return null;
 }
@@ -122,13 +142,5 @@ final imageModelChoicesProvider = Provider<List<ImageModelChoice>>(
   (ref) => imageModelChoices(
     ref.watch(planaImageChannelsProvider).value,
     ref.watch(customEndpointsProvider).value ?? const [],
-  ),
-);
-
-/// 生成图片现在用哪个;null = 没有能用的。
-final activeImageModelProvider = Provider<ImageModelChoice?>(
-  (ref) => pickImageModel(
-    ref.watch(imageModelChoicesProvider),
-    ref.watch(toolSettingsProvider).value?.imageModel ?? '',
   ),
 );

@@ -4682,7 +4682,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get imageGenConfirm => '生成前确认';
 
   @override
-  String get imageGenNoModel => '没有能用的出图模型,到工具页里选一个';
+  String get imageGenNoModel => '这个出图模型现在用不了';
 
   @override
   String get imageGenNoImage => '没有出图';
@@ -4691,9 +4691,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get addImageModel => '添加出图模型';
 
   @override
-  String timesLeft(int n) {
-    return '剩 $n 次';
-  }
+  String get triggerWords => '触发词';
 
   @override
   String get toolSearchArtist => '使用画风库';

@@ -116,7 +116,15 @@ class LocalAgentRuntime implements AgentRuntime {
         notes: [
           for (final t in active) await t.systemNote(ctx),
           if (req.imageGenModel.isNotEmpty)
-            await imageGenText(req.imageGenModel),
+            await imageGenText(
+              req.imageGenModel,
+              texts.get(
+                req.imageGenTrigger.isEmpty
+                    ? 'image_gen_follow'
+                    : 'image_gen_trigger',
+                {'model': req.imageGenModel, 'trigger': req.imageGenTrigger},
+              ),
+            ),
         ],
       );
       final artistTokens = ctx.artistPlan.tokens;

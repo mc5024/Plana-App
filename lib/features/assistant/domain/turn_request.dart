@@ -42,6 +42,7 @@ class AgentTurnRequest {
     this.rerolls = AssistantSettings.rerollsDefault,
     this.refusalKeywords = kRefusalKeywords,
     this.imageGenModel = '',
+    this.imageGenTrigger = '',
   });
 
   final String userText;
@@ -87,4 +88,7 @@ class AgentTurnRequest {
 
   /// 「生成图片」用的出图模型的名字;空 = 这轮不给模型这个能力。
   final String imageGenModel;
+
+  /// 用户原话里点到 [imageGenModel] 的那个触发词;空 = 没点到,是沿用上一轮的。
+  final String imageGenTrigger;
 }

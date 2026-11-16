@@ -442,6 +442,7 @@ class AssistantMsg {
     this.draw,
     this.change,
     this.imageGen,
+    this.imageModel,
   });
 
   final String id;
@@ -513,6 +514,10 @@ class AssistantMsg {
   /// AI 这一轮要出图模型出的图。仅 [MsgRole.ai]。出好的图和 NAI 的一样记进 [imageIds]。
   final ImageGenSpec? imageGen;
 
+  /// [imageGen] 用哪个出图模型(`image_models.dart` 的 key):这一轮原话点到的,
+  /// 或者沿用上一轮的。
+  final String? imageModel;
+
   AssistantMsg copyWith({
     String? text,
     List<ToolTrace>? tools,
@@ -533,6 +538,7 @@ class AssistantMsg {
     draw: draw,
     change: change ?? this.change,
     imageGen: imageGen,
+    imageModel: imageModel,
   );
 
   Map<String, dynamic> toJson() => {
@@ -550,6 +556,7 @@ class AssistantMsg {
     if (draw != null) 'draw': draw!.toJson(),
     if (change != null) 'change': change!.toJson(),
     if (imageGen != null) 'imageGen': imageGen!.toJson(),
+    if (imageModel != null) 'imageModel': imageModel,
   };
 
   factory AssistantMsg.fromJson(Map<String, dynamic> j) => AssistantMsg(
@@ -574,6 +581,7 @@ class AssistantMsg {
         ? AssistantChange.fromJson(j['change'] as Map<String, dynamic>)
         : null,
     imageGen: ImageGenSpec.fromJson(j['imageGen']),
+    imageModel: j['imageModel'] as String?,
   );
 }
 

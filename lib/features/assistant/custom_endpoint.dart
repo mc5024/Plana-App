@@ -140,6 +140,7 @@ class CustomEndpoint {
     required this.model,
     this.models = const [],
     this.imageModels = const [],
+    this.imageTriggers = const {},
     this.apiPath = '',
     this.headers = const {},
   });
@@ -165,6 +166,15 @@ class CustomEndpoint {
 
   /// 出图模型(「生成图片」用),和对话模型分开存。Claude 格式不出图,恒为空。
   final List<String> imageModels;
+
+  /// 出图模型 → 触发词:用户原话里出现就用这个模型。
+  final Map<String, List<String>> imageTriggers;
+
+  /// [model] 的触发词;没填的拿模型 id 当触发词。
+  List<String> triggersOf(String model) {
+    final t = imageTriggers[model];
+    return t == null || t.isEmpty ? [model] : t;
+  }
 
   /// 这个接口能不能出图:格式支持、填了 Key、有出图模型。
   bool get canDraw =>
@@ -236,6 +246,7 @@ class CustomEndpoint {
     String? model,
     List<String>? models,
     List<String>? imageModels,
+    Map<String, List<String>>? imageTriggers,
     String? apiPath,
     Map<String, String>? headers,
   }) => CustomEndpoint(
@@ -247,6 +258,7 @@ class CustomEndpoint {
     model: model ?? this.model,
     models: models ?? this.models,
     imageModels: imageModels ?? this.imageModels,
+    imageTriggers: imageTriggers ?? this.imageTriggers,
     apiPath: apiPath ?? this.apiPath,
     headers: headers ?? this.headers,
   );
@@ -260,6 +272,7 @@ class CustomEndpoint {
     'model': allModels.firstOrNull ?? '',
     'models': allModels,
     if (imageModels.isNotEmpty) 'imageModels': imageModels,
+    if (imageTriggers.isNotEmpty) 'imageTriggers': imageTriggers,
     if (apiPath.isNotEmpty) 'apiPath': apiPath,
     if (headers.isNotEmpty) 'headers': headers,
   };
@@ -291,6 +304,15 @@ class CustomEndpoint {
           for (final m in l)
             if ('$m'.trim().isNotEmpty) '$m'.trim(),
       ],
+      imageTriggers: {
+        if (e['imageTriggers'] case final Map t)
+          for (final x in t.entries)
+            if (x.value is List)
+              '${x.key}': [
+                for (final w in x.value as List)
+                  if ('$w'.trim().isNotEmpty) '$w'.trim(),
+              ],
+      },
       apiPath: e['apiPath']?.toString() ?? '',
       headers: switch (e['headers']) {
         final Map h => {

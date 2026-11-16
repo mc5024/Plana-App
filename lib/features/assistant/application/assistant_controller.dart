@@ -509,7 +509,7 @@ class AssistantController extends Notifier<AssistantState> {
       toolSettings = const ToolSettings();
     }
     final imageGen = toolSettings.toolOn(kImageGenTool)
-        ? await _imageModel(toolSettings)
+        ? await _imageModelFor(trimmed)
         : null;
 
     final family = rulesFamilyOf(imageModel);
@@ -542,7 +542,11 @@ class AssistantController extends Notifier<AssistantState> {
       'no_draw': noDraw,
       'tools': [for (final t in enabledTools(toolSettings)) t.name],
       'oc_placeholders': toolSettings.ocPlaceholders,
-      if (imageGen != null) 'image_gen': imageGen.key,
+      if (imageGen != null)
+        'image_gen': {
+          'model': imageGen.choice.key,
+          'trigger': imageGen.trigger,
+        },
       'history_turns': settings.historyTurns,
       'retries': settings.retries,
       'rerolls': settings.rerolls,
@@ -569,7 +573,8 @@ class AssistantController extends Notifier<AssistantState> {
       retries: settings.retries,
       rerolls: settings.rerolls,
       refusalKeywords: settings.refusalKeywords,
-      imageGenModel: imageGen?.name ?? '',
+      imageGenModel: imageGen?.choice.name ?? '',
+      imageGenTrigger: imageGen?.trigger ?? '',
     );
     // 上面几处 await 期间可能已经点了停止,或者又发了一条:这一轮作废。
     // runtime 只有 listen 才发请求,在这儿拦住就不花钱。
@@ -615,7 +620,15 @@ class AssistantController extends Notifier<AssistantState> {
                   persist: false,
                 );
               case AgentDone(:final result):
-                _finish(result, tools, canvas, picked, noDraw, sourceCanvasId);
+                _finish(
+                  result,
+                  tools,
+                  canvas,
+                  picked,
+                  noDraw,
+                  sourceCanvasId,
+                  imageGen?.choice.key,
+                );
             }
           },
           onError: (Object e) {
@@ -701,8 +714,11 @@ class AssistantController extends Notifier<AssistantState> {
     AssistantMode mode,
     bool noDraw,
     String sourceCanvasId,
+    String? imageModel,
   ) {
     LiveProgress.instance.endAssistant(success: true, keep: !_appForeground);
+    // 这轮没给模型出图能力(没点到出图模型)还写了 image_gen 的,多半是照着历史学的:不算数
+    final imageGen = imageModel == null ? null : r.imageGen;
     // 产出先当成一份「提议」挂在这条消息上,用户在结果卡上点「导入」才落地。
     final proposal = r.hasDraw
         ? DrawProposal(
@@ -720,7 +736,7 @@ class AssistantController extends Notifier<AssistantState> {
           );
     final text = r.replyText.trim().isNotEmpty
         ? r.replyText.trim()
-        : (draw != null || r.imageGen != null
+        : (draw != null || imageGen != null
               ? l10nNow.replyDoneFallback
               : l10nNow.replyEmptyFallback);
     final id = _newId();
@@ -739,7 +755,8 @@ class AssistantController extends Notifier<AssistantState> {
             withCanvas: canvas,
             mode: mode,
             noDraw: noDraw,
-            imageGen: r.imageGen,
+            imageGen: imageGen,
+            imageModel: imageGen == null ? null : imageModel,
           ),
         ],
         running: false,
@@ -754,7 +771,7 @@ class AssistantController extends Notifier<AssistantState> {
     // 出图模型那块:工具开着、没开「生成前确认」就直接出
     final toolSettings =
         ref.read(toolSettingsProvider).value ?? const ToolSettings();
-    if (r.imageGen != null &&
+    if (imageGen != null &&
         toolSettings.toolOn(kImageGenTool) &&
         !toolSettings.optionOn(kImageGenTool, kImageGenConfirm)) {
       unawaited(generateImage(id));
@@ -762,8 +779,8 @@ class AssistantController extends Notifier<AssistantState> {
     unawaited(_drain());
   }
 
-  /// 生成图片用哪个出图模型;没有能用的为 null。后端渠道列表最多等 [_imageChannelsWait]。
-  Future<ImageModelChoice?> _imageModel(ToolSettings s) async {
+  /// 全部出图模型。后端渠道列表最多等 [_imageChannelsWait]。
+  Future<List<ImageModelChoice>> _imageChoices() async {
     PlanaImageChannels? plana;
     try {
       plana = await ref
@@ -776,13 +793,27 @@ class AssistantController extends Notifier<AssistantState> {
     } catch (_) {
       endpoints = const [];
     }
-    return pickImageModel(imageModelChoices(plana, endpoints), s.imageModel);
+    return imageModelChoices(plana, endpoints);
+  }
+
+  /// 这一轮给模型哪个出图模型:原话里点到的;没点到但上一轮用出图模型出过图,沿用那个
+  /// (trigger 为空,接不接着改由模型看原话定);都没有为 null。
+  Future<({ImageModelChoice choice, String trigger})?> _imageModelFor(
+    String text,
+  ) async {
+    final all = await _imageChoices();
+    if (matchImageModel(all, text) case final hit?) return hit;
+    final last = state.msgs.where((m) => m.role == MsgRole.ai).lastOrNull;
+    if (last?.imageGen == null) return null;
+    final choice = imageModelOf(all, last!.imageModel);
+    return choice == null ? null : (choice: choice, trigger: '');
   }
 
   /// 拿某条消息的 image_gen 块调出图模型出一张,进图库并挂到这条消息上。
   /// 自动出图、图框里的「生成」「重新生成」「重试」都走这里。
   Future<void> generateImage(String msgId) async {
-    final spec = _msg(msgId)?.imageGen;
+    final msg = _msg(msgId);
+    final spec = msg?.imageGen;
     if (spec == null || state.imageRuns.contains(msgId)) return;
     _set(
       state.copyWith(
@@ -795,8 +826,7 @@ class AssistantController extends Notifier<AssistantState> {
     String? imageId;
     final client = http.Client();
     try {
-      final tools = await ref.read(toolSettingsProvider.future);
-      final choice = await _imageModel(tools);
+      final choice = imageModelOf(await _imageChoices(), msg!.imageModel);
       if (choice == null) throw AgentFailure(l10nNow.imageGenNoModel);
       final sid = (await ref.read(botSessionProvider.future))?.sessionId ?? '';
       final bytes =
