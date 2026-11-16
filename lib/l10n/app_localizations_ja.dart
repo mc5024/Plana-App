@@ -5396,6 +5396,26 @@ class AppLocalizationsJa extends AppLocalizations {
   String get refusalRetriesDesc => '回复像拒绝时自动重新生成';
 
   @override
+  String get refusalKeywords => '拒绝关键词';
+
+  @override
+  String get refusalKeywordsDesc => '不出图的回复命中其中一个就算拒绝';
+
+  @override
+  String get addRefusalKeyword => '添加关键词，逗号隔开可加多个';
+
+  @override
+  String get restoreDefaultKeywordsQ => '恢复默认关键词？';
+
+  @override
+  String get restoreDefaultKeywordsBody => '添加和删除过的关键词都会还原';
+
+  @override
+  String keywordsN(int n) {
+    return '$n 个';
+  }
+
+  @override
   String get settingLibrary => '资料';
 
   @override

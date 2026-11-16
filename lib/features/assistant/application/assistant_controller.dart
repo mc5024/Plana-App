@@ -518,6 +518,8 @@ class AssistantController extends Notifier<AssistantState> {
       'history_turns': settings.historyTurns,
       'retries': settings.retries,
       'rerolls': settings.rerolls,
+      if (!settings.defaultRefusalKeywords)
+        'refusal_keywords': settings.refusalKeywords,
       'history_entries': history.length,
       'with_canvas': canvas,
       if (image != null) 'image_bytes': image.length,
@@ -538,6 +540,7 @@ class AssistantController extends Notifier<AssistantState> {
       stream: settings.stream,
       retries: settings.retries,
       rerolls: settings.rerolls,
+      refusalKeywords: settings.refusalKeywords,
     );
     // 上面几处 await 期间可能已经点了停止,或者又发了一条:这一轮作废。
     // runtime 只有 listen 才发请求,在这儿拦住就不花钱。

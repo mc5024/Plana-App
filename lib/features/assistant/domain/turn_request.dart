@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import '../assistant_settings.dart' show AssistantSettings, ThinkLevel;
 import '../presets/preset_rule.dart' show PresetRule;
+import '../runtime/refusal.dart' show kRefusalKeywords;
 import '../tools/tool_settings.dart' show ToolSettings;
 
 /// 引用创作页时带给 AI 的画面。字段与发出去的形状一致:角色站位已换算成 `"x,y"`。
@@ -39,6 +40,7 @@ class AgentTurnRequest {
     this.stream = true,
     this.retries = AssistantSettings.retriesDefault,
     this.rerolls = AssistantSettings.rerollsDefault,
+    this.refusalKeywords = kRefusalKeywords,
   });
 
   final String userText;
@@ -78,4 +80,7 @@ class AgentTurnRequest {
   /// 出错后重发几次 / 回复像拒绝时重掷几次,见 [AssistantSettings]。
   final int retries;
   final int rerolls;
+
+  /// 回复命中就算拒绝的词。
+  final List<String> refusalKeywords;
 }

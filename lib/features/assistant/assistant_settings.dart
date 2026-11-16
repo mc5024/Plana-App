@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/store/app_stores.dart';
 import '../generate/prompt_sections.dart' show SectionImport;
 import '../../l10n/l10n.dart';
+import 'runtime/refusal.dart' show kRefusalKeywords;
 import 'tools/tool_settings.dart' show migrateLegacyToolSettings;
 
 const _key = 'assistant_settings';
@@ -67,6 +68,7 @@ class AssistantSettings {
     this.importTo = SectionImport.main,
     this.retries = retriesDefault,
     this.rerolls = rerollsDefault,
+    this.refusalKeywords = kRefusalKeywords,
   });
 
   /// 失败重试 / 拒绝重试的默认次数与上限。0 = 关。
@@ -159,6 +161,12 @@ class AssistantSettings {
   /// 回复像拒绝时原地重掷几次。0 = 不判拒绝,回复照常显示。
   final int rerolls;
 
+  /// 回复命中这些词就算拒绝。和默认一样时不落盘,默认词表更新能跟上。
+  final List<String> refusalKeywords;
+
+  bool get defaultRefusalKeywords =>
+      _sameList(refusalKeywords, kRefusalKeywords);
+
   AssistantSettings copyWith({
     bool? autoGenerate,
     bool? inlineImage,
@@ -172,6 +180,7 @@ class AssistantSettings {
     SectionImport? importTo,
     int? retries,
     int? rerolls,
+    List<String>? refusalKeywords,
   }) => AssistantSettings(
     autoGenerate: autoGenerate ?? this.autoGenerate,
     inlineImage: inlineImage ?? this.inlineImage,
@@ -185,6 +194,7 @@ class AssistantSettings {
     importTo: importTo ?? this.importTo,
     retries: retries ?? this.retries,
     rerolls: rerolls ?? this.rerolls,
+    refusalKeywords: refusalKeywords ?? this.refusalKeywords,
   );
 
   Map<String, dynamic> toJson() => {
@@ -200,6 +210,7 @@ class AssistantSettings {
     'importTo': importTo.name,
     'retries': retries,
     'rerolls': rerolls,
+    if (!defaultRefusalKeywords) 'refusalKeywords': refusalKeywords,
   };
 
   factory AssistantSettings.fromJson(Map<String, dynamic> j) =>
@@ -238,12 +249,28 @@ class AssistantSettings {
         },
         retries: _count(j['retries'], retriesDefault),
         rerolls: _count(j['rerolls'], rerollsDefault),
+        refusalKeywords: switch (j['refusalKeywords']) {
+          final List<dynamic> l => [
+            for (final k in l)
+              if (k is String && k.trim().isNotEmpty) k.trim(),
+          ],
+          _ => kRefusalKeywords,
+        },
       );
 
   static int _count(Object? v, int fallback) => switch (v) {
     final num n when n.isFinite => n.round().clamp(0, retriesMax),
     _ => fallback,
   };
+}
+
+bool _sameList(List<String> a, List<String> b) {
+  if (identical(a, b)) return true;
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }
 
 final assistantSettingsProvider =

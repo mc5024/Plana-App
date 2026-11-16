@@ -5865,6 +5865,34 @@ class AppLocalizationsEn extends AppLocalizations {
       'Regenerate when the reply looks like a refusal';
 
   @override
+  String get refusalKeywords => 'Refusal keywords';
+
+  @override
+  String get refusalKeywordsDesc =>
+      'A reply without a prompt that contains any of these counts as a refusal';
+
+  @override
+  String get addRefusalKeyword => 'Add keywords, separated by commas';
+
+  @override
+  String get restoreDefaultKeywordsQ => 'Restore default keywords?';
+
+  @override
+  String get restoreDefaultKeywordsBody =>
+      'Keywords you added or removed will be reverted';
+
+  @override
+  String keywordsN(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n keywords',
+      one: '1 keyword',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get settingLibrary => 'Library';
 
   @override

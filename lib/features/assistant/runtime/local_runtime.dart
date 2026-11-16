@@ -359,7 +359,7 @@ class _Turn {
       }
       // 重掷关着就不判拒绝,回复照常交出去
       if (parsed.draw == null && req.rerolls > 0) {
-        if (refusalHit(parsed.reply) case final hit?) {
+        if (refusalHit(parsed.reply, req.refusalKeywords) case final hit?) {
           hop['refusal'] = hit;
           if (rerolls >= req.rerolls) throw _Refused(hit);
           rerolls++;

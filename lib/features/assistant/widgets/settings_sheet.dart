@@ -20,6 +20,7 @@ import '../assistant_settings.dart';
 import '../application/assistant_controller.dart';
 import '../presets/preset_rule.dart';
 import '../presets/rules_library.dart';
+import '../refusal_keywords_page.dart';
 import '../rules_page.dart';
 import '../tools/tool_registry.dart';
 import '../tools/tool_settings.dart';
@@ -158,6 +159,17 @@ class _SettingsSheet extends ConsumerWidget {
             step: 1,
             format: (v) => _countLabel(context, v),
             onChanged: (v) => n.patch((o) => o.copyWith(rerolls: v.round())),
+          ),
+          SettingNavRow(
+            icon: Icons.label_outline,
+            title: context.l10n.refusalKeywords,
+            desc: context.l10n.refusalKeywordsDesc,
+            value: context.l10n.keywordsN(s.refusalKeywords.length),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const RefusalKeywordsPage(),
+              ),
+            ),
           ),
           settingSection(context, context.l10n.settingLibrary),
           SettingNavRow(

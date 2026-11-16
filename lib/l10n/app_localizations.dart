@@ -9502,6 +9502,42 @@ abstract class AppLocalizations {
   /// **'回复像拒绝时自动重新生成'**
   String get refusalRetriesDesc;
 
+  /// No description provided for @refusalKeywords.
+  ///
+  /// In zh, this message translates to:
+  /// **'拒绝关键词'**
+  String get refusalKeywords;
+
+  /// No description provided for @refusalKeywordsDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'不出图的回复命中其中一个就算拒绝'**
+  String get refusalKeywordsDesc;
+
+  /// No description provided for @addRefusalKeyword.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加关键词，逗号隔开可加多个'**
+  String get addRefusalKeyword;
+
+  /// No description provided for @restoreDefaultKeywordsQ.
+  ///
+  /// In zh, this message translates to:
+  /// **'恢复默认关键词？'**
+  String get restoreDefaultKeywordsQ;
+
+  /// No description provided for @restoreDefaultKeywordsBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加和删除过的关键词都会还原'**
+  String get restoreDefaultKeywordsBody;
+
+  /// No description provided for @keywordsN.
+  ///
+  /// In zh, this message translates to:
+  /// **'{n} 个'**
+  String keywordsN(int n);
+
   /// No description provided for @settingLibrary.
   ///
   /// In zh, this message translates to:

@@ -37,6 +37,7 @@ import 'package:plana_app/features/assistant/protocol/tool_protocol.dart';
 import 'package:plana_app/features/assistant/runtime/ledger.dart';
 import 'package:plana_app/features/assistant/runtime/placeholders.dart';
 import 'package:plana_app/features/assistant/runtime/prompt_assets.dart';
+import 'package:plana_app/features/assistant/runtime/refusal.dart';
 import 'package:plana_app/features/assistant/tools/artist_tool.dart';
 import 'package:plana_app/features/assistant/tools/character_tool.dart';
 import 'package:plana_app/features/assistant/tools/my_library.dart';
@@ -1752,6 +1753,7 @@ void main() {
       bool backend = false,
       int retries = AssistantSettings.retriesDefault,
       int rerolls = AssistantSettings.rerollsDefault,
+      List<String> refusalKeywords = kRefusalKeywords,
     }) => http.runWithClient(
       () =>
           agentRuntimeFor(
@@ -1788,6 +1790,7 @@ void main() {
                   stream: stream,
                   retries: retries,
                   rerolls: rerolls,
+                  refusalKeywords: refusalKeywords,
                 ),
               )
               .toList(),
@@ -2157,6 +2160,17 @@ void main() {
       n = 0;
       final events = await run(mock, rerolls: 0);
       expect(n, 1);
+      expect(events.whereType<AgentDone>().single.result.replyText, '这个我画不了');
+    });
+
+    test('拒绝关键词按设置的词表判', () async {
+      var n = 0;
+      final mock = MockClient((req) async {
+        n++;
+        return modelSays(n == 1 ? '换个话题吧' : '这个我画不了');
+      });
+      final events = await run(mock, refusalKeywords: const ['换个话题']);
+      expect(n, 2);
       expect(events.whereType<AgentDone>().single.result.replyText, '这个我画不了');
     });
 
@@ -3557,6 +3571,34 @@ void main() {
         'rerolls': 99,
       });
       expect((wild.retries, wild.rerolls), (0, AssistantSettings.retriesMax));
+    });
+
+    test('拒绝关键词:默认不落盘,改过的存得下读得回来,空词丢掉', () {
+      expect(
+        const AssistantSettings().toJson().containsKey('refusalKeywords'),
+        isFalse,
+      );
+      expect(
+        AssistantSettings.fromJson(const {}).refusalKeywords,
+        kRefusalKeywords,
+      );
+      final back = AssistantSettings.fromJson(
+        const AssistantSettings(refusalKeywords: ['不画', '红线']).toJson(),
+      );
+      expect(back.refusalKeywords, ['不画', '红线']);
+      expect(back.defaultRefusalKeywords, isFalse);
+      expect(
+        AssistantSettings.fromJson(const {
+          'refusalKeywords': [' 不画 ', '', 3],
+        }).refusalKeywords,
+        ['不画'],
+      );
+      expect(
+        AssistantSettings.fromJson(const {
+          'refusalKeywords': <String>[],
+        }).refusalKeywords,
+        isEmpty,
+      );
     });
   });
 
