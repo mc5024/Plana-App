@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:plana_app/features/assistant/agent_model.dart';
+import 'package:plana_app/features/assistant/assistant_settings.dart';
 import 'package:plana_app/features/assistant/custom_endpoint.dart';
 import 'package:plana_app/features/assistant/domain/agent_event.dart';
 import 'package:plana_app/features/assistant/domain/conversation.dart';
@@ -39,8 +40,11 @@ final _png = base64Encode([0x89, 0x50, 0x4E, 0x47, 1, 2, 3]);
 const _json = {'content-type': 'application/json; charset=utf-8'};
 const _sse = {'content-type': 'text/event-stream; charset=utf-8'};
 
-ImageGenInput _input({List<LlmImage> images = const []}) =>
-    (prompt: '画猫', images: images);
+ImageGenInput _input({
+  List<LlmImage> images = const [],
+  String size = '',
+  String aspect = '',
+}) => (prompt: '画猫', images: images, size: size, aspect: aspect);
 
 Matcher _fails(String message) =>
     throwsA(isA<AgentFailure>().having((e) => e.message, 'message', message));
@@ -64,12 +68,80 @@ void main() {
       expect(back.imageGen!.attached, isFalse);
       expect(back.imageGen!.refId, 'img0');
       expect(back.imageModel, 'plana:big_gpt');
-      expect(
-        ImageGenSpec.fromJson(
-          const ImageGenSpec(prompt: '画猫', attached: true).toJson(),
-        )!.attached,
-        isTrue,
+      final spec = ImageGenSpec.fromJson(
+        const ImageGenSpec(
+          prompt: '画猫',
+          attached: true,
+          size: '2K',
+          aspect: '16:9',
+        ).toJson(),
+      )!;
+      expect(spec.attached, isTrue);
+      expect((spec.size, spec.aspect), ('2K', '16:9'));
+    });
+
+    test('用户消息带几张图;只带一张图时代的存档照读', () {
+      const m = AssistantMsg(
+        id: 'u',
+        role: MsgRole.user,
+        text: '合成',
+        at: 0,
+        imageHashes: ['h1', 'h2'],
       );
+      final back = AssistantMsg.fromJson(
+        jsonDecode(jsonEncode(m.toJson())) as Map<String, dynamic>,
+      );
+      expect(back.imageHashes, ['h1', 'h2']);
+      final old = AssistantMsg.fromJson({
+        'id': 'u',
+        'role': 'user',
+        'text': '照这张',
+        'at': 0,
+        'imageHash': 'h0',
+      });
+      expect(old.imageHashes, ['h0']);
+    });
+  });
+
+  group('图像模型的快捷设置', () {
+    test('分辨率 / 比例 / 接着改随助手设置存,认不出的档丢掉', () {
+      const s = AssistantSettings(
+        imageSize: '4K',
+        imageAspect: '9:16',
+        imageContinue: false,
+      );
+      final back = AssistantSettings.fromJson(s.toJson());
+      expect((back.imageSize, back.imageAspect), ('4K', '9:16'));
+      expect(back.imageContinue, isFalse);
+      final def = AssistantSettings.fromJson(const {
+        'imageSize': '8K',
+        'imageAspect': '7:5',
+      });
+      expect((def.imageSize, def.imageAspect), ('', ''));
+      expect(def.imageContinue, isTrue);
+    });
+
+    test('各模型能选的档:后端按下发的分辨率,OpenAI 只有三种比例,Gemini 全开', () {
+      final plana = parsePlanaImageChannels({
+        'channels': [
+          {
+            'key': 'big_gpt',
+            'name': 'GPT Image 2.6',
+            'sizes': ['2K', '4K', '8K'],
+          },
+          // 老后端不报分辨率
+          {'key': 'doubao', 'name': 'Seedream 5.5'},
+        ],
+        'authorized': true,
+      });
+      final all = imageModelChoices(plana, const [_openai, _gemini]);
+      expect(all[0].sizes, ['2K', '4K']);
+      expect(all[0].aspects, kImageAspects);
+      expect(all[1].sizes, isEmpty);
+      expect(all[2].sizes, isEmpty);
+      expect(all[2].aspects, ['1:1', '2:3', '3:2']);
+      expect(all[3].sizes, kImageSizes);
+      expect(all[3].aspects, kImageAspects);
     });
   });
 
@@ -150,7 +222,11 @@ void main() {
         channel: 'big_gpt',
       );
       final bytes = await c.generate(
-        _input(images: [(mime: 'image/png', data: _png)]),
+        _input(
+          images: [(mime: 'image/png', data: _png)],
+          size: '4K',
+          aspect: '16:9',
+        ),
         client: ok,
       );
       expect(bytes.take(4), [0x89, 0x50, 0x4E, 0x47]);
@@ -160,6 +236,8 @@ void main() {
         'channel': 'big_gpt',
         'prompt': '画猫',
         'images': ['data:image/png;base64,$_png'],
+        'aspect': '16:9',
+        'size': '4K',
       });
 
       final err = MockClient(
@@ -195,6 +273,12 @@ void main() {
         'prompt': '画猫',
         'n': 1,
       });
+      // 比例换成三档尺寸,分辨率不发
+      await c.generate(
+        _input(aspect: '2:3', size: '4K'),
+        client: mock,
+      );
+      expect((jsonDecode(seen.body) as Map)['size'], '1024x1536');
     });
 
     test('OpenAI:有参考图走 edits,图片段带类型', () async {
@@ -275,7 +359,11 @@ void main() {
       });
       final c = GeminiImageClient(_gemini, 'gemini-image');
       final bytes = await c.generate(
-        _input(images: [(mime: 'image/jpeg', data: _png)]),
+        _input(
+          images: [(mime: 'image/jpeg', data: _png)],
+          size: '2K',
+          aspect: '3:4',
+        ),
         client: mock,
       );
       expect(bytes.first, 0x89);
@@ -287,6 +375,7 @@ void main() {
       final body = jsonDecode(seen.body) as Map;
       expect(body['generationConfig'], {
         'responseModalities': ['TEXT', 'IMAGE'],
+        'imageConfig': {'aspectRatio': '3:4', 'imageSize': '2K'},
       });
       expect((body['contents'] as List).single['parts'], [
         {'text': '画猫'},

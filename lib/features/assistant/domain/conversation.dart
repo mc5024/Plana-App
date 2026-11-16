@@ -426,7 +426,7 @@ class AssistantMsg {
     required this.role,
     required this.text,
     required this.at,
-    this.imageHash,
+    this.imageHashes = const [],
     this.withCanvas = false,
     this.mode = AssistantMode.normal,
     this.noDraw = false,
@@ -448,8 +448,8 @@ class AssistantMsg {
   /// UNIX 毫秒。
   final int at;
 
-  /// 用户这条带的图(blob 键)。仅 [MsgRole.user]。
-  final String? imageHash;
+  /// 用户这条带的图(blob 键,按附上的顺序)。仅 [MsgRole.user]。
+  final List<String> imageHashes;
 
   /// 从这一轮的提议出过的图(图库条目 id,新的在后)。仅 [MsgRole.ai]。
   ///
@@ -521,7 +521,7 @@ class AssistantMsg {
     role: role,
     text: text ?? this.text,
     at: at,
-    imageHash: imageHash,
+    imageHashes: imageHashes,
     withCanvas: withCanvas,
     mode: mode,
     noDraw: noDraw,
@@ -539,7 +539,7 @@ class AssistantMsg {
     'role': role.name,
     'text': text,
     'at': at,
-    if (imageHash != null) 'imageHash': imageHash,
+    if (imageHashes.isNotEmpty) 'imageHashes': imageHashes,
     if (withCanvas) 'withCanvas': true,
     if (mode != AssistantMode.normal) 'mode': mode.name,
     if (noDraw) 'noDraw': true,
@@ -557,7 +557,11 @@ class AssistantMsg {
     role: MsgRole.values.asNameMap()[j['role']] ?? MsgRole.ai,
     text: j['text']?.toString() ?? '',
     at: (j['at'] as num?)?.toInt() ?? 0,
-    imageHash: j['imageHash'] as String?,
+    imageHashes: [
+      for (final e in (j['imageHashes'] as List? ?? const [])) '$e',
+      // 只带一张图时代的存档
+      if (j['imageHash'] case final String h when h.isNotEmpty) h,
+    ],
     withCanvas: j['withCanvas'] == true,
     mode: AssistantMode.values.asNameMap()[j['mode']] ?? AssistantMode.normal,
     noDraw: j['noDraw'] == true,

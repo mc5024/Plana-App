@@ -18,16 +18,16 @@ class OpenAiProvider extends HttpLlmProvider {
       for (final m in r.messages)
         {
           'role': m.role,
-          'content': switch (m.image) {
-            final i? => [
-              {
-                'type': 'image_url',
-                'image_url': {'url': 'data:${i.mime};base64,${i.data}'},
-              },
-              if (m.content.isNotEmpty) {'type': 'text', 'text': m.content},
-            ],
-            null => m.content,
-          },
+          'content': m.images.isEmpty
+              ? m.content
+              : [
+                  for (final i in m.images)
+                    {
+                      'type': 'image_url',
+                      'image_url': {'url': 'data:${i.mime};base64,${i.data}'},
+                    },
+                  if (m.content.isNotEmpty) {'type': 'text', 'text': m.content},
+                ],
         },
     ],
     if (stream) 'stream': true,

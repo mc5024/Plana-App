@@ -4682,6 +4682,27 @@ class AppLocalizationsZh extends AppLocalizations {
   String get imagePromptEmpty => '说一句要画什么或者怎么改';
 
   @override
+  String get aspectLabel => '比例';
+
+  @override
+  String resolutionChip(String v) {
+    return '分辨率 $v';
+  }
+
+  @override
+  String aspectChip(String v) {
+    return '比例 $v';
+  }
+
+  @override
+  String get continueEdit => '接着改';
+
+  @override
+  String imagesMax(int n) {
+    return '最多带 $n 张图';
+  }
+
+  @override
   String get imageGenNoModel => '这个图像模型现在用不了';
 
   @override
@@ -4878,7 +4899,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get attachImage => '带一张图';
+  String get attachImage => '带图';
 
   @override
   String get inputHint => '想画什么、想改哪里…';

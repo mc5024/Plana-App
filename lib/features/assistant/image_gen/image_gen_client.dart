@@ -15,7 +15,13 @@ import '../domain/agent_event.dart' show AgentFailure;
 import '../llm/llm_provider.dart' show LlmImage;
 import 'image_models.dart';
 
-typedef ImageGenInput = ({String prompt, List<LlmImage> images});
+/// [size] / [aspect] 空 = 交给出图模型。
+typedef ImageGenInput = ({
+  String prompt,
+  List<LlmImage> images,
+  String size,
+  String aspect,
+});
 
 abstract interface class ImageGenClient {
   Future<Uint8List> generate(
@@ -122,6 +128,8 @@ class PlanaImageClient implements ImageGenClient {
           'images': [
             for (final i in input.images) 'data:${i.mime};base64,${i.data}',
           ],
+          'aspect': input.aspect,
+          'size': input.size,
         }),
       );
     final silent = AgentFailure(l10nNow.noDataIn('${idleTimeout.inSeconds}'));
@@ -182,6 +190,14 @@ class OpenAiImageClient implements ImageGenClient {
   final CustomEndpoint endpoint;
   final String model;
 
+  /// 比例 → Images 接口的三档尺寸;别的比例和空都不发,由模型定。
+  static String? sizeOf(String aspect) => switch (aspect) {
+    '1:1' => '1024x1024',
+    '2:3' => '1024x1536',
+    '3:2' => '1536x1024',
+    _ => null,
+  };
+
   Map<String, String> get _auth => endpoint.withHeaders({
     'Authorization': 'Bearer ${endpoint.apiKey.trim()}',
   });
@@ -192,18 +208,29 @@ class OpenAiImageClient implements ImageGenClient {
     required http.Client client,
   }) async {
     final base = endpoint.effectiveBase;
+    final size = sizeOf(input.aspect);
     final http.BaseRequest req;
     if (input.images.isEmpty) {
       req = http.Request('POST', Uri.parse('$base/images/generations'))
         ..headers.addAll({'Content-Type': 'application/json', ..._auth})
         ..bodyBytes = utf8.encode(
-          jsonEncode({'model': model, 'prompt': input.prompt, 'n': 1}),
+          jsonEncode({
+            'model': model,
+            'prompt': input.prompt,
+            'n': 1,
+            'size': ?size,
+          }),
         );
     } else {
       final field = input.images.length > 1 ? 'image[]' : 'image';
       req = http.MultipartRequest('POST', Uri.parse('$base/images/edits'))
         ..headers.addAll(_auth)
-        ..fields.addAll({'model': model, 'prompt': input.prompt, 'n': '1'})
+        ..fields.addAll({
+          'model': model,
+          'prompt': input.prompt,
+          'n': '1',
+          'size': ?size,
+        })
         ..files.addAll([
           for (final (i, img) in input.images.indexed)
             http.MultipartFile.fromBytes(
@@ -267,6 +294,11 @@ class GeminiImageClient implements ImageGenClient {
           ],
           'generationConfig': {
             'responseModalities': ['TEXT', 'IMAGE'],
+            if (input.aspect.isNotEmpty || input.size.isNotEmpty)
+              'imageConfig': {
+                if (input.aspect.isNotEmpty) 'aspectRatio': input.aspect,
+                if (input.size.isNotEmpty) 'imageSize': input.size,
+              },
           },
         }),
       );

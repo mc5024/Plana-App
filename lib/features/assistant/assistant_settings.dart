@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/store/app_stores.dart';
 import '../generate/prompt_sections.dart' show SectionImport;
 import '../../l10n/l10n.dart';
+import 'domain/image_gen.dart' show kImageAspects, kImageSizes;
 import 'runtime/refusal.dart' show kRefusalKeywords;
 import 'tools/tool_settings.dart' show migrateLegacyToolSettings;
 
@@ -69,6 +70,9 @@ class AssistantSettings {
     this.retries = retriesDefault,
     this.rerolls = rerollsDefault,
     this.refusalKeywords = kRefusalKeywords,
+    this.imageSize = '',
+    this.imageAspect = '',
+    this.imageContinue = true,
   });
 
   /// 失败重试 / 拒绝重试的默认次数与上限。0 = 关。
@@ -164,6 +168,14 @@ class AssistantSettings {
   /// 回复命中这些词就算拒绝。和默认一样时不落盘,默认词表更新能跟上。
   final List<String> refusalKeywords;
 
+  /// 图像模型的分辨率档 / 比例(输入框上方那排);空 = 交给图像模型。
+  /// 当前模型出不了的照存着,发的时候按「自动」走,换回能出的模型还是它。
+  final String imageSize;
+  final String imageAspect;
+
+  /// 图像模型「接着改」:带上上一轮出的图。
+  final bool imageContinue;
+
   bool get defaultRefusalKeywords =>
       _sameList(refusalKeywords, kRefusalKeywords);
 
@@ -181,6 +193,9 @@ class AssistantSettings {
     int? retries,
     int? rerolls,
     List<String>? refusalKeywords,
+    String? imageSize,
+    String? imageAspect,
+    bool? imageContinue,
   }) => AssistantSettings(
     autoGenerate: autoGenerate ?? this.autoGenerate,
     inlineImage: inlineImage ?? this.inlineImage,
@@ -195,6 +210,9 @@ class AssistantSettings {
     retries: retries ?? this.retries,
     rerolls: rerolls ?? this.rerolls,
     refusalKeywords: refusalKeywords ?? this.refusalKeywords,
+    imageSize: imageSize ?? this.imageSize,
+    imageAspect: imageAspect ?? this.imageAspect,
+    imageContinue: imageContinue ?? this.imageContinue,
   );
 
   Map<String, dynamic> toJson() => {
@@ -211,6 +229,9 @@ class AssistantSettings {
     'retries': retries,
     'rerolls': rerolls,
     if (!defaultRefusalKeywords) 'refusalKeywords': refusalKeywords,
+    if (imageSize.isNotEmpty) 'imageSize': imageSize,
+    if (imageAspect.isNotEmpty) 'imageAspect': imageAspect,
+    if (!imageContinue) 'imageContinue': false,
   };
 
   factory AssistantSettings.fromJson(Map<String, dynamic> j) =>
@@ -256,6 +277,15 @@ class AssistantSettings {
           ],
           _ => kRefusalKeywords,
         },
+        imageSize: switch (j['imageSize']) {
+          final String s when kImageSizes.contains(s) => s,
+          _ => '',
+        },
+        imageAspect: switch (j['imageAspect']) {
+          final String s when kImageAspects.contains(s) => s,
+          _ => '',
+        },
+        imageContinue: j['imageContinue'] != false,
       );
 
   static int _count(Object? v, int fallback) => switch (v) {

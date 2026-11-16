@@ -63,7 +63,7 @@ class QueuedAsk {
     required this.id,
     required this.text,
     required this.at,
-    this.image,
+    this.images = const [],
     this.withCanvas = false,
   });
 
@@ -72,7 +72,7 @@ class QueuedAsk {
 
   /// 排进来的时刻(UNIX 毫秒)。
   final int at;
-  final Uint8List? image;
+  final List<Uint8List> images;
 
   /// 这一句要不要引用创作页。读的是发出去那一刻的画布。
   final bool withCanvas;
@@ -247,10 +247,10 @@ class AssistantController extends Notifier<AssistantState> {
   /// 发一句。正在跑或前面还排着别的,就排到队尾,按顺序一句句发。
   Future<void> submit(
     String text, {
-    Uint8List? image,
+    List<Uint8List> images = const [],
     bool withCanvas = false,
   }) {
-    if (text.trim().isEmpty && image == null) return Future.value();
+    if (text.trim().isEmpty && images.isEmpty) return Future.value();
     _set(
       state.copyWith(
         queue: [
@@ -259,7 +259,7 @@ class AssistantController extends Notifier<AssistantState> {
             id: _newId(),
             text: text,
             at: _now,
-            image: image,
+            images: images,
             withCanvas: withCanvas,
           ),
         ],
@@ -287,7 +287,7 @@ class AssistantController extends Notifier<AssistantState> {
     final next = state.queue.first;
     return send(
       next.text,
-      image: next.image,
+      images: next.images,
       withCanvas: next.withCanvas,
       queuedId: next.id,
     );
@@ -385,7 +385,7 @@ class AssistantController extends Notifier<AssistantState> {
     );
   }
 
-  /// 发一轮。[image] 是用户带的图(原始字节),发给模型并存进 blob。
+  /// 发一轮。[images] 是用户带的图(原始字节),发给模型并存进 blob。
   ///
   /// [withCanvas] = 把创作页**当前**的正向 / 负向 / 角色一并发过去,让 AI 在它上面改。
   /// 模式用输入框上方现在选着的,「纯文本格式」看助手设置里现在的开关。
@@ -394,18 +394,18 @@ class AssistantController extends Notifier<AssistantState> {
   /// (没授权、模型不支持)的话它留在队里。
   Future<void> send(
     String text, {
-    Uint8List? image,
+    List<Uint8List> images = const [],
     bool withCanvas = false,
     String? queuedId,
   }) async {
     if (_busy) return;
     final trimmed = text.trim();
-    if (trimmed.isEmpty && image == null) return;
+    if (trimmed.isEmpty && images.isEmpty) return;
     _starting = true;
     try {
       await _send(
         trimmed,
-        image: image,
+        images: images,
         withCanvas: withCanvas,
         queuedId: queuedId,
       );
@@ -416,7 +416,7 @@ class AssistantController extends Notifier<AssistantState> {
 
   Future<void> _send(
     String trimmed, {
-    Uint8List? image,
+    List<Uint8List> images = const [],
     required bool withCanvas,
     String? queuedId,
   }) async {
@@ -427,7 +427,7 @@ class AssistantController extends Notifier<AssistantState> {
     if (imageKey != null) {
       return _sendImage(
         trimmed,
-        image: image,
+        images: images,
         queuedId: queuedId,
         modelKey: imageKey,
       );
@@ -465,7 +465,7 @@ class AssistantController extends Notifier<AssistantState> {
     final settings = assistantSettingsOf(ref);
     final noDraw = settings.noDraw;
 
-    final hash = image == null ? null : await _repo.putImage(image);
+    final hashes = [for (final i in images) ?await _repo.putImage(i)];
 
     final seq = ++_seq;
     _set(
@@ -477,7 +477,7 @@ class AssistantController extends Notifier<AssistantState> {
             role: MsgRole.user,
             text: trimmed,
             at: _now,
-            imageHash: hash,
+            imageHashes: hashes,
             withCanvas: canvas,
             mode: picked,
           ),
@@ -560,11 +560,11 @@ class AssistantController extends Notifier<AssistantState> {
         'refusal_keywords': settings.refusalKeywords,
       'history_entries': history.length,
       'with_canvas': canvas,
-      if (image != null) 'image_bytes': image.length,
+      if (images.isNotEmpty) 'image_bytes': [for (final i in images) i.length],
     });
     final request = AgentTurnRequest(
       userText: trimmed,
-      image: image,
+      images: images,
       history: history,
       canvas: canvas ? canvasSnapshotOf(g) : null,
       imageModel: imageModel,
@@ -764,20 +764,17 @@ class AssistantController extends Notifier<AssistantState> {
 
   // ---- 图像模型 ----
 
-  /// 选着图像模型时发一轮:原话交给图像模型出一张,不走对话模型。附了图带上附图,
-  /// 没附图但上一轮出过图就带上那张,好接着改。
+  /// 选着图像模型时发一轮:原话交给图像模型出一张,不走对话模型。带上附的图;开着
+  /// 「接着改」再带上上一轮出的图。分辨率 / 比例按输入框上方那排,这个模型出不了的按自动。
   Future<void> _sendImage(
     String text, {
-    Uint8List? image,
+    List<Uint8List> images = const [],
     String? queuedId,
     required String modelKey,
   }) async {
-    final hash = image == null ? null : await _repo.putImage(image);
-    final spec = ImageGenSpec(
-      prompt: text,
-      attached: image != null,
-      refId: image == null ? _lastImageId() : null,
-    );
+    final hashes = [for (final i in images) ?await _repo.putImage(i)];
+    final settings = assistantSettingsOf(ref);
+    final last = settings.imageContinue ? _lastImageId() : null;
     final seq = ++_seq;
     _set(
       state.copyWith(
@@ -788,7 +785,7 @@ class AssistantController extends Notifier<AssistantState> {
             role: MsgRole.user,
             text: text,
             at: _now,
-            imageHash: hash,
+            imageHashes: hashes,
             mode: state.mode,
           ),
         ],
@@ -809,10 +806,23 @@ class AssistantController extends Notifier<AssistantState> {
     final client = _imageClient = http.Client();
     try {
       if (text.isEmpty) throw AgentFailure(l10nNow.imagePromptEmpty);
+      final choice = imageModelOf(await _imageChoices(), modelKey);
+      if (choice == null) throw AgentFailure(l10nNow.imageGenNoModel);
+      final spec = ImageGenSpec(
+        prompt: text,
+        attached: images.isNotEmpty,
+        refId: last,
+        size: choice.sizes.contains(settings.imageSize)
+            ? settings.imageSize
+            : '',
+        aspect: choice.aspects.contains(settings.imageAspect)
+            ? settings.imageAspect
+            : '',
+      );
       final png = await _drawImage(
-        modelKey,
+        choice,
         spec,
-        attached: image,
+        attached: images,
         client: client,
       );
       if (seq != _seq) return;
@@ -864,11 +874,15 @@ class AssistantController extends Notifier<AssistantState> {
     String? imageId;
     final client = http.Client();
     try {
-      final attached = spec.attached
-          ? await _repo.image(askOf(msgId)?.imageHash)
-          : null;
+      final choice = imageModelOf(await _imageChoices(), key);
+      if (choice == null) throw AgentFailure(l10nNow.imageGenNoModel);
+      final attached = <Uint8List>[
+        if (spec.attached)
+          for (final h in askOf(msgId)?.imageHashes ?? const <String>[])
+            ?await _repo.image(h),
+      ];
       imageId = await _saveImage(
-        await _drawImage(key, spec, attached: attached, client: client),
+        await _drawImage(choice, spec, attached: attached, client: client),
       );
     } catch (e) {
       error = '$e';
@@ -895,26 +909,31 @@ class AssistantController extends Notifier<AssistantState> {
     );
   }
 
-  /// 按 [spec] 让 [modelKey] 那个图像模型出一张,返回 PNG。[attached] 是这轮提问附的图。
+  /// 按 [spec] 让 [choice] 出一张,返回 PNG。[attached] 是这轮提问附的图,参考图最多
+  /// [kMaxImageRefs] 张,附图在前、上一张在后。
   Future<Uint8List> _drawImage(
-    String modelKey,
+    ImageModelChoice choice,
     ImageGenSpec spec, {
-    Uint8List? attached,
+    List<Uint8List> attached = const [],
     required http.Client client,
   }) async {
-    final choice = imageModelOf(await _imageChoices(), modelKey);
-    if (choice == null) throw AgentFailure(l10nNow.imageGenNoModel);
     final last = spec.refId == null ? null : await _galleryBytes(spec.refId!);
     final images = [
-      if (attached != null) await prepareLlmImage(attached),
-      if (last != null) await prepareLlmImage(last),
+      for (final b in [...attached, ?last].take(kMaxImageRefs))
+        await prepareLlmImage(b),
     ];
     final sid = (await ref.read(botSessionProvider.future))?.sessionId ?? '';
-    final bytes = await imageGenClientFor(
-      choice,
-      backendBase: ref.read(backendBaseProvider).value ?? '',
-      sessionId: sid,
-    ).generate((prompt: spec.prompt, images: images), client: client);
+    final bytes =
+        await imageGenClientFor(
+          choice,
+          backendBase: ref.read(backendBaseProvider).value ?? '',
+          sessionId: sid,
+        ).generate((
+          prompt: spec.prompt,
+          images: images,
+          size: spec.size,
+          aspect: spec.aspect,
+        ), client: client);
     return ensurePng(bytes);
   }
 
@@ -1104,9 +1123,9 @@ class AssistantController extends Notifier<AssistantState> {
     );
     if (i < 0) return;
     final m = state.msgs[i];
-    final img = await _repo.image(m.imageHash);
+    final images = [for (final h in m.imageHashes) ?await _repo.image(h)];
     _set(state.copyWith(msgs: state.msgs.take(i).toList()));
-    await send(m.text, image: img, withCanvas: m.withCanvas);
+    await send(m.text, images: images, withCanvas: m.withCanvas);
   }
 
   /// 「这轮重新生成」:回到最后一次提问之前,把原话再发一次。

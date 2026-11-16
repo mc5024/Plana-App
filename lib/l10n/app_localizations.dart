@@ -8230,6 +8230,36 @@ abstract class AppLocalizations {
   /// **'说一句要画什么或者怎么改'**
   String get imagePromptEmpty;
 
+  /// No description provided for @aspectLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'比例'**
+  String get aspectLabel;
+
+  /// No description provided for @resolutionChip.
+  ///
+  /// In zh, this message translates to:
+  /// **'分辨率 {v}'**
+  String resolutionChip(String v);
+
+  /// No description provided for @aspectChip.
+  ///
+  /// In zh, this message translates to:
+  /// **'比例 {v}'**
+  String aspectChip(String v);
+
+  /// No description provided for @continueEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'接着改'**
+  String get continueEdit;
+
+  /// No description provided for @imagesMax.
+  ///
+  /// In zh, this message translates to:
+  /// **'最多带 {n} 张图'**
+  String imagesMax(int n);
+
   /// No description provided for @imageGenNoModel.
   ///
   /// In zh, this message translates to:
@@ -8593,7 +8623,7 @@ abstract class AppLocalizations {
   /// No description provided for @attachImage.
   ///
   /// In zh, this message translates to:
-  /// **'带一张图'**
+  /// **'带图'**
   String get attachImage;
 
   /// No description provided for @inputHint.

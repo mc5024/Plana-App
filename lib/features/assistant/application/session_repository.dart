@@ -189,11 +189,9 @@ class SessionRepository {
     List<AssistantMsg> current,
     List<ArchivedSession> sessions,
   ) => {
-    for (final m in current)
-      if (m.imageHash != null) m.imageHash!,
+    for (final m in current) ...m.imageHashes,
     for (final s in sessions)
-      for (final m in s.msgs)
-        if (m.imageHash != null) m.imageHash!,
+      for (final m in s.msgs) ...m.imageHashes,
   };
 
   /// 盘上存档引用的 blob 哈希(启动 GC 的引用清单)。

@@ -54,7 +54,7 @@ Future<List<LlmText>> _run(
     .chat(
       const LlmRequest(
         system: 'sys',
-        messages: [(role: 'user', content: '画一张', image: null)],
+        messages: [(role: 'user', content: '画一张', images: [])],
       ),
       client: c,
       stream: stream,

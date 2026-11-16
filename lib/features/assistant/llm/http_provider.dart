@@ -205,7 +205,7 @@ abstract class HttpLlmProvider implements LlmProvider {
       final reply = await chat(
         const LlmRequest(
           system: 'Reply with the single word OK.',
-          messages: [(role: 'user', content: 'ping', image: null)],
+          messages: [(role: 'user', content: 'ping', images: [])],
         ),
         client: c,
         stream: false,

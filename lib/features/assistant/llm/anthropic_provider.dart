@@ -22,20 +22,20 @@ class AnthropicProvider extends HttpLlmProvider {
       for (final m in r.messages)
         {
           'role': m.role,
-          'content': switch (m.image) {
-            final i? => [
-              {
-                'type': 'image',
-                'source': {
-                  'type': 'base64',
-                  'media_type': i.mime,
-                  'data': i.data,
-                },
-              },
-              if (m.content.isNotEmpty) {'type': 'text', 'text': m.content},
-            ],
-            null => m.content,
-          },
+          'content': m.images.isEmpty
+              ? m.content
+              : [
+                  for (final i in m.images)
+                    {
+                      'type': 'image',
+                      'source': {
+                        'type': 'base64',
+                        'media_type': i.mime,
+                        'data': i.data,
+                      },
+                    },
+                  if (m.content.isNotEmpty) {'type': 'text', 'text': m.content},
+                ],
         },
     ],
     if (stream) 'stream': true,

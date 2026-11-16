@@ -89,10 +89,9 @@ class LocalAgentRuntime implements AgentRuntime {
       );
 
       // 各工具的预取彼此不相干,和附图压缩一起并着做
-      final image = req.image;
-      final (blocks, img) = await (
+      final (blocks, imgs) = await (
         Future.wait([for (final t in active) _prefetch(t, ctx)]),
-        image == null ? Future<LlmImage?>.value() : prepareLlmImage(image),
+        Future.wait([for (final i in req.images) prepareLlmImage(i)]),
       ).wait;
       // 账本里记着的画师串都进映射:历史里的完整串要折回占位符
       for (final e in (remembered['artist'] ?? const {}).entries) {
@@ -141,7 +140,7 @@ class LocalAgentRuntime implements AgentRuntime {
           (
             role: h['role'] ?? 'user',
             content: collapse(h['content'] ?? ''),
-            image: null,
+            images: const <LlmImage>[],
           ),
       ];
       final asked = [
@@ -161,7 +160,7 @@ class LocalAgentRuntime implements AgentRuntime {
           (
             role: 'user',
             content: parts.join('\n\n'),
-            image: noImage ? null : img,
+            images: noImage ? const <LlmImage>[] : imgs,
           ),
         ];
       }
@@ -185,15 +184,18 @@ class LocalAgentRuntime implements AgentRuntime {
       );
       final attempts = req.retries + 1;
       for (var attempt = 0; ; attempt++) {
-        final msgs = messagesFor(noImage: attempt > 0 && img != null);
+        final msgs = messagesFor(noImage: attempt > 0 && imgs.isNotEmpty);
         if (attempt == 0) {
           trace?.messages = [
             for (final m in msgs)
               {
                 'role': m.role,
                 'content': m.content,
-                if (m.image case final i?)
-                  'image': '<${i.mime} base64 ${i.data.length} 字符>',
+                if (m.images.isNotEmpty)
+                  'images': [
+                    for (final i in m.images)
+                      '<${i.mime} base64 ${i.data.length} 字符>',
+                  ].join(' '),
               },
           ];
         }
@@ -209,7 +211,7 @@ class LocalAgentRuntime implements AgentRuntime {
           );
         } catch (e) {
           if (attempt + 1 >= attempts || !_retryable(e)) rethrow;
-          trace?.event('retry', {'error': '$e', 'no_image': img != null});
+          trace?.event('retry', {'error': '$e', 'no_image': imgs.isNotEmpty});
           if (live) yield const AgentDelta();
         }
       }
@@ -319,7 +321,7 @@ class _Turn {
       if (!calls.isEmpty) {
         if (rounds < _maxToolRounds) {
           rounds++;
-          msgs.add((role: 'assistant', content: raw, image: null));
+          msgs.add((role: 'assistant', content: raw, images: const []));
           hop['tool_calls'] = [
             for (final c in calls.calls) {'name': c.name, 'arguments': c.args},
             for (final b in calls.broken) {'broken': b.body, 'error': b.error},
@@ -330,7 +332,7 @@ class _Turn {
           }
           final message = protocol.resultMessage(results, calls.broken, texts);
           hop['tool_results'] = message;
-          msgs.add((role: 'user', content: message, image: null));
+          msgs.add((role: 'user', content: message, images: const []));
           continue;
         }
         if (fixes < _maxFixes) {
@@ -443,8 +445,8 @@ class _Turn {
   ) {
     hop['feedback'] = instruction;
     msgs
-      ..add((role: 'assistant', content: raw, image: null))
-      ..add((role: 'user', content: instruction, image: null));
+      ..add((role: 'assistant', content: raw, images: const []))
+      ..add((role: 'user', content: instruction, images: const []));
   }
 
   AgentResult _finish(ParsedReply parsed) {

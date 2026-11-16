@@ -27,7 +27,7 @@ class AgentTurnRequest {
   const AgentTurnRequest({
     required this.userText,
     required this.imageModel,
-    this.image,
+    this.images = const [],
     this.history = const [],
     this.canvas,
     this.customRules,
@@ -46,7 +46,7 @@ class AgentTurnRequest {
   final String userText;
 
   /// 用户这轮附的图(原始字节)。
-  final Uint8List? image;
+  final List<Uint8List> images;
 
   /// 已完成回合的历史 `[{role, content}]`,已按上下文轮数截好。
   final List<Map<String, String>> history;

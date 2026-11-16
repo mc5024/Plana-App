@@ -5084,6 +5084,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get imagePromptEmpty => 'Say what to draw or how to change it';
 
   @override
+  String get aspectLabel => 'Aspect Ratio';
+
+  @override
+  String resolutionChip(String v) {
+    return 'Size $v';
+  }
+
+  @override
+  String aspectChip(String v) {
+    return 'Ratio $v';
+  }
+
+  @override
+  String get continueEdit => 'Keep Editing';
+
+  @override
+  String imagesMax(int n) {
+    return 'Up to $n images';
+  }
+
+  @override
   String get imageGenNoModel => 'This image model isn\'t available right now';
 
   @override
@@ -5298,7 +5319,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get attachImage => 'Attach an Image';
+  String get attachImage => 'Attach Images';
 
   @override
   String get inputHint => 'What to draw or edit…';

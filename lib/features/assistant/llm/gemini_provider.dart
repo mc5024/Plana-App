@@ -53,11 +53,11 @@ class GeminiProvider extends HttpLlmProvider {
           // 只认 user / model 两种
           'role': m.role == 'assistant' ? 'model' : 'user',
           'parts': [
-            if (m.image case final i?)
+            for (final i in m.images)
               {
                 'inlineData': {'mimeType': i.mime, 'data': i.data},
               },
-            if (m.image == null || m.content.isNotEmpty) {'text': m.content},
+            if (m.images.isEmpty || m.content.isNotEmpty) {'text': m.content},
           ],
         },
     ],

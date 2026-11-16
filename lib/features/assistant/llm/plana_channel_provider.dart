@@ -61,7 +61,13 @@ class PlanaChannelProvider implements LlmProvider {
     Map<String, Object?> msg(LlmMessage m) => {
       'role': m.role,
       'content': m.content,
-      if (m.image case final i?) 'image': {'mime': i.mime, 'data': i.data},
+      // 老后端只认 image(一张),新后端认 images:两个都发,image 放第一张
+      if (m.images.firstOrNull case final i?)
+        'image': {'mime': i.mime, 'data': i.data},
+      if (m.images.isNotEmpty)
+        'images': [
+          for (final i in m.images) {'mime': i.mime, 'data': i.data},
+        ],
     };
     return {
       'model': model,

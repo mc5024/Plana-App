@@ -37,9 +37,12 @@ import 'assistant_settings.dart';
 import 'application/assistant_controller.dart';
 import 'application/proposal_service.dart' show canvasHasContent;
 import 'domain/image_model.dart';
-import 'image_gen/image_models.dart' show assistantImageModelProvider;
+import 'domain/image_gen.dart' show kImageAspects, kImageSizes;
+import 'image_gen/image_models.dart'
+    show ImageModelChoice, assistantImageModelProvider;
 import 'presets/preset_rule.dart' show RulesFamily, rulesFamilyOf;
 import 'widgets/history_sheet.dart';
+import 'widgets/image_option_sheet.dart';
 import 'widgets/inline_images.dart';
 import 'widgets/intro_dialog.dart';
 import 'widgets/mode_sheet.dart';
@@ -64,6 +67,9 @@ List<({String text, bool canvas})> _suggests(AppLocalizations l) => [
   (text: l.suggest4, canvas: true),
 ];
 
+/// 一条最多附几张图。
+const _maxAttach = 4;
+
 class AssistantPage extends ConsumerStatefulWidget {
   const AssistantPage({super.key});
 
@@ -76,7 +82,9 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
   final _scroll = ScrollController();
-  PickedImage? _pending;
+
+  /// 待发的图,按附上的顺序。
+  List<PickedImage> _pending = const [];
 
   /// 这一条要不要把创作页的提示词带上。**纯一次性:每发一次回到关**,和带图一样。
   ///
@@ -112,29 +120,43 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
   Future<void> _send({String? preset, bool? canvas}) async {
     final n = ref.read(assistantProvider.notifier);
     final text = preset ?? _input.text;
-    if (text.trim().isEmpty && _pending == null) {
+    if (text.trim().isEmpty && _pending.isEmpty) {
       _toBottom();
       await n.resumeQueue();
       return;
     }
-    final img = _pending;
+    final imgs = _pending;
     final withCanvas = canvas ?? _withCanvas;
     final queued = ref.read(assistantProvider).running;
     _input.clear();
     setState(() {
-      _pending = null;
+      _pending = const [];
       _withCanvas = false; // 一次性:发完就回到关
     });
     // 排队时留着键盘,接着写下一句
     if (!queued) _inputFocus.unfocus();
     _toBottom();
-    await n.submit(text, image: img?.bytes, withCanvas: withCanvas);
+    await n.submit(
+      text,
+      images: [for (final i in imgs) i.bytes],
+      withCanvas: withCanvas,
+    );
     _toBottom();
   }
 
+  /// 附图:一次可以多选,最多 [_maxAttach] 张,多出来的不收。
   Future<void> _pick() async {
-    final img = await pickImageFile(context);
-    if (img != null && mounted) setState(() => _pending = img);
+    final room = _maxAttach - _pending.length;
+    void full() => hintSnack(
+      context,
+      context.l10n.imagesMax(_maxAttach),
+      icon: Icons.image_outlined,
+    );
+    if (room <= 0) return full();
+    final picked = await pickImageFiles(context);
+    if (picked.isEmpty || !mounted) return;
+    if (picked.length > room) full();
+    setState(() => _pending = [..._pending, ...picked.take(room)]);
   }
 
   /// 「新对话」。**不弹回执** —— 这个动作本来就没有后果:上一段原样躺在
@@ -403,7 +425,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
                 withCanvas: q.withCanvas,
               ),
               queued: true,
-              queuedImage: q.image,
+              queuedImages: q.images,
               fontSize: fontSize,
               onLongPress: () => _queuedMenu(q),
             ),
@@ -576,8 +598,8 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
         _input.text = t;
         _input.selection = TextSelection.collapsed(offset: t.length);
         setState(() {
-          if (_pending == null && q.image != null) {
-            _pending = PickedImage('image', q.image!);
+          if (_pending.isEmpty && q.images.isNotEmpty) {
+            _pending = [for (final b in q.images) PickedImage('image', b)];
           }
           if (q.withCanvas) _withCanvas = true;
         });
@@ -614,6 +636,9 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
   /// 图标只能靠颜色表示状态,而这排里的东西按错了是要花钱或者改画布的。
   /// 横向可滚,以后再加选项直接往后排,不会把输入框挤窄。
   Widget _optionRow(bool hasCanvas) {
+    if (ref.watch(assistantImageModelProvider) case final m?) {
+      return _imageOptionRow(m);
+    }
     // 能开哪几个模式跟着这个模型在用的预设走。还没取到时先不拦 —— 发的时候会再核一遍
     final family = rulesFamilyOf(
       agentImageModel(
@@ -689,6 +714,108 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
           ],
         ),
       ),
+    );
+  }
+
+  /// 选着图像模型时那排换成出图的快捷设置:分辨率、比例、接着改。
+  ///
+  /// 分辨率和比例跟着设置走、不是一次性的;这个模型出不了的置灰、显示生效的「自动」,
+  /// 点了说一句为什么(和「思考」那颗一样)。
+  Widget _imageOptionRow(ImageModelChoice m) {
+    final s =
+        ref.watch(assistantSettingsProvider).value ?? const AssistantSettings();
+    final n = ref.read(assistantSettingsProvider.notifier);
+    final size = m.sizes.contains(s.imageSize) ? s.imageSize : '';
+    final aspect = m.aspects.contains(s.imageAspect) ? s.imageAspect : '';
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _imageOptionChip(
+              icon: Icons.photo_size_select_large_outlined,
+              label: context.l10n.resolutionChip(
+                size.isEmpty ? context.l10n.settingAuto : size,
+              ),
+              on: size.isNotEmpty,
+              enabled: m.sizes.isNotEmpty,
+              onTap: () async {
+                final v = await showImageOptionSheet(
+                  context,
+                  title: context.l10n.resolution,
+                  options: kImageSizes,
+                  available: m.sizes,
+                  current: size,
+                );
+                if (v != null) await n.patch((x) => x.copyWith(imageSize: v));
+              },
+            ),
+            const SizedBox(width: 8),
+            _imageOptionChip(
+              icon: Icons.aspect_ratio,
+              label: context.l10n.aspectChip(
+                aspect.isEmpty ? context.l10n.settingAuto : aspect,
+              ),
+              on: aspect.isNotEmpty,
+              enabled: m.aspects.isNotEmpty,
+              onTap: () async {
+                final v = await showImageOptionSheet(
+                  context,
+                  title: context.l10n.aspectLabel,
+                  options: kImageAspects,
+                  available: m.aspects,
+                  current: aspect,
+                );
+                if (v != null) await n.patch((x) => x.copyWith(imageAspect: v));
+              },
+            ),
+            const SizedBox(width: 8),
+            // 开着就带上上一轮出的图,画新东西时关掉
+            FilterChip(
+              selected: s.imageContinue,
+              showCheckmark: false,
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              avatar: Icon(
+                Icons.auto_fix_high_outlined,
+                size: 16,
+                color: context.chipIcon(s.imageContinue),
+              ),
+              label: Text(context.l10n.continueEdit),
+              onSelected: (v) {
+                Haptics.selection();
+                n.patch((x) => x.copyWith(imageContinue: v));
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _imageOptionChip({
+    required IconData icon,
+    required String label,
+    required bool on,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    final muted = context.scheme.outline;
+    return FilterChip(
+      selected: on,
+      showCheckmark: false,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      avatar: Icon(
+        icon,
+        size: 16,
+        color: enabled ? context.chipIcon(on) : muted,
+      ),
+      label: Text(label, style: enabled ? null : TextStyle(color: muted)),
+      onSelected: (_) => enabled
+          ? onTap()
+          : hintSnack(context, context.l10n.modelUnsupported, icon: icon),
     );
   }
 
@@ -785,7 +912,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
 
   Widget _inputBar(ColorScheme scheme, AssistantState st) {
     final running = st.running;
-    final hasDraft = _input.text.trim().isNotEmpty || _pending != null;
+    final hasDraft = _input.text.trim().isNotEmpty || _pending.isNotEmpty;
     final canSend = hasDraft || (!running && st.queue.isNotEmpty);
     final g = ref.watch(generateProvider);
     final hasCanvas = canvasHasContent(g);
@@ -806,12 +933,23 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (_pending != null)
+              if (_pending.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(left: 53, bottom: 9),
-                  child: _Thumb(
-                    bytes: _pending!.bytes,
-                    onRemove: () => setState(() => _pending = null),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final (i, p) in _pending.indexed)
+                          _Thumb(
+                            key: ObjectKey(p),
+                            bytes: p.bytes,
+                            onRemove: () => setState(
+                              () => _pending = [..._pending]..removeAt(i),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               _optionRow(hasCanvas),
@@ -823,7 +961,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
                     onPressed: _pick,
                     icon: Icon(
                       Icons.image_outlined,
-                      color: _pending != null ? scheme.primary : null,
+                      color: _pending.isNotEmpty ? scheme.primary : null,
                     ),
                   ),
                   const SizedBox(width: 1),
@@ -1032,7 +1170,7 @@ class _MsgTile extends ConsumerWidget {
     this.onRetry,
     this.handoffSecs,
     this.queued = false,
-    this.queuedImage,
+    this.queuedImages = const [],
   });
 
   final AssistantMsg msg;
@@ -1041,7 +1179,7 @@ class _MsgTile extends ConsumerWidget {
   final bool queued;
 
   /// 排着那句带的图。还没存进 blob,直接拿字节画。
-  final Uint8List? queuedImage;
+  final List<Uint8List> queuedImages;
 
   /// 上一份提议 —— 结果条拿它当差异基线。
   final DrawProposal? prev;
@@ -1080,38 +1218,27 @@ class _MsgTile extends ConsumerWidget {
   ) => Column(
     crossAxisAlignment: CrossAxisAlignment.end,
     children: [
-      if (queuedImage case final bytes?)
+      if (queuedImages.isNotEmpty)
         _fade(
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.memory(
-                bytes,
-                width: 96,
-                height: 96,
-                fit: BoxFit.cover,
-              ),
-            ),
+            child: _sentImages([
+              for (final b in queuedImages) _sentImage(b, queuedImages.length),
+            ]),
           ),
         )
-      else if (msg.imageHash != null)
+      else if (msg.imageHashes.isNotEmpty)
         Padding(
           padding: const EdgeInsets.only(bottom: 6),
-          child: FutureBuilder(
-            future: ref.read(appStoresProvider).assistant.image(msg.imageHash),
-            builder: (context, snap) => snap.data == null
-                ? const SizedBox.shrink()
-                : ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.memory(
-                      snap.data!,
-                      width: 96,
-                      height: 96,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-          ),
+          child: _sentImages([
+            for (final h in msg.imageHashes)
+              FutureBuilder(
+                future: ref.read(appStoresProvider).assistant.image(h),
+                builder: (context, snap) => snap.data == null
+                    ? const SizedBox.shrink()
+                    : _sentImage(snap.data!, msg.imageHashes.length),
+              ),
+          ]),
         ),
       GestureDetector(
         onLongPress: onLongPress,
@@ -1165,6 +1292,23 @@ class _MsgTile extends ConsumerWidget {
         ),
     ],
   );
+
+  /// 一条消息带的几张图,靠右排,放不下折行。
+  Widget _sentImages(List<Widget> images) => Wrap(
+    alignment: WrapAlignment.end,
+    spacing: 6,
+    runSpacing: 6,
+    children: images,
+  );
+
+  /// 一张图:只有一张时大一些,几张时缩小排成一行。
+  Widget _sentImage(Uint8List bytes, int count) {
+    final side = count > 1 ? 72.0 : 96.0;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.memory(bytes, width: side, height: side, fit: BoxFit.cover),
+    );
+  }
 
   /// 排着的那句压淡;发出去时原地淡回来。
   Widget _fade(Widget child) => AnimatedOpacity(
@@ -1719,7 +1863,7 @@ class _HandoffState extends State<_Handoff> {
 }
 
 class _Thumb extends StatelessWidget {
-  const _Thumb({required this.bytes, required this.onRemove});
+  const _Thumb({super.key, required this.bytes, required this.onRemove});
 
   final Uint8List bytes;
   final VoidCallback onRemove;

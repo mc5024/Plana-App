@@ -2303,7 +2303,7 @@ void main() {
         .chat(
           const LlmRequest(
             system: 's',
-            messages: [(role: 'user', content: 'x', image: null)],
+            messages: [(role: 'user', content: 'x', images: [])],
           ),
           client: MockClient((req) async => r),
         )
@@ -2314,14 +2314,17 @@ void main() {
         const LlmRequest(
           system: 'sys',
           messages: [
-            (role: 'user', content: '上一轮', image: null),
-            (role: 'assistant', content: '嗯', image: null),
+            (role: 'user', content: '上一轮', images: []),
+            (role: 'assistant', content: '嗯', images: []),
             (
               role: 'user',
-              content: '照这张画',
-              image: (mime: 'image/png', data: 'AAAA'),
+              content: '照这几张画',
+              images: [
+                (mime: 'image/png', data: 'AAAA'),
+                (mime: 'image/jpeg', data: 'BBBB'),
+              ],
             ),
-            (role: 'assistant', content: '查一下', image: null),
+            (role: 'assistant', content: '查一下', images: []),
           ],
           turnStart: 2,
         ),
@@ -2331,10 +2334,15 @@ void main() {
         {'role': 'assistant', 'content': '嗯'},
       ]);
       expect(body['messages'], [
+        // 老后端只认 image:放第一张;新后端认 images
         {
           'role': 'user',
-          'content': '照这张画',
+          'content': '照这几张画',
           'image': {'mime': 'image/png', 'data': 'AAAA'},
+          'images': [
+            {'mime': 'image/png', 'data': 'AAAA'},
+            {'mime': 'image/jpeg', 'data': 'BBBB'},
+          ],
         },
         {'role': 'assistant', 'content': '查一下'},
       ]);
@@ -2702,10 +2710,14 @@ void main() {
     // 三家的图片字段各不相同,写错的表现是「模型说没看到图」,
     // 和它自己看走眼分不出来。
     const img = (mime: 'image/jpeg', data: 'QUJD');
-    List<LlmMessage> msgs({LlmImage? image, String text = '画个芙兰'}) => [
-      (role: 'user', content: '上一轮', image: null),
-      (role: 'assistant', content: '好的', image: null),
-      (role: 'user', content: text, image: image),
+    const img2 = (mime: 'image/png', data: 'REVG');
+    List<LlmMessage> msgs({
+      List<LlmImage> images = const [],
+      String text = '画个芙兰',
+    }) => [
+      (role: 'user', content: '上一轮', images: const []),
+      (role: 'assistant', content: '好的', images: const []),
+      (role: 'user', content: text, images: images),
     ];
     Map<String, dynamic> body(AgentApiFormat f, List<LlmMessage> m) => _llm(
       f,
@@ -2713,7 +2725,8 @@ void main() {
 
     test('OpenAI:content 换成分段,图在前,data URL', () {
       final m =
-          body(AgentApiFormat.openai, msgs(image: img))['messages'] as List;
+          body(AgentApiFormat.openai, msgs(images: [img, img2]))['messages']
+              as List;
       expect(m[1], {'role': 'user', 'content': '上一轮'}, reason: '没图的仍是字符串');
       expect(m.last, {
         'role': 'user',
@@ -2722,6 +2735,10 @@ void main() {
             'type': 'image_url',
             'image_url': {'url': 'data:image/jpeg;base64,QUJD'},
           },
+          {
+            'type': 'image_url',
+            'image_url': {'url': 'data:image/png;base64,REVG'},
+          },
           {'type': 'text', 'text': '画个芙兰'},
         ],
       });
@@ -2729,10 +2746,14 @@ void main() {
 
     test('Gemini:inlineData 在前,text 在后', () {
       final c =
-          body(AgentApiFormat.google, msgs(image: img))['contents'] as List;
+          body(AgentApiFormat.google, msgs(images: [img, img2]))['contents']
+              as List;
       expect(c.last['parts'], [
         {
           'inlineData': {'mimeType': 'image/jpeg', 'data': 'QUJD'},
+        },
+        {
+          'inlineData': {'mimeType': 'image/png', 'data': 'REVG'},
         },
         {'text': '画个芙兰'},
       ]);
@@ -2740,7 +2761,8 @@ void main() {
 
     test('Claude:base64 的 image 块在前', () {
       final m =
-          body(AgentApiFormat.anthropic, msgs(image: img))['messages'] as List;
+          body(AgentApiFormat.anthropic, msgs(images: [img, img2]))['messages']
+              as List;
       expect(m.last['content'], [
         {
           'type': 'image',
@@ -2750,13 +2772,21 @@ void main() {
             'data': 'QUJD',
           },
         },
+        {
+          'type': 'image',
+          'source': {
+            'type': 'base64',
+            'media_type': 'image/png',
+            'data': 'REVG',
+          },
+        },
         {'type': 'text', 'text': '画个芙兰'},
       ]);
     });
 
     test('只发图不打字:不塞空的文字段(Claude 会拒空 text 块)', () {
       for (final f in AgentApiFormat.values) {
-        final raw = jsonEncode(body(f, msgs(image: img, text: '')));
+        final raw = jsonEncode(body(f, msgs(images: [img], text: '')));
         expect(raw, isNot(contains('"text":""')), reason: f.name);
         expect(raw, contains('QUJD'), reason: f.name);
       }

@@ -11,6 +11,7 @@ import '../../../core/auth/bot_session_store.dart';
 import '../../../core/net/backend_client.dart';
 import '../agent_model.dart';
 import '../custom_endpoint.dart';
+import '../domain/image_gen.dart';
 
 const kPlanaImagePrefix = 'plana:';
 
@@ -21,6 +22,8 @@ class ImageModelChoice {
     required this.model,
     this.endpoint,
     this.available = true,
+    this.sizes = const [],
+    this.aspects = const [],
   });
 
   final String key;
@@ -34,9 +37,13 @@ class ImageModelChoice {
 
   /// 后端渠道没有 Bot 授权时为 false。
   final bool available;
+
+  /// 能选的分辨率档 / 比例;不在里面的按「自动」发。
+  final List<String> sizes;
+  final List<String> aspects;
 }
 
-typedef PlanaImageChannel = ({String key, String name});
+typedef PlanaImageChannel = ({String key, String name, List<String> sizes});
 
 /// `GET /api/agent/image/channels` 的响应。
 typedef PlanaImageChannels = ({
@@ -48,7 +55,15 @@ PlanaImageChannels parsePlanaImageChannels(Map<String, dynamic> j) => (
   channels: [
     for (final c in (j['channels'] as List? ?? const []))
       if (c is Map && '${c['key'] ?? ''}'.isNotEmpty)
-        (key: '${c['key']}', name: '${c['name'] ?? c['key']}'),
+        (
+          key: '${c['key']}',
+          name: '${c['name'] ?? c['key']}',
+          // 老后端不报能出哪几档:分辨率按「自动」
+          sizes: [
+            for (final s in (c['sizes'] as List? ?? const []))
+              if (kImageSizes.contains('$s')) '$s',
+          ],
+        ),
   ],
   authorized: j['authorized'] == true,
 );
@@ -77,6 +92,8 @@ List<ImageModelChoice> imageModelChoices(
       name: c.name,
       model: c.key,
       available: plana!.authorized,
+      sizes: c.sizes,
+      aspects: kImageAspects,
     ),
   for (final e in endpoints)
     if (e.canDraw)
@@ -86,6 +103,11 @@ List<ImageModelChoice> imageModelChoices(
           name: m,
           model: m,
           endpoint: e,
+          // OpenAI 的 Images 接口只有方 / 竖 / 横三档尺寸;Gemini 分辨率、比例都能给
+          sizes: e.format == AgentApiFormat.google ? kImageSizes : const [],
+          aspects: e.format == AgentApiFormat.google
+              ? kImageAspects
+              : const ['1:1', '2:3', '3:2'],
         ),
 ];
 

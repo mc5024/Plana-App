@@ -8,8 +8,8 @@ import '../assistant_settings.dart' show ThinkLevel;
 /// 附图:MIME + base64。
 typedef LlmImage = ({String mime, String data});
 
-/// 发给模型的一条消息。[image] 只挂在本轮用户那条上,历史里的图不回带。
-typedef LlmMessage = ({String role, String content, LlmImage? image});
+/// 发给模型的一条消息。[images] 只挂在本轮用户那条上,历史里的图不回带。
+typedef LlmMessage = ({String role, String content, List<LlmImage> images});
 
 /// 回复文字:正文 + 原生思考。
 typedef LlmText = ({String text, String reasoning});
