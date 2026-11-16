@@ -9097,7 +9097,7 @@ abstract class AppLocalizations {
   /// No description provided for @ruleSectionName.
   ///
   /// In zh, this message translates to:
-  /// **'段名'**
+  /// **'标题名称'**
   String get ruleSectionName;
 
   /// No description provided for @deleteRuleSectionQ.

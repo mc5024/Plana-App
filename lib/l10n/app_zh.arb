@@ -1852,7 +1852,7 @@
   "@charsN": {"placeholders": {"n": {"type": "int"}}},
   "fullTextEdit": "全文编辑",
   "addRuleSection": "添加一段",
-  "ruleSectionName": "段名",
+  "ruleSectionName": "标题名称",
   "deleteRuleSectionQ": "删除这一段?",
   "deleteRuleSectionBody": "「{name}」的内容会一起删掉。",
   "@deleteRuleSectionBody": {"placeholders": {"name": {"type": "String"}}},

@@ -5169,7 +5169,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get addRuleSection => '添加一段';
 
   @override
-  String get ruleSectionName => '段名';
+  String get ruleSectionName => '标题名称';
 
   @override
   String get deleteRuleSectionQ => '删除这一段?';

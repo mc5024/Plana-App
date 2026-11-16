@@ -5605,7 +5605,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get addRuleSection => 'Add Section';
 
   @override
-  String get ruleSectionName => 'Section name';
+  String get ruleSectionName => 'Title';
 
   @override
   String get deleteRuleSectionQ => 'Delete this section?';

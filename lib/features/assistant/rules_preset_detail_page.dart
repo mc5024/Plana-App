@@ -419,7 +419,11 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
   }
 
   /// 问一行字,取消返回 null,其余去掉首尾空白返回。
-  Future<String?> _askText(String title, String initial) async {
+  Future<String?> _askText(
+    String title,
+    String initial, {
+    String? label,
+  }) async {
     final ctrl = TextEditingController(text: initial);
     final v = await showDialog<String>(
       context: context,
@@ -428,7 +432,7 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
         content: TextField(
           controller: ctrl,
           autofocus: true,
-          decoration: const InputDecoration(isDense: true),
+          decoration: InputDecoration(isDense: true, labelText: label),
           onSubmitted: (v) => Navigator.pop(context, v),
         ),
         actions: [
@@ -453,6 +457,7 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
     final v = await _askText(
       initial.isEmpty ? l.addRuleSection : l.rename,
       initial,
+      label: l.ruleSectionName,
     );
     if (v == null || v.isEmpty) return null;
     // 和工具层同名的段读回来会被当成旧货丢掉

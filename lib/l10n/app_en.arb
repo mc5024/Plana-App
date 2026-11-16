@@ -1535,7 +1535,7 @@
   "@charsN": {"placeholders": {"n": {"type": "int"}}},
   "fullTextEdit": "Edit Full Text",
   "addRuleSection": "Add Section",
-  "ruleSectionName": "Section name",
+  "ruleSectionName": "Title",
   "deleteRuleSectionQ": "Delete this section?",
   "deleteRuleSectionBody": "The content of “{name}” will be deleted too.",
   "@deleteRuleSectionBody": {"placeholders": {"name": {"type": "String"}}},
