@@ -5130,6 +5130,27 @@ class AppLocalizationsZh extends AppLocalizations {
   String get ruleSecModeNatural => '当前模式：仅自然语言';
 
   @override
+  String get ruleGroupPersona => '人设';
+
+  @override
+  String get ruleGroupWriting => '提示词写法';
+
+  @override
+  String get ruleGroupCharacters => '角色与构图';
+
+  @override
+  String get ruleGroupComic => '漫画';
+
+  @override
+  String get ruleGroupNatural => '仅自然语言';
+
+  @override
+  String get ruleGroupOutput => '输出格式';
+
+  @override
+  String get deleteRuleGroupQ => '删除这一组?';
+
+  @override
   String get whenAlways => '常驻';
 
   @override

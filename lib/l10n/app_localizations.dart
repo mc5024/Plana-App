@@ -9016,6 +9016,48 @@ abstract class AppLocalizations {
   /// **'当前模式：仅自然语言'**
   String get ruleSecModeNatural;
 
+  /// No description provided for @ruleGroupPersona.
+  ///
+  /// In zh, this message translates to:
+  /// **'人设'**
+  String get ruleGroupPersona;
+
+  /// No description provided for @ruleGroupWriting.
+  ///
+  /// In zh, this message translates to:
+  /// **'提示词写法'**
+  String get ruleGroupWriting;
+
+  /// No description provided for @ruleGroupCharacters.
+  ///
+  /// In zh, this message translates to:
+  /// **'角色与构图'**
+  String get ruleGroupCharacters;
+
+  /// No description provided for @ruleGroupComic.
+  ///
+  /// In zh, this message translates to:
+  /// **'漫画'**
+  String get ruleGroupComic;
+
+  /// No description provided for @ruleGroupNatural.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅自然语言'**
+  String get ruleGroupNatural;
+
+  /// No description provided for @ruleGroupOutput.
+  ///
+  /// In zh, this message translates to:
+  /// **'输出格式'**
+  String get ruleGroupOutput;
+
+  /// No description provided for @deleteRuleGroupQ.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除这一组?'**
+  String get deleteRuleGroupQ;
+
   /// No description provided for @whenAlways.
   ///
   /// In zh, this message translates to:

@@ -578,6 +578,43 @@ sections:
       expect(withModes.first.toJson().containsKey('enabled'), isFalse);
     });
 
+    test('段落页的卡:内置段按组归一张,认不出的各自一张,按第一段的位置排', () {
+      const rules = [
+        PresetRule(name: 'role', content: 'a'),
+        PresetRule(name: 'prompt_construction', content: 'b'),
+        PresetRule(name: '我的段', content: 'c'),
+        PresetRule(name: 'weight_control', content: 'd'),
+        PresetRule(name: 'comic_composition', content: 'e'),
+        PresetRule(name: '另一段', content: 'f'),
+        PresetRule(name: 'mode_comic', content: 'g'),
+      ];
+      final cards = ruleCardsOf(rules);
+      expect(
+        [for (final c in cards) c.group],
+        ['persona', 'writing', null, 'comic', null],
+      );
+      expect(
+        [for (final c in cards) c.indices],
+        [
+          [0],
+          [1, 3],
+          [2],
+          [4, 6],
+          [5],
+        ],
+      );
+    });
+
+    test('默认规则 v5 归成 6 张卡,一段不落', () async {
+      final rules = await bundledRules(RulesFamily.nai5);
+      final cards = ruleCardsOf(rules);
+      expect(cards, hasLength(6));
+      expect(cards.every((c) => c.group != null), isTrue);
+      expect(cards.expand((c) => c.indices).toSet(), {
+        for (var i = 0; i < rules.length; i++) i,
+      });
+    });
+
     test('触发条件显示名:comic 与 mode:comic 同名,! 开头是没选时', () {
       expect(whenLabel(''), whenLabel(kWhenChoices.first));
       expect(whenLabel('comic'), whenLabel('mode:comic'));

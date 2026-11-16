@@ -1,5 +1,6 @@
-/// 规则预设的段落页:一段一张卡,点卡改内容和触发条件,点名字改名,⏻ 停用、🗑 删除、
-/// 长按拖动排序,顶栏加一段或全文编辑。
+/// 规则预设的段落页:内置段按用途归成几张卡(见 [ruleCardsOf]),认不出的段名各自一张。
+/// 点卡改内容和触发条件(一组几段就上下排开一起改),点自己加的段名改名;
+/// ⏻ 停用、🗑 删除、长按拖动排序都按整张卡来,顶栏加一段或全文编辑。
 ///
 /// 默认规则的原件在包里,改不了:第一次保存时另存为一份新预设,这个模型原先用默认规则的
 /// 就改用新存的这份,之后在这页接着改的都是那份。
@@ -73,44 +74,55 @@ class _RulesSectionsPageState extends ConsumerState<RulesSectionsPage> {
       ),
       body: rules == null
           ? const Center(child: CircularProgressIndicator())
-          : ReorderableListView.builder(
-              padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
-              itemCount: rules.length,
-              proxyDecorator: (child, _, _) => Material(
-                color: Colors.transparent,
-                elevation: 3,
-                borderRadius: BorderRadius.circular(16),
-                child: child,
-              ),
-              onReorderItem: (from, to) {
-                final next = [...rules!];
-                next.insert(to, next.removeAt(from));
-                _commit(next);
-              },
-              itemBuilder: (context, i) {
-                final r = rules![i];
-                return Padding(
-                  key: ObjectKey(r),
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _SectionCard(
-                    rule: r,
-                    onEdit: () => _edit(rules!, i),
-                    onRename: () => _rename(rules!, i),
-                    onToggle: () =>
-                        _replaceAt(rules!, i, r.copyWith(enabled: !r.enabled)),
-                    // 预设至少留一段:一段不剩的预设读回来会被当成坏数据丢掉
-                    onDelete: rules.length > 1
-                        ? () => _delete(rules!, i)
-                        : null,
-                  ),
-                );
-              },
-            ),
+          : _list(rules),
     );
   }
 
-  Future<void> _replaceAt(List<PresetRule> rules, int i, PresetRule r) =>
-      _commit([...rules]..[i] = r);
+  Widget _list(List<PresetRule> rules) {
+    final cards = ruleCardsOf(rules);
+    return ReorderableListView.builder(
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
+      itemCount: cards.length,
+      proxyDecorator: (child, _, _) => Material(
+        color: Colors.transparent,
+        elevation: 3,
+        borderRadius: BorderRadius.circular(16),
+        child: child,
+      ),
+      // 整张卡一起挪:组里的段挪完挨在一起
+      onReorderItem: (from, to) {
+        final next = [...cards];
+        next.insert(to, next.removeAt(from));
+        _commit([
+          for (final c in next)
+            for (final i in c.indices) rules[i],
+        ]);
+      },
+      itemBuilder: (context, k) {
+        final c = cards[k];
+        final members = [for (final i in c.indices) rules[i]];
+        return Padding(
+          key: ObjectKey(members.first),
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _RuleCardView(
+            title: c.group == null
+                ? members.single.name
+                : ruleGroupLabel(c.group!),
+            rules: members,
+            onEdit: () => _edit(rules, c),
+            onRename: c.group == null
+                ? () => _rename(rules, c.indices.single)
+                : null,
+            onToggle: () => _toggle(rules, c),
+            // 预设至少留一段:一段不剩的预设读回来会被当成坏数据丢掉
+            onDelete: rules.length > c.indices.length
+                ? () => _delete(rules, c)
+                : null,
+          ),
+        );
+      },
+    );
+  }
 
   /// 存回去。默认规则第一次存是另存为一份新预设。
   Future<void> _commit(
@@ -166,12 +178,44 @@ class _RulesSectionsPageState extends ConsumerState<RulesSectionsPage> {
     }
   }
 
-  Future<void> _edit(List<PresetRule> rules, int i) async {
-    final r = await Navigator.push<PresetRule>(
-      context,
-      MaterialPageRoute(builder: (_) => _SectionEditorPage(rule: rules[i])),
-    );
-    if (r != null) await _replaceAt(rules, i, r);
+  /// 一段的卡进单段页;一组几段的进组页,几段上下排开一起改。
+  Future<void> _edit(List<PresetRule> rules, RuleCard c) async {
+    final List<PresetRule>? edited;
+    if (c.indices.length == 1) {
+      final r = await Navigator.push<PresetRule>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => _SectionEditorPage(rule: rules[c.indices.single]),
+        ),
+      );
+      edited = r == null ? null : [r];
+    } else {
+      edited = await Navigator.push<List<PresetRule>>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => _GroupEditorPage(
+            title: ruleGroupLabel(c.group!),
+            rules: [for (final i in c.indices) rules[i]],
+          ),
+        ),
+      );
+    }
+    if (edited == null) return;
+    final next = [...rules];
+    for (final (j, i) in c.indices.indexed) {
+      next[i] = edited[j];
+    }
+    await _commit(next);
+  }
+
+  /// 有一段开着就整张关掉,全关着就整张打开。
+  Future<void> _toggle(List<PresetRule> rules, RuleCard c) {
+    final anyOn = c.indices.any((i) => rules[i].enabled);
+    final next = [...rules];
+    for (final i in c.indices) {
+      next[i] = rules[i].copyWith(enabled: !anyOn);
+    }
+    return _commit(next);
   }
 
   Future<void> _add(List<PresetRule> rules) async {
@@ -188,12 +232,12 @@ class _RulesSectionsPageState extends ConsumerState<RulesSectionsPage> {
     if (r != null) await _commit([...rules, r]);
   }
 
-  /// 点名字改名。框里是显示名,没改就不动(内置段名不会被换成中文)。
+  /// 点名字改名(只有认不出的段,内置段归在组里不单独改名)。
   Future<void> _rename(List<PresetRule> rules, int i) async {
-    final shown = ruleSectionLabel(rules[i].name);
+    final shown = rules[i].name;
     final name = await _askName(shown);
     if (name == null || name == shown) return;
-    await _replaceAt(rules, i, rules[i].copyWith(name: name));
+    await _commit([...rules]..[i] = rules[i].copyWith(name: name));
   }
 
   /// 问段名,取消或留空返回 null。
@@ -242,16 +286,24 @@ class _RulesSectionsPageState extends ConsumerState<RulesSectionsPage> {
     return v;
   }
 
-  Future<void> _delete(List<PresetRule> rules, int i) async {
+  Future<void> _delete(List<PresetRule> rules, RuleCard c) async {
+    final label = c.group == null
+        ? rules[c.indices.single].name
+        : ruleGroupLabel(c.group!);
     final ok = await confirmDialog(
       context,
-      title: context.l10n.deleteRuleSectionQ,
-      message: context.l10n.deleteRuleSectionBody(
-        ruleSectionLabel(rules[i].name),
-      ),
+      title: c.indices.length > 1
+          ? context.l10n.deleteRuleGroupQ
+          : context.l10n.deleteRuleSectionQ,
+      message: context.l10n.deleteRuleSectionBody(label),
       confirmLabel: context.l10n.delete,
     );
-    if (ok) await _commit([...rules]..removeAt(i));
+    if (!ok) return;
+    final drop = c.indices.toSet();
+    await _commit([
+      for (final (i, r) in rules.indexed)
+        if (!drop.contains(i)) r,
+    ]);
   }
 
   /// 全文编辑:摊开的就是导出的那份文本,电脑上改好的能整段贴进来。
@@ -287,27 +339,39 @@ class _RulesSectionsPageState extends ConsumerState<RulesSectionsPage> {
   }
 }
 
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.rule,
+class _RuleCardView extends StatelessWidget {
+  const _RuleCardView({
+    required this.title,
+    required this.rules,
     required this.onEdit,
-    required this.onRename,
     required this.onToggle,
+    this.onRename,
     this.onDelete,
   });
 
-  final PresetRule rule;
+  final String title;
+
+  /// 卡里的段。
+  final List<PresetRule> rules;
   final VoidCallback onEdit;
-  final VoidCallback onRename;
   final VoidCallback onToggle;
 
-  /// 只剩一段时删不了,传 null。
+  /// 内置段的组卡不改名,传 null。
+  final VoidCallback? onRename;
+
+  /// 删了就一段不剩时删不了,传 null。
   final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    final on = rule.enabled;
+    final on = rules.any((r) => r.enabled);
+    final whens = {for (final r in rules) whenLabel(r.when)};
+    final meta = [
+      if (whens.length == 1) whens.single,
+      if (rules.length > 1) context.l10n.sectionsN(rules.length),
+      context.l10n.charsN(rules.fold(0, (n, r) => n + r.content.length)),
+    ].join(' · ');
     // 与角色卡的开关 / 删除同一尺寸(窄屏同样收到 32)
     final btnSize = MediaQuery.sizeOf(context).width < 350 ? 32.0 : 36.0;
     return Lifted(
@@ -333,7 +397,7 @@ class _SectionCard extends StatelessWidget {
                         GestureDetector(
                           onTap: onRename,
                           child: Text(
-                            ruleSectionLabel(rule.name),
+                            title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: context.texts.bodyLarge!.copyWith(
@@ -343,8 +407,7 @@ class _SectionCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          '${whenLabel(rule.when)} · '
-                          '${context.l10n.charsN(rule.content.length)}',
+                          meta,
                           style: context.texts.labelSmall!.copyWith(
                             color: scheme.outline,
                           ),
@@ -383,6 +446,84 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
+/// 去掉开头的空行和末尾空白,不动第一行的缩进。
+String _tidy(String s) =>
+    s.replaceFirst(RegExp(r'^(?:[ \t]*\r?\n)+'), '').trimRight();
+
+/// 选触发条件,没改返回 null。
+Future<String?> _pickWhen(BuildContext context, String current) async {
+  // `comic` 和 `mode:comic` 是一回事,对话框里落在同一项上
+  final shown = current == 'comic' ? '${kModeWhenPrefix}comic' : current;
+  final options = [...kWhenChoices, if (!kWhenChoices.contains(shown)) shown];
+  final picked = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(context.l10n.triggerCondition),
+      contentPadding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
+      content: RadioGroup<String>(
+        groupValue: shown,
+        onChanged: (v) => Navigator.of(ctx).pop(v),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final o in options)
+              RadioListTile<String>(value: o, title: Text(whenLabel(o))),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(context.l10n.cancel),
+        ),
+      ],
+    ),
+  );
+  if (picked == null || picked == shown) return null;
+  Haptics.selection();
+  return picked;
+}
+
+/// 触发条件按钮:当前条件 + 上下箭头,点开选。
+class _WhenButton extends StatelessWidget {
+  const _WhenButton({required this.when, required this.onTap});
+
+  final String when;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    return TextButton(
+      onPressed: onTap,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            whenLabel(when),
+            style: context.texts.labelLarge!.copyWith(
+              color: scheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(width: 2),
+          Icon(Icons.unfold_more, size: 18, color: scheme.outline),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _confirmLeave(BuildContext context) async {
+  final ok = await confirmDialog(
+    context,
+    title: context.l10n.discardChangesQ,
+    message: context.l10n.unsavedLost2,
+    confirmLabel: context.l10n.discardAction,
+  );
+  if (ok && context.mounted) Navigator.pop(context);
+}
+
 /// 一段的编辑页:内容直接铺在页面上,顶栏右边改触发条件、保存。
 /// 没保存就返回要确认一下。
 class _SectionEditorPage extends StatefulWidget {
@@ -406,9 +547,7 @@ class _SectionEditorPageState extends State<_SectionEditorPage> {
   }
 
   void _save() {
-    final content = _ctl.text
-        .replaceFirst(RegExp(r'^(?:[ \t]*\r?\n)+'), '')
-        .trimRight();
+    final content = _tidy(_ctl.text);
     if (content.trim().isEmpty) {
       hintSnack(
         context,
@@ -420,80 +559,28 @@ class _SectionEditorPageState extends State<_SectionEditorPage> {
     Navigator.pop(context, widget.rule.copyWith(content: content, when: _when));
   }
 
-  Future<void> _pickWhen() async {
-    // `comic` 和 `mode:comic` 是一回事,对话框里落在同一项上
-    final shown = _when == 'comic' ? '${kModeWhenPrefix}comic' : _when;
-    final options = [...kWhenChoices, if (!kWhenChoices.contains(shown)) shown];
-    final picked = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.triggerCondition),
-        contentPadding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
-        content: RadioGroup<String>(
-          groupValue: shown,
-          onChanged: (v) => Navigator.of(ctx).pop(v),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final o in options)
-                RadioListTile<String>(value: o, title: Text(whenLabel(o))),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(context.l10n.cancel),
-          ),
-        ],
-      ),
-    );
-    if (picked == null || picked == shown) return;
-    Haptics.selection();
-    setState(() {
-      _when = picked;
-      _dirty = true;
-    });
-  }
-
-  Future<void> _confirmLeave() async {
-    final ok = await confirmDialog(
-      context,
-      title: context.l10n.discardChangesQ,
-      message: context.l10n.unsavedLost2,
-      confirmLabel: context.l10n.discardAction,
-    );
-    if (ok && mounted) Navigator.pop(context);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final scheme = context.scheme;
     return PopScope(
       canPop: !_dirty,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _confirmLeave();
+        if (!didPop) _confirmLeave(context);
       },
       child: Scaffold(
         appBar: AppBar(
           title: Text(ruleSectionLabel(widget.rule.name)),
           actions: [
-            TextButton(
-              onPressed: _pickWhen,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    whenLabel(_when),
-                    style: context.texts.labelLarge!.copyWith(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(width: 2),
-                  Icon(Icons.unfold_more, size: 18, color: scheme.outline),
-                ],
-              ),
+            _WhenButton(
+              when: _when,
+              onTap: () async {
+                final v = await _pickWhen(context, _when);
+                if (v != null) {
+                  setState(() {
+                    _when = v;
+                    _dirty = true;
+                  });
+                }
+              },
             ),
             IconButton(
               tooltip: context.l10n.save,
@@ -523,6 +610,173 @@ class _SectionEditorPageState extends State<_SectionEditorPage> {
               contentPadding: EdgeInsets.fromLTRB(16, 4, 16, 16),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 一组几段的编辑页:一段一张卡上下排开,卡头是段名、触发条件和 ⏻,
+/// 下面就是这段的内容。顶栏保存一起存。
+class _GroupEditorPage extends StatefulWidget {
+  const _GroupEditorPage({required this.title, required this.rules});
+
+  final String title;
+  final List<PresetRule> rules;
+
+  @override
+  State<_GroupEditorPage> createState() => _GroupEditorPageState();
+}
+
+class _GroupEditorPageState extends State<_GroupEditorPage> {
+  late final _ctls = [
+    for (final r in widget.rules) TextEditingController(text: r.content),
+  ];
+  late final _whens = [for (final r in widget.rules) r.when];
+  late final _enabled = [for (final r in widget.rules) r.enabled];
+  var _dirty = false;
+
+  @override
+  void dispose() {
+    for (final c in _ctls) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _save() {
+    final out = <PresetRule>[];
+    for (final (i, r) in widget.rules.indexed) {
+      final content = _tidy(_ctls[i].text);
+      if (content.trim().isEmpty) {
+        hintSnack(
+          context,
+          context.l10n.ruleSectionEmpty,
+          icon: Icons.error_outline,
+        );
+        return;
+      }
+      out.add(
+        r.copyWith(content: content, when: _whens[i], enabled: _enabled[i]),
+      );
+    }
+    Navigator.pop(context, out);
+  }
+
+  void _touch(VoidCallback change) => setState(() {
+    change();
+    _dirty = true;
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmLeave(context);
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(widget.title),
+          actions: [
+            IconButton(
+              tooltip: context.l10n.save,
+              onPressed: _save,
+              icon: const Icon(Icons.check),
+            ),
+          ],
+        ),
+        body: ListView(
+          padding: EdgeInsets.fromLTRB(
+            14,
+            4,
+            14,
+            24 + MediaQuery.viewPaddingOf(context).bottom,
+          ),
+          children: [
+            for (var i = 0; i < widget.rules.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _block(context, i),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _block(BuildContext context, int i) {
+    final scheme = context.scheme;
+    final on = _enabled[i];
+    final btnSize = MediaQuery.sizeOf(context).width < 350 ? 32.0 : 36.0;
+    return Lifted(
+      radius: BorderRadius.circular(16),
+      child: Material(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 10, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      ruleSectionLabel(widget.rules[i].name),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.texts.bodyLarge!.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: on ? null : scheme.outline,
+                      ),
+                    ),
+                  ),
+                  _WhenButton(
+                    when: _whens[i],
+                    onTap: () async {
+                      final v = await _pickWhen(context, _whens[i]);
+                      if (v != null) _touch(() => _whens[i] = v);
+                    },
+                  ),
+                  RoundIconBtn(
+                    Icons.power_settings_new,
+                    size: btnSize,
+                    color: on ? scheme.primary : scheme.outline,
+                    tooltip: on
+                        ? context.l10n.disableKeepConfig
+                        : context.l10n.enable,
+                    onTap: () {
+                      Haptics.selection();
+                      _touch(() => _enabled[i] = !on);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            AnimatedOpacity(
+              duration: Motion.fast,
+              opacity: on ? 1 : .45,
+              child: TextField(
+                controller: _ctls[i],
+                maxLines: null,
+                minLines: 3,
+                keyboardType: TextInputType.multiline,
+                autocorrect: false,
+                enableSuggestions: false,
+                style: mono(context, size: 13, weight: FontWeight.w400),
+                onChanged: (_) {
+                  if (!_dirty) setState(() => _dirty = true);
+                },
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.fromLTRB(16, 4, 16, 14),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -572,22 +826,12 @@ class _RulesEditorPageState extends State<_RulesEditorPage> {
     Navigator.pop(context, file);
   }
 
-  Future<void> _confirmLeave() async {
-    final ok = await confirmDialog(
-      context,
-      title: context.l10n.discardChangesQ,
-      message: context.l10n.unsavedLost2,
-      confirmLabel: context.l10n.discardAction,
-    );
-    if (ok && mounted) Navigator.pop(context);
-  }
-
   @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: !_dirty,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _confirmLeave();
+        if (!didPop) _confirmLeave(context);
       },
       child: Scaffold(
         appBar: AppBar(
