@@ -74,25 +74,45 @@ String encodeRulesFile({
   return b.toString();
 }
 
-/// 文件文本 → 规则文件。认三种:本 app 导出的预设(v2)、上一版导出的无名规则
-/// (v1,只有一个 `model`),以及一整份服务端预设。
+/// 文件文本 → 规则文件。认四种:本 app 导出的预设(v2)、上一版导出的无名规则
+/// (v1,只有一个 `model`)、一整份服务端预设,以及酒馆(SillyTavern)的对话补全预设。
 ///
 /// [fileName] 用来补缺:文件里没写名字就用文件名;服务端预设文件名里带着
 /// `nai5` / `nai45`,顺手认出支持的模型。
 RulesFile decodeRulesFile(String text, {String fileName = ''}) {
-  final Object? doc;
-  try {
-    doc = loadYaml(text);
-  } on YamlException catch (e) {
-    // 带上行号:全文编辑里改坏了,几万字的规则光说一句「格式不对」没法找
-    final line = e.span?.start.line;
-    throw FormatException(
-      line == null
-          ? l10nNow.badFileFormat(e.message)
-          : l10nNow.badFileFormatLine(line + 1, e.message),
-    );
+  Object? doc;
+  // 酒馆预设是 JSON,动辄几十万字:先按 JSON 读,比 YAML 解析器快得多
+  if (text.trimLeft().startsWith('{')) {
+    try {
+      doc = jsonDecode(text);
+    } on FormatException {
+      doc = null;
+    }
+  }
+  if (doc == null) {
+    try {
+      doc = loadYaml(text);
+    } on YamlException catch (e) {
+      // 带上行号:全文编辑里改坏了,几万字的规则光说一句「格式不对」没法找
+      final line = e.span?.start.line;
+      throw FormatException(
+        line == null
+            ? l10nNow.badFileFormat(e.message)
+            : l10nNow.badFileFormatLine(line + 1, e.message),
+      );
+    }
   }
   if (doc is! Map) throw FormatException(l10nNow.noSections);
+  final base = fileName.replaceFirst(RegExp(r'\.[^.]*$'), '').trim();
+
+  if (doc['sections'] is! List && doc['prompts'] is List) {
+    final rules = _sillyTavernRules(doc);
+    if (rules.isEmpty) throw FormatException(l10nNow.noUsableRules);
+    final err = rulesLimitError(rules, reserveChars: _toolLayerReserveChars);
+    if (err != null) throw FormatException(err);
+    // 酒馆预设里没有名字、作者,也不分 NAI 模型:名字用文件名,模型让用户选
+    return RulesFile(name: base, author: '', models: const {}, rules: rules);
+  }
 
   final sections = doc['sections'];
   if (sections is! List) throw FormatException(l10nNow.noSections);
@@ -115,7 +135,6 @@ RulesFile decodeRulesFile(String text, {String fileName = ''}) {
   final err = rulesLimitError(rules, reserveChars: _toolLayerReserveChars);
   if (err != null) throw FormatException(err);
 
-  final base = fileName.replaceFirst(RegExp(r'\.[^.]*$'), '').trim();
   var models = decodeModels(doc['models']);
   if (models.isEmpty) models = decodeModels(doc['model']); // v1
   if (models.isEmpty && isServerPreset) {
@@ -131,4 +150,62 @@ RulesFile decodeRulesFile(String text, {String fileName = ''}) {
     models: models,
     rules: rules,
   );
+}
+
+/// 酒馆全局那份提示词顺序的 character_id(不跟角色卡走的那份)。
+const _stGlobalOrderId = '100001';
+
+/// 酒馆的注释宏 `{{// …}}`:酒馆发出去前会删掉,这里也删。
+final _stComment = RegExp(r'\{\{//[\s\S]*?\}\}');
+
+/// 酒馆对话补全预设 → 段落:`prompts` 里一条提示词一段,顺序和开关按 `prompt_order`
+/// (优先全局那份,没有就取条目最多的一份,都没有按 `prompts` 原顺序)。
+/// 占位条目(marker:聊天记录、角色卡、世界书这类由酒馆现填的)和空条目跳过;
+/// 注释宏删掉,`{{char}}` 这类别的宏原样留着。
+List<PresetRule> _sillyTavernRules(Map doc) {
+  final byId = <String, Map>{};
+  final all = <Map>[];
+  for (final p in doc['prompts'] as List) {
+    if (p is! Map) continue;
+    all.add(p);
+    final id = '${p['identifier'] ?? ''}';
+    if (id.isNotEmpty) byId[id] = p;
+  }
+  final orders = [
+    if (doc['prompt_order'] case final List l)
+      for (final o in l)
+        if (o is Map && o['order'] is List) o,
+  ];
+  final List<(Map, bool)> seq;
+  if (orders.isEmpty) {
+    seq = [for (final p in all) (p, p['enabled'] != false)];
+  } else {
+    final pick =
+        orders
+            .where((o) => '${o['character_id']}' == _stGlobalOrderId)
+            .firstOrNull ??
+        orders.reduce(
+          (a, b) =>
+              (b['order'] as List).length > (a['order'] as List).length ? b : a,
+        );
+    seq = [
+      for (final e in pick['order'] as List)
+        if (e is Map)
+          if (byId['${e['identifier'] ?? ''}'] case final p?)
+            (p, e['enabled'] != false),
+    ];
+  }
+  return [
+    for (final (p, on) in seq)
+      if (p['marker'] != true)
+        if (PresetRule.fromJson({
+              'name': '${p['name'] ?? ''}'.trim().isNotEmpty
+                  ? p['name']
+                  : p['identifier'],
+              'content': '${p['content'] ?? ''}'.replaceAll(_stComment, ''),
+              'enabled': on,
+            })
+            case final r?)
+          if (r.name != kToolLayerName) r,
+  ];
 }

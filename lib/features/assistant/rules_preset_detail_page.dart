@@ -172,10 +172,7 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
                 ? () => _rename(rules, c.indices.single)
                 : null,
             onToggle: () => _toggle(rules, c),
-            // 预设至少留一段:一段不剩的预设读回来会被当成坏数据丢掉
-            onDelete: rules.length > c.indices.length
-                ? () => _delete(rules, c)
-                : null,
+            onDelete: () => _delete(rules, c),
           ),
         );
       },
@@ -520,8 +517,8 @@ class _RuleCardView extends StatelessWidget {
     required this.rules,
     required this.onEdit,
     required this.onToggle,
+    required this.onDelete,
     this.onRename,
-    this.onDelete,
   });
 
   final String title;
@@ -530,12 +527,10 @@ class _RuleCardView extends StatelessWidget {
   final List<PresetRule> rules;
   final VoidCallback onEdit;
   final VoidCallback onToggle;
+  final VoidCallback onDelete;
 
   /// 内置段的组卡不改名,传 null。
   final VoidCallback? onRename;
-
-  /// 删了就一段不剩时删不了,传 null。
-  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -608,7 +603,7 @@ class _RuleCardView extends StatelessWidget {
                 RoundIconBtn(
                   Icons.delete_outline,
                   size: btnSize,
-                  color: onDelete == null ? scheme.outline : scheme.error,
+                  color: scheme.error,
                   tooltip: context.l10n.delete,
                   onTap: onDelete,
                 ),

@@ -37,6 +37,11 @@ class RulesPresetPage extends ConsumerWidget {
             onPressed: () => _import(context, ref),
             icon: const Icon(Icons.file_open_outlined),
           ),
+          IconButton(
+            tooltip: context.l10n.newPreset,
+            onPressed: () => _create(context, ref),
+            icon: const Icon(Icons.add),
+          ),
         ],
       ),
       body: lib == null
@@ -181,11 +186,22 @@ class RulesPresetPage extends ConsumerWidget {
 
     // 名字、作者、模型让用户过一眼:服务端预设文件里压根没写这几样,
     // 文件里写了的也可能想改个自己认得出的名字
-    final meta = await showModalBottomSheet<_ImportMeta>(
+    final conditional = file.rules.any((r) => r.when.isNotEmpty);
+    final meta = await showModalBottomSheet<_PresetMeta>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => _ImportSheet(file: file),
+      builder: (_) => _PresetMetaSheet(
+        title: context.l10n.importRulePreset,
+        subtitle: [
+          context.l10n.totalSectionsN(file.rules.length),
+          if (conditional) context.l10n.hasConditional,
+        ].join(' · '),
+        action: context.l10n.importLabel,
+        name: file.name,
+        author: file.author,
+        models: file.models,
+      ),
     );
     if (meta == null || !context.mounted) return;
     await ref
@@ -203,6 +219,34 @@ class RulesPresetPage extends ConsumerWidget {
         icon: Icons.check_circle_outline,
       );
     }
+  }
+
+  /// 新建:填名字、作者、支持的模型,建一份空预设,直接进它的预设页加段落。
+  Future<void> _create(BuildContext context, WidgetRef ref) async {
+    final meta = await showModalBottomSheet<_PresetMeta>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _PresetMetaSheet(
+        title: context.l10n.newPreset,
+        action: context.l10n.create,
+        models: RulesFamily.values.toSet(),
+      ),
+    );
+    if (meta == null || !context.mounted) return;
+    final id = await ref
+        .read(rulesLibraryProvider.notifier)
+        .add(
+          name: meta.name,
+          author: meta.author,
+          models: meta.models,
+          rules: const [],
+        );
+    if (!context.mounted) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (_) => RulesPresetDetailPage(presetId: id)),
+    );
   }
 
   /// 默认规则导出时名字带上版本(「Nyako v5」)——
@@ -461,22 +505,36 @@ class _Tag extends StatelessWidget {
   }
 }
 
-typedef _ImportMeta = ({String name, String author, Set<RulesFamily> models});
+typedef _PresetMeta = ({String name, String author, Set<RulesFamily> models});
 
-/// 导入前过一眼:名字、作者、支持的模型。文件里写了就预先填上。
-class _ImportSheet extends StatefulWidget {
-  const _ImportSheet({required this.file});
+/// 名字、作者、支持的模型:导入前过一眼(文件里写了就预先填上),新建时从这里填起。
+class _PresetMetaSheet extends StatefulWidget {
+  const _PresetMetaSheet({
+    required this.title,
+    required this.action,
+    this.subtitle,
+    this.name = '',
+    this.author = '',
+    this.models = const {},
+  });
 
-  final RulesFile file;
+  final String title;
+
+  /// 底下那颗按钮的字。
+  final String action;
+  final String? subtitle;
+  final String name;
+  final String author;
+  final Set<RulesFamily> models;
 
   @override
-  State<_ImportSheet> createState() => _ImportSheetState();
+  State<_PresetMetaSheet> createState() => _PresetMetaSheetState();
 }
 
-class _ImportSheetState extends State<_ImportSheet> {
-  late final _name = TextEditingController(text: widget.file.name);
-  late final _author = TextEditingController(text: widget.file.author);
-  late final Set<RulesFamily> _models = {...widget.file.models};
+class _PresetMetaSheetState extends State<_PresetMetaSheet> {
+  late final _name = TextEditingController(text: widget.name);
+  late final _author = TextEditingController(text: widget.author);
+  late final Set<RulesFamily> _models = {...widget.models};
 
   @override
   void dispose() {
@@ -490,7 +548,6 @@ class _ImportSheetState extends State<_ImportSheet> {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    final conditional = widget.file.rules.any((r) => r.when.isNotEmpty);
     return Padding(
       padding: EdgeInsets.fromLTRB(
         20,
@@ -503,19 +560,18 @@ class _ImportSheetState extends State<_ImportSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            context.l10n.importRulePreset,
+            widget.title,
             style: context.texts.titleMedium!.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            [
-              context.l10n.totalSectionsN(widget.file.rules.length),
-              if (conditional) context.l10n.hasConditional,
-            ].join(' · '),
-            style: context.texts.labelSmall!.copyWith(color: scheme.outline),
-          ),
+          if (widget.subtitle case final s?) ...[
+            const SizedBox(height: 4),
+            Text(
+              s,
+              style: context.texts.labelSmall!.copyWith(color: scheme.outline),
+            ),
+          ],
           const SizedBox(height: 16),
           TextField(
             controller: _name,
@@ -562,7 +618,7 @@ class _ImportSheetState extends State<_ImportSheet> {
                     models: {..._models},
                   ))
                 : null,
-            child: Text(context.l10n.importLabel),
+            child: Text(widget.action),
           ),
         ],
       ),

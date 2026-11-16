@@ -171,6 +171,96 @@ sections:
     });
   });
 
+  group('酒馆预设', () {
+    test('按全局顺序取段,占位和空条目跳过,开关照带,注释宏删掉、别的宏留着', () {
+      final text = jsonEncode({
+        'temperature': 1,
+        'prompts': [
+          {
+            'identifier': 'main',
+            'name': 'Main Prompt',
+            'role': 'system',
+            'content': '主提示 {{char}}',
+          },
+          {'identifier': 'chatHistory', 'name': 'Chat History', 'marker': true},
+          {'identifier': 'nsfw', 'name': 'Auxiliary Prompt', 'content': '辅助'},
+          {
+            'identifier': 'jailbreak',
+            'name': 'Post-History Instructions',
+            'content': '',
+          },
+          {'identifier': 'abc', 'name': '自定义', 'content': '{{// 注释}}正文'},
+        ],
+        'prompt_order': [
+          {
+            'character_id': 100000,
+            'order': [
+              {'identifier': 'main', 'enabled': true},
+            ],
+          },
+          {
+            'character_id': 100001,
+            'order': [
+              {'identifier': 'abc', 'enabled': true},
+              {'identifier': 'main', 'enabled': true},
+              {'identifier': 'chatHistory', 'enabled': true},
+              {'identifier': 'nsfw', 'enabled': false},
+              {'identifier': 'jailbreak', 'enabled': true},
+            ],
+          },
+        ],
+      });
+      final f = decodeRulesFile(text, fileName: '破限预设.json');
+      expect(f.name, '破限预设');
+      expect(f.models, isEmpty, reason: '酒馆预设不分 NAI 模型,导入时让用户选');
+      expect(
+        [for (final r in f.rules) r.name],
+        ['自定义', 'Main Prompt', 'Auxiliary Prompt'],
+      );
+      expect([for (final r in f.rules) r.enabled], [true, true, false]);
+      expect(f.rules[0].content, '正文');
+      expect(f.rules[1].content, '主提示 {{char}}');
+    });
+
+    test('没有 prompt_order 就按 prompts 原顺序;一条能用的都没有报错', () {
+      final f = decodeRulesFile(
+        jsonEncode({
+          'prompts': [
+            {'identifier': 'b', 'name': 'B', 'content': 'b'},
+            {'identifier': 'a', 'content': 'a'},
+          ],
+        }),
+      );
+      expect([for (final r in f.rules) r.name], ['B', 'a']);
+      expect(
+        () => decodeRulesFile(
+          jsonEncode({
+            'prompts': [
+              {'identifier': 'chatHistory', 'marker': true},
+            ],
+          }),
+        ),
+        throwsFormatException,
+      );
+    });
+  });
+
+  test('一段都没有的预设也读得回来(新建的从空的开始)', () {
+    final lib = RulesLibrary(
+      presets: [
+        RulesPreset(
+          id: 'r1',
+          name: '空',
+          author: '',
+          models: {RulesFamily.nai5},
+          rules: const [],
+        ),
+      ],
+    );
+    final back = RulesLibrary.fromJson(jsonDecode(jsonEncode(lib.toJson())));
+    expect(back.presets.single.rules, isEmpty);
+  });
+
   group('预设库', () {
     const comic = RulesPreset(
       id: 'p1',

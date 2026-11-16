@@ -63,7 +63,8 @@ class RulesPreset {
             if (rule.name != kToolLayerName) rule,
     ];
     if (id.isEmpty || id.startsWith('default') || name.isEmpty) return null;
-    if (models.isEmpty || rules.isEmpty) return null;
+    // 一段都没有的也收:新建的预设从空的开始
+    if (models.isEmpty) return null;
     return RulesPreset(
       id: id,
       name: name,
