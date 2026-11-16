@@ -357,8 +357,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get batchLockedHires =>
-      'Only 1 image while Hires Upscale is on: the second pass reruns at the upscaled size, and a batch won\'t fit in VRAM.';
+  String get batchLockedHires => 'Only 1 image while Hires Upscale is on: the second pass reruns at the upscaled size, and a batch won\'t fit in VRAM.';
 
   @override
   String get refDisable => 'Disable this reference';
@@ -437,8 +436,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get promptPresets => 'Prompt Presets';
 
   @override
-  String get promptPresetsHelp =>
-      'Added to the prompt and undesired content when generating, without filling the input boxes. V5 and 4.5 each have their own set.';
+  String get promptPresetsHelp => 'Added to the prompt and undesired content when generating, without filling the input boxes. V5 and 4.5 each have their own set.';
 
   @override
   String get sectionSampling => 'Sampling';
@@ -459,8 +457,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get managePresets => 'Manage Presets';
 
   @override
-  String get loopIntro =>
-      'Generates image after image with the current settings; leave the seed empty for a random one each time. Stops on errors. You can leave the app — progress continues in the notification bar.';
+  String get loopIntro => 'Generates image after image with the current settings; leave the seed empty for a random one each time. Stops on errors. You can leave the app — progress continues in the notification bar.';
 
   @override
   String get estimatedCost => 'Estimated Cost';
@@ -724,8 +721,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get editPreset => 'Edit Preset';
 
   @override
-  String get presetPageIntro =>
-      'The active preset is added to the prompt and undesired content when generating, without filling the input boxes. Default presets can\'t be changed; create your own from the top right.';
+  String get presetPageIntro => 'The active preset is added to the prompt and undesired content when generating, without filling the input boxes. Default presets can\'t be changed; create your own from the top right.';
 
   @override
   String get presetGroupLegacy => '4.5 and earlier';
@@ -752,8 +748,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get presetName => 'Preset name';
 
   @override
-  String get defaultPresetReadOnly =>
-      'Default presets can\'t be changed; create a custom preset instead.';
+  String get defaultPresetReadOnly => 'Default presets can\'t be changed; create a custom preset instead.';
 
   @override
   String get positivePrefix => 'Prompt Prefix';
@@ -807,12 +802,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get refDefaultName => 'Reference';
 
   @override
-  String get refMutexVibePaused =>
-      'Can\'t be combined with Vibe Transfer; Vibe Transfer paused';
+  String get refMutexVibePaused => 'Can\'t be combined with Vibe Transfer; Vibe Transfer paused';
 
   @override
-  String get refMutexCharRefPaused =>
-      'Can\'t be combined with Precise Reference; Precise Reference paused';
+  String get refMutexCharRefPaused => 'Can\'t be combined with Precise Reference; Precise Reference paused';
 
   @override
   String get refLibrary => 'Reference Library';
@@ -821,8 +814,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get importCharRef => 'Import Reference Image';
 
   @override
-  String get charRefOnly45 =>
-      'Precise Reference only works with 4.5 models and won\'t be sent with the current model.';
+  String get charRefOnly45 => 'Precise Reference only works with 4.5 models and won\'t be sent with the current model.';
 
   @override
   String filesImportFailed(int n) {
@@ -913,8 +905,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noMatchingRefs => 'No matching reference images';
 
   @override
-  String get charRefLibraryHint =>
-      'Reference images you import on the Create page are saved here automatically';
+  String get charRefLibraryHint => 'Reference images you import on the Create page are saved here automatically';
 
   @override
   String confirmSelectionN(int n) {
@@ -967,8 +958,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get history => 'History';
 
   @override
-  String get defaultCanvasLocked =>
-      'Default canvas — pinned to the top; can\'t be deleted or renamed';
+  String get defaultCanvasLocked => 'Default canvas — pinned to the top; can\'t be deleted or renamed';
 
   @override
   String get noPromptYet => 'No prompt yet';
@@ -977,8 +967,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noCharacters => 'No characters';
 
   @override
-  String get previewOnlyNoImage =>
-      'No final image received, only a preview frame';
+  String get previewOnlyNoImage => 'No final image received, only a preview frame';
 
   @override
   String poolFull(int n) {
@@ -992,8 +981,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get jobSaving => 'Saving';
 
   @override
-  String get noEligibleToken =>
-      'No token can take this job (check each token\'s participation settings)';
+  String get noEligibleToken => 'No token can take this job (check each token\'s participation settings)';
 
   @override
   String get naiTokenNotSet => 'NovelAI token not set';
@@ -1163,15 +1151,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get setAsBaseImage => 'Set as the Image2Image base';
 
   @override
-  String get addedVibeMutex =>
-      'Added to Vibe Transfer · Precise Reference paused (can\'t be combined)';
+  String get addedVibeMutex => 'Added to Vibe Transfer · Precise Reference paused (can\'t be combined)';
 
   @override
   String get addedVibe => 'Added to Vibe Transfer';
 
   @override
-  String get addedCharRefMutex =>
-      'Added to Precise Reference · Vibe Transfer paused (can\'t be combined)';
+  String get addedCharRefMutex => 'Added to Precise Reference · Vibe Transfer paused (can\'t be combined)';
 
   @override
   String get addedCharRef => 'Added to Precise Reference';
@@ -1186,8 +1172,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get importAppend => 'Append';
 
   @override
-  String get noParamsUseAsRef =>
-      'No generation settings found in this image; you can still use it as a reference.';
+  String get noParamsUseAsRef => 'No generation settings found in this image; you can still use it as a reference.';
 
   @override
   String get useImageAs => 'Use this image as';
@@ -1211,8 +1196,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get partialUnknown =>
-      'This image\'s model isn\'t available here; only some settings can be imported';
+  String get partialUnknown => 'This image\'s model isn\'t available here; only some settings can be imported';
 
   @override
   String foreignModel(String other) {
@@ -1231,8 +1215,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get presetStripKeep =>
-      'The text above will be removed from the prompt; the preset stays the same.';
+  String get presetStripKeep => 'The text above will be removed from the prompt; the preset stays the same.';
 
   @override
   String get presetNoPositive => '(This preset adds no prompt text)';
@@ -1241,8 +1224,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get autoConvertPrompt => 'Convert Prompt Syntax';
 
   @override
-  String get autoConvertPromptHint =>
-      'Turns (tag:1.2) into NovelAI\'s 1.2::tag::';
+  String get autoConvertPromptHint => 'Turns (tag:1.2) into NovelAI\'s 1.2::tag::';
 
   @override
   String noParamsSize(String size) {
@@ -1289,8 +1271,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get encodingOnlyUnknown =>
-      'Encoding only · unknown source model; can\'t import';
+  String get encodingOnlyUnknown => 'Encoding only · unknown source model; can\'t import';
 
   @override
   String get paramsOnlyCantImport => 'Settings only; can\'t import';
@@ -1328,8 +1309,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get closeImport => 'Close Import';
 
   @override
-  String get goToImportPanel =>
-      'Open Import Panel (settings / use as reference)';
+  String get goToImportPanel => 'Open Import Panel (settings / use as reference)';
 
   @override
   String get fileSize => 'File Size';
@@ -1381,12 +1361,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get genInProgressWait => 'Generation in progress, please wait';
 
   @override
-  String get notAligned64Expand =>
-      'Image size isn\'t a multiple of 64; can\'t expand';
+  String get notAligned64Expand => 'Image size isn\'t a multiple of 64; can\'t expand';
 
   @override
-  String get expandTooLarge =>
-      'Expanded size is too large; reduce the expansion';
+  String get expandTooLarge => 'Expanded size is too large; reduce the expansion';
 
   @override
   String get savedToInpaint => 'Saved to Inpaint';
@@ -1439,16 +1417,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noPaintInBox => 'Nothing painted inside the yellow box';
 
   @override
-  String get paintOutsideBox =>
-      'There\'s paint outside the yellow box; enlarge the box or inpaint in two passes';
+  String get paintOutsideBox => 'There\'s paint outside the yellow box; enlarge the box or inpaint in two passes';
 
   @override
-  String get sendTooLarge =>
-      'Send size is too large; turn on “Region” to narrow it';
+  String get sendTooLarge => 'Send size is too large; turn on “Region” to narrow it';
 
   @override
-  String get notAligned64UseRegion =>
-      'Image size isn\'t a multiple of 64; use “Region” mode';
+  String get notAligned64UseRegion => 'Image size isn\'t a multiple of 64; use “Region” mode';
 
   @override
   String get tabExpand => 'Expand';
@@ -1532,8 +1507,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get selectWholeGroup => 'Select Group';
 
   @override
-  String get sdWeightConvert =>
-      'SD weight syntax · tap to convert to NAI format';
+  String get sdWeightConvert => 'SD weight syntax · tap to convert to NAI format';
 
   @override
   String get sdWeightConvertShort => 'SD weight syntax · convert to NAI';
@@ -1609,15 +1583,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get showTranslations => 'Show Translations';
 
   @override
-  String get showTranslationsDesc =>
-      'Show the Chinese translation in small text under each tag';
+  String get showTranslationsDesc => 'Show the Chinese translation in small text under each tag';
 
   @override
   String get weightHighlight => 'Weight Highlight';
 
   @override
-  String get weightHighlightDesc =>
-      'Color strengthened / weakened tags red / blue by amount';
+  String get weightHighlightDesc => 'Color strengthened / weakened tags red / blue by amount';
 
   @override
   String get textFontSize => 'Text Size';
@@ -1644,15 +1616,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get entitySuggestions => 'Entity Suggestions';
 
   @override
-  String get entitySuggestionsDesc =>
-      'Include artists / characters / OCs / works in suggestions';
+  String get entitySuggestionsDesc => 'Include artists / characters / OCs / works in suggestions';
 
   @override
   String get autoComma => 'Auto Comma';
 
   @override
-  String get autoCommaDesc =>
-      'Add “, ” after picking a suggestion, ready for the next tag';
+  String get autoCommaDesc => 'Add “, ” after picking a suggestion, ready for the next tag';
 
   @override
   String get settingTagBar => 'Tag Bar';
@@ -1661,15 +1631,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get enableTagPanel => 'Tag Panel';
 
   @override
-  String get enableTagPanelDesc =>
-      'Show weight and actions when the cursor is on a tag';
+  String get enableTagPanelDesc => 'Show weight and actions when the cursor is on a tag';
 
   @override
   String get compactTagBar => 'Compact Tag Bar';
 
   @override
-  String get compactTagBarDesc =>
-      'A single row with just weight and delete, leaving room for more text';
+  String get compactTagBarDesc => 'A single row with just weight and delete, leaving room for more text';
 
   @override
   String get weightStep => 'Weight Step';
@@ -1704,8 +1672,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get byHeat => 'Popular';
 
   @override
-  String get wikiMissing =>
-      'Couldn\'t get the Wiki summary. Tap again or view it on Danbooru.';
+  String get wikiMissing => 'Couldn\'t get the Wiki summary. Tap again or view it on Danbooru.';
 
   @override
   String get loadingWiki => 'Loading Wiki…';
@@ -1755,8 +1722,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get cantExtractFold =>
-      'The selection is joined to a fold and can\'t be extracted';
+  String get cantExtractFold => 'The selection is joined to a fold and can\'t be extracted';
 
   @override
   String extractedTo(String name) {
@@ -1764,8 +1730,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get editorInputHint =>
-      'Tap to enter tags; typing Chinese brings up translations and suggestions';
+  String get editorInputHint => 'Tap to enter tags; typing Chinese brings up translations and suggestions';
 
   @override
   String get translating => 'Translating…';
@@ -1805,8 +1770,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get favorites => 'Favorites';
 
   @override
-  String get vibeNoEncodingForModel =>
-      'This Vibe has no encoding for the current model and can\'t be used';
+  String get vibeNoEncodingForModel => 'This Vibe has no encoding for the current model and can\'t be used';
 
   @override
   String get cantReadVibe => 'Couldn\'t read this Vibe file';
@@ -1945,8 +1909,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tapPlusToImport => 'Tap + at the top right to import';
 
   @override
-  String get publicVibeUnavailable =>
-      'The public Vibe library isn\'t available yet';
+  String get publicVibeUnavailable => 'The public Vibe library isn\'t available yet';
 
   @override
   String get bundle => 'Bundle';
@@ -1997,12 +1960,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newLabel => 'New';
 
   @override
-  String get noTagsYetHint =>
-      'No tags yet\nCreate one in the box above, or from a Vibe\'s “Edit Tags”';
+  String get noTagsYetHint => 'No tags yet\nCreate one in the box above, or from a Vibe\'s “Edit Tags”';
 
   @override
-  String get vibeNoImageOrEncoding =>
-      'This Vibe has no usable image or encoding';
+  String get vibeNoImageOrEncoding => 'This Vibe has no usable image or encoding';
 
   @override
   String get encodingOnlyNoImage => 'Encoding only (no original image)';
@@ -2014,8 +1975,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get defaultInfoExtracted => 'Default Information Extracted';
 
   @override
-  String get ieFixedNoImage =>
-      'Information Extracted is fixed by the encoding and can\'t be changed without the original image.';
+  String get ieFixedNoImage => 'Information Extracted is fixed by the encoding and can\'t be changed without the original image.';
 
   @override
   String get addToGenerate => 'Add to Create Page';
@@ -2041,8 +2001,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clearAllCharactersQ => 'Clear all characters?';
 
   @override
-  String get clearAllCharactersBody =>
-      'All characters and their settings will be removed. This can\'t be undone.';
+  String get clearAllCharactersBody => 'All characters and their settings will be removed. This can\'t be undone.';
 
   @override
   String replaceCharQ(String name) {
@@ -2148,41 +2107,47 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String dateMonthDay(String month, int day, String time) {
-    String _temp0 = intl.Intl.selectLogic(month, {
-      '1': 'Jan',
-      '2': 'Feb',
-      '3': 'Mar',
-      '4': 'Apr',
-      '5': 'May',
-      '6': 'Jun',
-      '7': 'Jul',
-      '8': 'Aug',
-      '9': 'Sep',
-      '10': 'Oct',
-      '11': 'Nov',
-      '12': 'Dec',
-      'other': '$month',
-    });
+    String _temp0 = intl.Intl.selectLogic(
+      month,
+      {
+        '1': 'Jan',
+        '2': 'Feb',
+        '3': 'Mar',
+        '4': 'Apr',
+        '5': 'May',
+        '6': 'Jun',
+        '7': 'Jul',
+        '8': 'Aug',
+        '9': 'Sep',
+        '10': 'Oct',
+        '11': 'Nov',
+        '12': 'Dec',
+        'other': '$month',
+      },
+    );
     return '$_temp0 $day $time';
   }
 
   @override
   String dateYearMonthDay(int year, String month, int day, String time) {
-    String _temp0 = intl.Intl.selectLogic(month, {
-      '1': 'Jan',
-      '2': 'Feb',
-      '3': 'Mar',
-      '4': 'Apr',
-      '5': 'May',
-      '6': 'Jun',
-      '7': 'Jul',
-      '8': 'Aug',
-      '9': 'Sep',
-      '10': 'Oct',
-      '11': 'Nov',
-      '12': 'Dec',
-      'other': '$month',
-    });
+    String _temp0 = intl.Intl.selectLogic(
+      month,
+      {
+        '1': 'Jan',
+        '2': 'Feb',
+        '3': 'Mar',
+        '4': 'Apr',
+        '5': 'May',
+        '6': 'Jun',
+        '7': 'Jul',
+        '8': 'Aug',
+        '9': 'Sep',
+        '10': 'Oct',
+        '11': 'Nov',
+        '12': 'Dec',
+        'other': '$month',
+      },
+    );
     return '$_temp0 $day, $year $time';
   }
 
@@ -2199,8 +2164,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tabProfile => 'Profile';
 
   @override
-  String get setTokenFirst =>
-      'Set up your NovelAI API Token on the Profile page first';
+  String get setTokenFirst => 'Set up your NovelAI API Token on the Profile page first';
 
   @override
   String get goToSettings => 'Go to Settings';
@@ -2217,8 +2181,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get imageDeleted => 'This image has been deleted';
 
   @override
-  String get keyWiped =>
-      'Your saved key was cleared by the system. Add it again and it will stay.';
+  String get keyWiped => 'Your saved key was cleared by the system. Add it again and it will stay.';
 
   @override
   String get goToAdd => 'Add Key';
@@ -2325,8 +2288,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get colorTeal => 'Teal';
 
   @override
-  String get switchedToFloat =>
-      'Switched to Floating Cards; you can switch back in Appearance & Haptics';
+  String get switchedToFloat => 'Switched to Floating Cards; you can switch back in Appearance & Haptics';
 
   @override
   String get switchBack => 'Switch Back';
@@ -2335,8 +2297,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tryNewTheme => 'Try the new theme?';
 
   @override
-  String get newThemeBody =>
-      'A fresh new look is here! Cleaner cards — pick a color you like~';
+  String get newThemeBody => 'A fresh new look is here! Cleaner cards — pick a color you like~';
 
   @override
   String get later => 'Later';
@@ -2405,8 +2366,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get showAssistant => 'Show AI Assistant';
 
   @override
-  String get showAssistantSub =>
-      'When off, the AI tab is hidden from the bottom bar';
+  String get showAssistantSub => 'When off, the AI tab is hidden from the bottom bar';
 
   @override
   String get createPage => 'Create Page';
@@ -2538,12 +2498,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get updateBadFormat => 'Unexpected update info format';
 
   @override
-  String get updateTimeout =>
-      'Update check timed out; check your network and try again';
+  String get updateTimeout => 'Update check timed out; check your network and try again';
 
   @override
-  String get cantReachGithub =>
-      'Can\'t reach GitHub; check your network and try again';
+  String get cantReachGithub => 'Can\'t reach GitHub; check your network and try again';
 
   @override
   String get updateFailed => 'Update check failed; try again later';
@@ -2586,8 +2544,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get addImages => 'Add Images';
 
   @override
-  String get metadataToolIntro =>
-      'View generation settings · Clear or overwrite metadata in bulk';
+  String get metadataToolIntro => 'View generation settings · Clear or overwrite metadata in bulk';
 
   @override
   String get overwritePromptHint => 'Prompt to write into the images…';
@@ -2702,8 +2659,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get customPrompt => 'Custom Prompt';
 
   @override
-  String get customPromptHint =>
-      'Prompt to write into images (other settings are cleared)…';
+  String get customPromptHint => 'Prompt to write into images (other settings are cleared)…';
 
   @override
   String get notSet => 'Not set';
@@ -2746,8 +2702,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clearTagPreviews => 'Clear Inspiration Previews';
 
   @override
-  String get clearTagPreviewsBody =>
-      'Deletes the entry previews generated on this device and unlinks them from their entries. Entries and prompts stay; previews will need to be regenerated.';
+  String get clearTagPreviewsBody => 'Deletes the entry previews generated on this device and unlinks them from their entries. Entries and prompts stay; previews will need to be regenerated.';
 
   @override
   String clearTagPreviewsBodyN(int n) {
@@ -2758,8 +2713,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clearAllAlbums => 'Clear All Gallery Data';
 
   @override
-  String get clearAllAlbumsBody =>
-      'Deletes all images, settings snapshots, and your albums and covers. This can\'t be undone. Images already saved to your device\'s photos stay.';
+  String get clearAllAlbumsBody => 'Deletes all images, settings snapshots, and your albums and covers. This can\'t be undone. Images already saved to your device\'s photos stay.';
 
   @override
   String clearAllAlbumsBodyN(int n) {
@@ -2770,15 +2724,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clearEncodingCache => 'Clear Encoding Cache';
 
   @override
-  String get clearEncodingCacheBody =>
-      'These images will need re-encoding the next time you use them; on a direct connection that costs about 2 Anlas each. Vibe library files themselves stay.';
+  String get clearEncodingCacheBody => 'These images will need re-encoding the next time you use them; on a direct connection that costs about 2 Anlas each. Vibe library files themselves stay.';
 
   @override
   String get clearVibeLib => 'Clear Vibe Library';
 
   @override
-  String get clearVibeLibBody =>
-      'Deletes all files in the library (originals / thumbnails / saved encodings). This can\'t be undone.';
+  String get clearVibeLibBody => 'Deletes all files in the library (originals / thumbnails / saved encodings). This can\'t be undone.';
 
   @override
   String clearVibeLibBodyN(int n) {
@@ -2789,8 +2741,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clearCharRefLib => 'Clear Reference Library';
 
   @override
-  String get clearCharRefLibBody =>
-      'Deletes all files in the library. This can\'t be undone. Settings snapshots in the gallery stay.';
+  String get clearCharRefLibBody => 'Deletes all files in the library. This can\'t be undone. Settings snapshots in the gallery stay.';
 
   @override
   String clearCharRefLibBodyN(int n) {
@@ -2848,8 +2799,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get tokenNeededHint =>
-      'Direct generation needs your own NovelAI token; it\'s stored encrypted on this device only';
+  String get tokenNeededHint => 'Direct generation needs your own NovelAI token; it\'s stored encrypted on this device only';
 
   @override
   String tokensNoneJoined(int n) {
@@ -2869,8 +2819,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get naiProxy => 'Proxy for NovelAI';
 
   @override
-  String get naiProxyHint =>
-      'Routes through Cloudflare; turn on if NovelAI is unreachable';
+  String get naiProxyHint => 'Routes through Cloudflare; turn on if NovelAI is unreachable';
 
   @override
   String get queryingAccount => 'Checking account…';
@@ -2927,8 +2876,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noTokensYet => 'No tokens yet';
 
   @override
-  String get multiTokenHint =>
-      'Save several to generate several images at once — NAI limits each account to one job at a time';
+  String get multiTokenHint => 'Save several to generate several images at once — NAI limits each account to one job at a time';
 
   @override
   String get primaryAccount => 'Primary';
@@ -2937,8 +2885,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get copyToken => 'Copy Token';
 
   @override
-  String get primaryAlwaysOn =>
-      'Used for generation and Anlas; can\'t be turned off';
+  String get primaryAlwaysOn => 'Used for generation and Anlas; can\'t be turned off';
 
   @override
   String get joinFree => 'Free gens';
@@ -2947,8 +2894,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get joinPaid => 'Anlas gens';
 
   @override
-  String get thirdPartyNoStatus =>
-      'Third-party API doesn\'t report account status';
+  String get thirdPartyNoStatus => 'Third-party API doesn\'t report account status';
 
   @override
   String get tokenExpired => 'Token is no longer valid';
@@ -2967,8 +2913,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get urlNeedsHttp =>
-      'Enter an API URL starting with http:// or https://';
+  String get urlNeedsHttp => 'Enter an API URL starting with http:// or https://';
 
   @override
   String get pasteToken => 'Paste Token';
@@ -2986,12 +2931,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loginAndAdd => 'Log In & Add';
 
   @override
-  String get tokenWhere =>
-      'NovelAI website → User Settings → Account → Get Persistent API Token.';
+  String get tokenWhere => 'NovelAI website → User Settings → Account → Get Persistent API Token.';
 
   @override
-  String get needNaiAccess =>
-      'Direct generation needs your network to reach NovelAI.';
+  String get needNaiAccess => 'Direct generation needs your network to reach NovelAI.';
 
   @override
   String get sentenceJoin => ' ';
@@ -3015,8 +2958,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get apiKey => 'API key';
 
   @override
-  String get passwordLocalHint =>
-      'Your password is only used on this device to derive the key — never uploaded or saved. Logging in gives a token valid for 30 days, which the app renews before it expires.';
+  String get passwordLocalHint => 'Your password is only used on this device to derive the key — never uploaded or saved. Logging in gives a token valid for 30 days, which the app renews before it expires.';
 
   @override
   String get email => 'Email';
@@ -3098,8 +3040,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accessMethod => 'How to Generate';
 
   @override
-  String get subscriptionRequired =>
-      'An official or relay subscription is required to generate';
+  String get subscriptionRequired => 'An official or relay subscription is required to generate';
 
   @override
   String get directNaiToken => 'Official Subscription';
@@ -3114,8 +3055,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notifyTitle => 'Progress Notifications';
 
   @override
-  String get notifyDesc =>
-      'Get generation progress and completion notifications. On Android 16+, progress also shows as a Live Update.';
+  String get notifyDesc => 'Get generation progress and completion notifications. On Android 16+, progress also shows as a Live Update.';
 
   @override
   String get allDone => 'All Done';
@@ -3124,15 +3064,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get channelProgress => 'Generation Progress';
 
   @override
-  String get channelProgressDesc =>
-      'Ongoing progress bar while generating (silent)';
+  String get channelProgressDesc => 'Ongoing progress bar while generating (silent)';
 
   @override
   String get channelDone => 'Generation Complete';
 
   @override
-  String get channelDoneDesc =>
-      'One alert when an image, queue, or loop finishes';
+  String get channelDoneDesc => 'One alert when an image, queue, or loop finishes';
 
   @override
   String get cloudBackup => 'Cloud Backup';
@@ -3169,8 +3107,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get webBackupEmpty => 'This web backup has nothing to import';
 
   @override
-  String get customCatMissing =>
-      'The custom category in this file doesn\'t exist here';
+  String get customCatMissing => 'The custom category in this file doesn\'t exist here';
 
   @override
   String get fileNoEntries => 'The file has no entries';
@@ -3240,8 +3177,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notValidBackup => 'Not a valid backup file';
 
   @override
-  String get backupIdMismatch =>
-      'Invalid backup file: identifier doesn\'t match';
+  String get backupIdMismatch => 'Invalid backup file: identifier doesn\'t match';
 
   @override
   String backupVersionUnsupported(String ver, String supported) {
@@ -3327,8 +3263,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get http402 => 'Subscription or Anlas insufficient';
 
   @override
-  String get http429 =>
-      'Too many concurrent requests or rate limited; try again later';
+  String get http429 => 'Too many concurrent requests or rate limited; try again later';
 
   @override
   String httpFailed(int code) {
@@ -3345,113 +3280,97 @@ class AppLocalizationsEn extends AppLocalizations {
   String get helpCanvasTitle => 'Canvases';
 
   @override
-  String get helpCanvasBody =>
-      'Each canvas keeps its own prompts and generation settings; switch anytime.\n· Only the image count and loop setting are shared across canvases\n💡 Switching canvases doesn\'t affect generations in progress\n💡 “History” keeps the last 50 generations and can restore them';
+  String get helpCanvasBody => 'Each canvas keeps its own prompts and generation settings; switch anytime.\n· Only the image count and loop setting are shared across canvases\n💡 Switching canvases doesn\'t affect generations in progress\n💡 “History” keeps the last 50 generations and can restore them';
 
   @override
   String get helpResolutionTitle => 'Resolution';
 
   @override
-  String get helpResolutionBody =>
-      'Tiers by total pixels (width × height):\n· Free → up to 1024×1024, inside the green line; needs Opus and ≤28 steps\n· Costs Anlas → beyond the green line; larger sizes cost more\n· Over the limit → beyond 1024×3072 (red line); can\'t generate';
+  String get helpResolutionBody => 'Tiers by total pixels (width × height):\n· Free → up to 1024×1024, inside the green line; needs Opus and ≤28 steps\n· Costs Anlas → beyond the green line; larger sizes cost more\n· Over the limit → beyond 1024×3072 (red line); can\'t generate';
 
   @override
   String get helpImg2imgStrengthTitle => 'Strength';
 
   @override
-  String get helpImg2imgStrengthBody =>
-      'How much the original image shapes the result.\n· Lower → closer to the original, fewer changes\n· Higher → more freedom, more repainting\n💡 At 0.01 almost nothing is repainted; with Noise also at minimum → an exact copy of the original\n💡 If the AI ignores your prompt too much, try raising Prompt Guidance';
+  String get helpImg2imgStrengthBody => 'How much the original image shapes the result.\n· Lower → closer to the original, fewer changes\n· Higher → more freedom, more repainting\n💡 At 0.01 almost nothing is repainted; with Noise also at minimum → an exact copy of the original\n💡 If the AI ignores your prompt too much, try raising Prompt Guidance';
 
   @override
   String get helpImg2imgNoiseTitle => 'Noise';
 
   @override
-  String get helpImg2imgNoiseBody =>
-      'Adds extra random noise on top of the original image.\n· 0 → based entirely on the original; more stable results\n· Higher → more creative freedom and new elements\n💡 For originals with large blank areas, raising it lets the AI fill in detail\n💡 Repeated regenerations at high Noise can introduce visual artifacts';
+  String get helpImg2imgNoiseBody => 'Adds extra random noise on top of the original image.\n· 0 → based entirely on the original; more stable results\n· Higher → more creative freedom and new elements\n💡 For originals with large blank areas, raising it lets the AI fill in detail\n💡 Repeated regenerations at high Noise can introduce visual artifacts';
 
   @override
   String get helpVibeStrengthTitle => 'Reference Strength';
 
   @override
-  String get helpVibeStrengthBody =>
-      'How strongly the Vibe\'s style affects the image.\n· Higher → closer to the reference\'s style, colors, and other visual cues\n· Lower → only a light style hint\n💡 With multiple Vibes, keep the total strength ≤ 1\n💡 Too high and the AI starts ignoring the text prompt';
+  String get helpVibeStrengthBody => 'How strongly the Vibe\'s style affects the image.\n· Higher → closer to the reference\'s style, colors, and other visual cues\n· Lower → only a light style hint\n💡 With multiple Vibes, keep the total strength ≤ 1\n💡 Too high and the AI starts ignoring the text prompt';
 
   @override
   String get helpNormalizeVibeTitle => 'Normalize Reference Strength';
 
   @override
-  String get helpNormalizeVibeBody =>
-      'On → all Vibe strengths are scaled down proportionally so the total is ≤ 1\nOff → each Vibe\'s strength adds up independently';
+  String get helpNormalizeVibeBody => 'On → all Vibe strengths are scaled down proportionally so the total is ≤ 1\nOff → each Vibe\'s strength adds up independently';
 
   @override
   String get helpInfoExtractedTitle => 'Information Extracted';
 
   @override
-  String get helpInfoExtractedBody =>
-      'How much information is extracted from the original image.\n· Lower → high-frequency detail (texture, style) goes first; composition is kept\n· Higher → keeps both composition and texture / style detail\n💡 Setting a new value costs 2 Anlas; previously used values are free\n💡 Can\'t be changed without the original image';
+  String get helpInfoExtractedBody => 'How much information is extracted from the original image.\n· Lower → high-frequency detail (texture, style) goes first; composition is kept\n· Higher → keeps both composition and texture / style detail\n💡 Setting a new value costs 2 Anlas; previously used values are free\n💡 Can\'t be changed without the original image';
 
   @override
   String get helpCharRefStrengthTitle => 'Strength';
 
   @override
-  String get helpCharRefStrengthBody =>
-      'Overall influence of the character / style reference.\n· Higher → reproduces the reference\'s features more strictly\n· Lower → the reference is only a weak guide\n💡 Each image costs an extra 5 Anlas; multiple references add up\n💡 Too high and facial expression / angle / pose stick too closely to the reference';
+  String get helpCharRefStrengthBody => 'Overall influence of the character / style reference.\n· Higher → reproduces the reference\'s features more strictly\n· Lower → the reference is only a weak guide\n💡 Each image costs an extra 5 Anlas; multiple references add up\n💡 Too high and facial expression / angle / pose stick too closely to the reference';
 
   @override
   String get helpFidelityTitle => 'Fidelity';
 
   @override
-  String get helpFidelityBody =>
-      'Whether the prompt can override the reference.\n· Higher → the reference dominates; the prompt can hardly change it\n· Lower → the prompt dominates; easier to adjust the image\n💡 Results vary by image, so experiment';
+  String get helpFidelityBody => 'Whether the prompt can override the reference.\n· Higher → the reference dominates; the prompt can hardly change it\n· Lower → the prompt dominates; easier to adjust the image\n💡 Results vary by image, so experiment';
 
   @override
   String get helpStepsTitle => 'Steps';
 
   @override
-  String get helpStepsBody =>
-      'Number of sampling steps, i.e. denoising iterations.\nMore steps give finer detail but take longer.\nToo many steps bring diminishing returns or even make things worse.\n💡 28 steps or fewer cost no extra Anlas';
+  String get helpStepsBody => 'Number of sampling steps, i.e. denoising iterations.\nMore steps give finer detail but take longer.\nToo many steps bring diminishing returns or even make things worse.\n💡 28 steps or fewer cost no extra Anlas';
 
   @override
   String get helpCfgTitle => 'Prompt Guidance (CFG Scale)';
 
   @override
-  String get helpCfgBody =>
-      'How closely the AI follows your prompt.\n· Lower → more freedom; softer, more painterly, dreamy images\n· Higher → follows the description more strictly; finer, sharper detail\n💡 NovelAI recommends 5–6 for V3 and newer models\n💡 Too high backfires: oversaturated colors and broken images';
+  String get helpCfgBody => 'How closely the AI follows your prompt.\n· Lower → more freedom; softer, more painterly, dreamy images\n· Higher → follows the description more strictly; finer, sharper detail\n💡 NovelAI recommends 5–6 for V3 and newer models\n💡 Too high backfires: oversaturated colors and broken images';
 
   @override
   String get helpVarietyPlusTitle => 'Variety+';
 
   @override
-  String get helpVarietyPlusBody =>
-      'Slightly adjusts sampling to vary composition and poses more.\nOn → more variation in composition and poses\nOff → more stable, consistent results\n💡 More noticeable at low Prompt Guidance';
+  String get helpVarietyPlusBody => 'Slightly adjusts sampling to vary composition and poses more.\nOn → more variation in composition and poses\nOff → more stable, consistent results\n💡 More noticeable at low Prompt Guidance';
 
   @override
   String get helpSamplerTitle => 'Sampler';
 
   @override
-  String get helpSamplerBody =>
-      'Determines the denoising path, affecting style and stability.\n· Euler Ancestral — classic all-rounder, high randomness\n· Euler — deterministic version, more stable composition\n· DPM++ 2S Ancestral — rich detail\n· DPM++ 2M SDE — high quality + randomness\n· DPM++ 2M — high-quality deterministic sampling\n· DPM++ SDE — detail and variety combined\n💡 Keep the default, or try DPM++ 2M / Euler Ancestral\n💡 Differences between samplers are more visible at low Steps';
+  String get helpSamplerBody => 'Determines the denoising path, affecting style and stability.\n· Euler Ancestral — classic all-rounder, high randomness\n· Euler — deterministic version, more stable composition\n· DPM++ 2S Ancestral — rich detail\n· DPM++ 2M SDE — high quality + randomness\n· DPM++ 2M — high-quality deterministic sampling\n· DPM++ SDE — detail and variety combined\n💡 Keep the default, or try DPM++ 2M / Euler Ancestral\n💡 Differences between samplers are more visible at low Steps';
 
   @override
   String get helpNoiseScheduleTitle => 'Noise Schedule';
 
   @override
-  String get helpNoiseScheduleBody =>
-      'How noise decays at each sampler step, affecting texture.\n· karras — most common; stable with good detail\n· exponential — exponential decay; stronger contrast\n· polyexponential — polynomial decay; smooth transitions\n💡 Keep the default karras';
+  String get helpNoiseScheduleBody => 'How noise decays at each sampler step, affecting texture.\n· karras — most common; stable with good detail\n· exponential — exponential decay; stronger contrast\n· polyexponential — polynomial decay; smooth transitions\n💡 Keep the default karras';
 
   @override
   String get helpSeedTitle => 'Seed';
 
   @override
-  String get helpSeedBody =>
-      'The random seed that determines the initial noise.\nSame seed + same settings → nearly identical images\nUseful for locking the composition while fine-tuning.\nEmpty → a different random result each time\n💡 Samplers have slight randomness, so the same seed may still differ a little\n💡 Seeds aren\'t interchangeable between NAI / Anima / Krea, or with external Stable Diffusion';
+  String get helpSeedBody => 'The random seed that determines the initial noise.\nSame seed + same settings → nearly identical images\nUseful for locking the composition while fine-tuning.\nEmpty → a different random result each time\n💡 Samplers have slight randomness, so the same seed may still differ a little\n💡 Seeds aren\'t interchangeable between NAI / Anima / Krea, or with external Stable Diffusion';
 
   @override
   String get helpCfgRescaleTitle => 'Prompt Guidance Rescale';
 
   @override
-  String get helpCfgRescaleBody =>
-      'Reduces oversaturation and color bleeding from high guidance.\n0 = no correction; higher → stronger correction\nUsually keep 0; with Guidance >7, try 0.1–0.3\n💡 Raise it when edges look over-colored or “deep-fried”';
+  String get helpCfgRescaleBody => 'Reduces oversaturation and color bleeding from high guidance.\n0 = no correction; higher → stronger correction\nUsually keep 0; with Guidance >7, try 0.1–0.3\n💡 Raise it when edges look over-colored or “deep-fried”';
 
   @override
   String get allAlbumsName => 'All Photos';
@@ -3495,19 +3414,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get galleryGone => 'That album no longer exists; choose again';
 
   @override
-  String get chooseDifferentAlbums =>
-      'Choose different source and target albums';
+  String get chooseDifferentAlbums => 'Choose different source and target albums';
 
   @override
   String get albumsRestored => 'Album data was restored from the latest backup';
 
   @override
-  String get albumsUnreadable =>
-      'Album data can\'t be read right now; the original file is kept and All Photos is still available';
+  String get albumsUnreadable => 'Album data can\'t be read right now; the original file is kept and All Photos is still available';
 
   @override
-  String get albumsReadOnly =>
-      'Album data needs recovery and can\'t be changed for now';
+  String get albumsReadOnly => 'Album data needs recovery and can\'t be changed for now';
 
   @override
   String get favorited => 'Added to Favorites';
@@ -3556,41 +3472,47 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String dayMonthDay(String month, int day) {
-    String _temp0 = intl.Intl.selectLogic(month, {
-      '1': 'Jan',
-      '2': 'Feb',
-      '3': 'Mar',
-      '4': 'Apr',
-      '5': 'May',
-      '6': 'Jun',
-      '7': 'Jul',
-      '8': 'Aug',
-      '9': 'Sep',
-      '10': 'Oct',
-      '11': 'Nov',
-      '12': 'Dec',
-      'other': '$month',
-    });
+    String _temp0 = intl.Intl.selectLogic(
+      month,
+      {
+        '1': 'Jan',
+        '2': 'Feb',
+        '3': 'Mar',
+        '4': 'Apr',
+        '5': 'May',
+        '6': 'Jun',
+        '7': 'Jul',
+        '8': 'Aug',
+        '9': 'Sep',
+        '10': 'Oct',
+        '11': 'Nov',
+        '12': 'Dec',
+        'other': '$month',
+      },
+    );
     return '$_temp0 $day';
   }
 
   @override
   String dayYearMonthDay(int year, String month, int day) {
-    String _temp0 = intl.Intl.selectLogic(month, {
-      '1': 'Jan',
-      '2': 'Feb',
-      '3': 'Mar',
-      '4': 'Apr',
-      '5': 'May',
-      '6': 'Jun',
-      '7': 'Jul',
-      '8': 'Aug',
-      '9': 'Sep',
-      '10': 'Oct',
-      '11': 'Nov',
-      '12': 'Dec',
-      'other': '$month',
-    });
+    String _temp0 = intl.Intl.selectLogic(
+      month,
+      {
+        '1': 'Jan',
+        '2': 'Feb',
+        '3': 'Mar',
+        '4': 'Apr',
+        '5': 'May',
+        '6': 'Jun',
+        '7': 'Jul',
+        '8': 'Aug',
+        '9': 'Sep',
+        '10': 'Oct',
+        '11': 'Nov',
+        '12': 'Dec',
+        'other': '$month',
+      },
+    );
     return '$_temp0 $day, $year';
   }
 
@@ -3610,8 +3532,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hintSaveLongPress => 'Long-press “Save” for download settings';
 
   @override
-  String get hintStripSwipe =>
-      'Swipe up on images in the bottom film strip to share, favorite, or delete';
+  String get hintStripSwipe => 'Swipe up on images in the bottom film strip to share, favorite, or delete';
 
   @override
   String get nothingToShare => 'No images to share';
@@ -3643,12 +3564,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get goCreateFirst => 'Go to “Create” to generate your first image';
 
   @override
-  String get savedAllAlbumFailed =>
-      'Image saved to All Photos; the target album is unavailable or sorting failed';
+  String get savedAllAlbumFailed => 'Image saved to All Photos; the target album is unavailable or sorting failed';
 
   @override
-  String get deletedAlbumCleanupFailed =>
-      'Image deleted, but cleaning up its album entries failed';
+  String get deletedAlbumCleanupFailed => 'Image deleted, but cleaning up its album entries failed';
 
   @override
   String get upscaleV5 => 'V5 Upscale';
@@ -3742,8 +3661,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pickStartEnd => 'Pick start and end dates';
 
   @override
-  String get hintLongPressPreview =>
-      'Open “All Photos”, then long-press an image to preview, import, save, or delete';
+  String get hintLongPressPreview => 'Open “All Photos”, then long-press an image to preview, import, save, or delete';
 
   @override
   String get restoreAll => 'Restore All';
@@ -3785,8 +3703,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get deleteAlbumBody =>
-      'Only the album is deleted; its images stay in All Photos.';
+  String get deleteAlbumBody => 'Only the album is deleted; its images stay in All Photos.';
 
   @override
   String newImagesSaveTo(String name) {
@@ -4112,8 +4029,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noPixelData => 'This image has no pixel data';
 
   @override
-  String get redrawNoSnapshot =>
-      'This image has no settings snapshot, so Enhance isn\'t available (only images generated on this device have one)';
+  String get redrawNoSnapshot => 'This image has no settings snapshot, so Enhance isn\'t available (only images generated on this device have one)';
 
   @override
   String redrawModelUnsupported(String model) {
@@ -4184,12 +4100,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get scaleNoteX1 =>
-      'Regenerates at the same size, refining details without enlarging';
+  String get scaleNoteX1 => 'Regenerates at the same size, refining details without enlarging';
 
   @override
-  String get scaleNoteMax =>
-      'Sends the original size; NovelAI enlarges it to the maximum and redraws';
+  String get scaleNoteMax => 'Sends the original size; NovelAI enlarges it to the maximum and redraws';
 
   @override
   String scaleNoteScale(String scale) {
@@ -4311,8 +4225,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get localOnlyDeleteBody =>
-      'Only the local entry is deleted. This can\'t be undone.';
+  String get localOnlyDeleteBody => 'Only the local entry is deleted. This can\'t be undone.';
 
   @override
   String get deletedLabel => 'Deleted';
@@ -4396,8 +4309,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tapToUpload => 'Tap to upload';
 
   @override
-  String get modelsNoneMeansAll =>
-      'None selected = universal; shows up for every model';
+  String get modelsNoneMeansAll => 'None selected = universal; shows up for every model';
 
   @override
   String selectedNCount(int n) {
@@ -4583,8 +4495,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notTagBackup => 'Not a Tag Manager backup file';
 
   @override
-  String get backupCatUnknown =>
-      'The backup file\'s category isn\'t recognized';
+  String get backupCatUnknown => 'The backup file\'s category isn\'t recognized';
 
   @override
   String get noPreviewForCat => 'This category doesn\'t support previews';
@@ -4619,8 +4530,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get codexOriginalImage => 'Codex image';
 
   @override
-  String get originalNotDownloaded =>
-      'Couldn\'t download the image; check your network';
+  String get originalNotDownloaded => 'Couldn\'t download the image; check your network';
 
   @override
   String get shuffleAnother => 'Another';
@@ -4678,8 +4588,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noFavoritesYet => 'No favorites yet';
 
   @override
-  String get favoriteHowTo =>
-      'Open any entry and tap the star at the bottom left to favorite it';
+  String get favoriteHowTo => 'Open any entry and tap the star at the bottom left to favorite it';
 
   @override
   String allIn(String name) {
@@ -4708,8 +4617,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contributors => 'Contributors';
 
   @override
-  String get codexCopyright =>
-      'Content and sample images belong to their codex authors; this page is only a visual index.';
+  String get codexCopyright => 'Content and sample images belong to their codex authors; this page is only a visual index.';
 
   @override
   String get codexSiteLink => 'Codex · Original site';
@@ -4721,8 +4629,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noCodex => 'No codex yet';
 
   @override
-  String get codexAbout =>
-      'Entries and sample images come from\nhttps://novelai.quicktagcloud.com/\n\nThis app only displays and searches them; all content belongs to the codex authors.\n\nThanks to every codex author and contributor for sharing.';
+  String get codexAbout => 'Entries and sample images come from\nhttps://novelai.quicktagcloud.com/\n\nThis app only displays and searches them; all content belongs to the codex authors.\n\nThanks to every codex author and contributor for sharing.';
 
   @override
   String get sourcesThanks => 'Sources & Thanks';
@@ -5030,8 +4937,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get perItemGens => 'Generations';
 
   @override
-  String get detailsRolledOff =>
-      'Details for this day have expired; only the summary remains';
+  String get detailsRolledOff => 'Details for this day have expired; only the summary remains';
 
   @override
   String get noRecordsDay => 'No records for this day';
@@ -5130,12 +5036,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get importClearSections => 'Clear Sections';
 
   @override
-  String get assistantNoModal =>
-      'The AI Assistant doesn\'t support Anima / Krea yet; switch to NAI on the Create page';
+  String get assistantNoModal => 'The AI Assistant doesn\'t support Anima / Krea yet; switch to NAI on the Create page';
 
   @override
-  String get builtinModelUnavailable =>
-      'The built-in model isn\'t available yet; pick a custom endpoint at the top first';
+  String get builtinModelUnavailable => 'The built-in model isn\'t available yet; pick a custom endpoint at the top first';
 
   @override
   String get thinking => 'Thinking';
@@ -5144,8 +5048,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get lookingUp => 'Looking things up';
 
   @override
-  String get turnInterrupted =>
-      'The AI stopped before finishing this turn; try again';
+  String get turnInterrupted => 'The AI stopped before finishing this turn; try again';
 
   @override
   String get replyDoneFallback => 'All done~';
@@ -5168,8 +5071,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get channelEndedEarly =>
-      'The connection closed before the reply arrived';
+  String get channelEndedEarly => 'The connection closed before the reply arrived';
 
   @override
   String modelBadDraw(String count) {
@@ -5187,28 +5089,22 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get thinkNoOffFormat =>
-      'This format has no “Off” level; sending the lowest';
+  String get thinkNoOffFormat => 'This format has no “Off” level; sending the lowest';
 
   @override
-  String get thinkNoUltraFormat =>
-      'This format has no “Ultra” level; sending “High”';
+  String get thinkNoUltraFormat => 'This format has no “Ultra” level; sending “High”';
 
   @override
-  String get thinkNoOffModel =>
-      'This model can\'t turn thinking off; sending “Low”';
+  String get thinkNoOffModel => 'This model can\'t turn thinking off; sending “Low”';
 
   @override
-  String get thinkNoUltraModel =>
-      'This model has no “Ultra” level; sending “High”';
+  String get thinkNoUltraModel => 'This model has no “Ultra” level; sending “High”';
 
   @override
-  String get replyUnreadable =>
-      'The endpoint responded, but no reply could be read; check that the format is right';
+  String get replyUnreadable => 'The endpoint responded, but no reply could be read; check that the format is right';
 
   @override
-  String get suggest1 =>
-      'Draw a white-haired, red-eyed catgirl standing under a cherry tree';
+  String get suggest1 => 'Draw a white-haired, red-eyed catgirl standing under a cherry tree';
 
   @override
   String get suggest2 => 'Pick a nice art style for me';
@@ -5253,8 +5149,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get discardAfterQ => 'Discard the rest of the chat?';
 
   @override
-  String get discardAfterBody =>
-      'Everything after this message will be discarded. Changes already written to the Create page stay.';
+  String get discardAfterBody => 'Everything after this message will be discarded. Changes already written to the Create page stay.';
 
   @override
   String get discard => 'Discard';
@@ -5266,8 +5161,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quoteCreatePage => 'Quote Create Page';
 
   @override
-  String get createPageEmpty =>
-      'The Create page has no prompt yet; nothing to quote';
+  String get createPageEmpty => 'The Create page has no prompt yet; nothing to quote';
 
   @override
   String get modeLabel => 'Mode';
@@ -5295,12 +5189,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get send => 'Send';
 
   @override
-  String get assistantModelUnsupported =>
-      'The AI Assistant doesn\'t support this model yet';
+  String get assistantModelUnsupported => 'The AI Assistant doesn\'t support this model yet';
 
   @override
-  String get assistantModelUnsupportedBody =>
-      'Anima and Krea use a different prompt system from NAI.\nSwitch to NAI 4.5 or 5 on the Create page.';
+  String get assistantModelUnsupportedBody => 'Anima and Krea use a different prompt system from NAI.\nSwitch to NAI 4.5 or 5 on the Create page.';
 
   @override
   String get goChangeModel => 'Change Model';
@@ -5351,8 +5243,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deleteEndpointQ => 'Delete this endpoint?';
 
   @override
-  String get deleteEndpointBody =>
-      'The URL and API key will be removed from this device. Past chats stay.';
+  String get deleteEndpointBody => 'The URL and API key will be removed from this device. Past chats stay.';
 
   @override
   String get myEndpoints => 'My Endpoints';
@@ -5372,12 +5263,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inUse => 'In Use';
 
   @override
-  String get pickServiceOrUrl =>
-      'Pick a service or enter an endpoint URL first';
+  String get pickServiceOrUrl => 'Pick a service or enter an endpoint URL first';
 
   @override
-  String get urlMustHttp =>
-      'The endpoint URL must start with http:// or https://';
+  String get urlMustHttp => 'The endpoint URL must start with http:// or https://';
 
   @override
   String get noApiKeyYet => 'API key not entered';
@@ -5594,20 +5483,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deleteRuleGroupQ => 'Delete this group?';
 
   @override
-  String get whenAlways => 'Always';
-
-  @override
-  String whenModeOn(String mode) {
-    return 'When $mode is on';
+  String whenOffTag(String mode) {
+    return 'Off in $mode';
   }
-
-  @override
-  String whenModeOff(String mode) {
-    return 'When $mode is off';
-  }
-
-  @override
-  String get triggerCondition => 'Trigger';
 
   @override
   String charsN(int n) {
@@ -5635,8 +5513,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ruleSectionEmpty => 'Content can\'t be empty';
 
   @override
-  String get ruleSectionNameReserved =>
-      'This name is reserved for the tool layer';
+  String get ruleSectionNameReserved => 'This name is reserved for the tool layer';
 
   @override
   String get supportedModels => 'Supported Models';
@@ -5645,8 +5522,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get missingPresetName => 'Missing preset name (name)';
 
   @override
-  String get missingModels =>
-      'Missing supported models (set models to nai45, nai5)';
+  String get missingModels => 'Missing supported models (set models to nai45, nai5)';
 
   @override
   String rulesTooManySections(int n) {
@@ -5662,16 +5538,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rulesHeader1 => '# Plana AI Assistant rule preset';
 
   @override
-  String get rulesHeader2 =>
-      '# Each section has a name and content. Sections with when are conditional, e.g. when: comic is sent only when drawing comics.';
+  String get rulesHeader2 => '# Each section has a name and content. Sections with when are conditional, e.g. when: comic is sent only when drawing comics.';
 
   @override
-  String get rulesHeader3 =>
-      '# A when starting with mode: is a mode section, e.g. when: \"mode:comic\" is sent only when Comic Mode is selected.';
+  String get rulesHeader3 => '# A when starting with mode: is a mode section, e.g. when: \"mode:comic\" is sent only when Comic Mode is selected.';
 
   @override
-  String get rulesHeader4 =>
-      '# A leading ! means send only when not selected, e.g. when: \"!mode:natural\" isn\'t sent with Natural Language Only.';
+  String get rulesHeader4 => '# A leading ! means send only when not selected, e.g. when: \"!mode:natural\" isn\'t sent with Natural Language Only.';
 
   @override
   String badFileFormat(String detail) {
@@ -5704,8 +5577,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get noArchivedChats =>
-      'No archived chats yet.\nTap “New Chat” at the top right to archive the current one.';
+  String get noArchivedChats => 'No archived chats yet.\nTap “New Chat” at the top right to archive the current one.';
 
   @override
   String turnsN(int n) {
@@ -5737,15 +5609,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inlineImages => 'Show Images in Chat';
 
   @override
-  String get inlineImagesDesc =>
-      'Generated images show in the chat and are saved to the gallery';
+  String get inlineImagesDesc => 'Generated images show in the chat and are saved to the gallery';
 
   @override
   String get autoWrite => 'Write to Create Page';
 
   @override
-  String get autoWriteDesc =>
-      'Generated prompts go straight to the Create page, no manual import';
+  String get autoWriteDesc => 'Generated prompts go straight to the Create page, no manual import';
 
   @override
   String get startUsingAssistant => 'Get Started with the AI Assistant';
@@ -5772,8 +5642,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get undoImportQ => 'Undo this import?';
 
   @override
-  String get undoImportBody =>
-      'You\'ve edited the prompt since importing. Undoing also discards those edits and goes back to before the import.';
+  String get undoImportBody => 'You\'ve edited the prompt since importing. Undoing also discards those edits and goes back to before the import.';
 
   @override
   String get undoAnyway => 'Undo Anyway';
@@ -5848,12 +5717,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get plainTextFormat => 'Plain Text';
 
   @override
-  String get plainTextFormatDesc =>
-      'Prompts show as text only; no import or generation';
+  String get plainTextFormatDesc => 'Prompts show as text only; no import or generation';
 
   @override
-  String get importModeDesc =>
-      'Where prompts go in the Create page\'s main prompt';
+  String get importModeDesc => 'Where prompts go in the Create page\'s main prompt';
 
   @override
   String get settingAuto => 'Automation';
@@ -5874,8 +5741,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ocPlaceholder => 'OC Placeholders';
 
   @override
-  String get ocPlaceholderDesc =>
-      'The AI only sees placeholders for OCs, restored when drawing; turn off when editing an OC\'s design';
+  String get ocPlaceholderDesc => 'The AI only sees placeholders for OCs, restored when drawing; turn off when editing an OC\'s design';
 
   @override
   String get modelUnsupported => 'Not supported by this model';
@@ -5893,8 +5759,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get exportChatLog => 'Export Chat Log';
 
   @override
-  String get exportChatLogDesc =>
-      'What was sent to the AI and returned for each turn of this chat';
+  String get exportChatLogDesc => 'What was sent to the AI and returned for each turn of this chat';
 
   @override
   String get chatEmpty => 'This chat is empty';
@@ -5906,6 +5771,5 @@ class AppLocalizationsEn extends AppLocalizations {
   String get adjustThinkDepth => 'Thinking Depth';
 
   @override
-  String get thinkDepthNote =>
-      'Not every model supports adjusting depth; check the model and provider docs.';
+  String get thinkDepthNote => 'Not every model supports adjusting depth; check the model and provider docs.';
 }

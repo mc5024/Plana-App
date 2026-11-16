@@ -705,11 +705,12 @@ sections:
       });
     });
 
-    test('触发条件显示名:comic 与 mode:comic 同名,! 开头是没选时', () {
-      expect(whenLabel(''), whenLabel(kWhenChoices.first));
-      expect(whenLabel('comic'), whenLabel('mode:comic'));
-      expect(whenLabel('!mode:natural'), isNot(whenLabel('mode:natural')));
-      expect(whenLabel('mode:custom'), contains('mode:custom'));
+    test('条件段小标签:常驻没有,comic 与 mode:comic 同名,! 开头是不发', () {
+      expect(whenTag(''), isNull);
+      expect(whenTag('comic'), whenTag('mode:comic'));
+      expect(whenTag('!mode:natural'), isNot(whenTag('mode:natural')));
+      expect(whenTag('!mode:natural'), contains(whenTag('mode:natural')!));
+      expect(whenTag('mode:custom'), contains('mode:custom'));
       expect(ruleSectionLabel('role'), isNot('role'));
       expect(ruleSectionLabel('我的段'), '我的段');
     });

@@ -158,17 +158,8 @@ List<RuleCard> ruleCardsOf(List<PresetRule> rules) {
   return cards;
 }
 
-/// 段落编辑页里能选的触发条件,顺序即对话框里的顺序。
-const kWhenChoices = [
-  '',
-  '${kModeWhenPrefix}comic',
-  '${kModeWhenPrefix}natural',
-  '$kWhenNotPrefix${kModeWhenPrefix}comic',
-  '$kWhenNotPrefix${kModeWhenPrefix}natural',
-];
-
-/// 触发条件的显示名。`comic` 和 `mode:comic` 选漫画模式时都发,显示成同一个。
-String whenLabel(String when) {
+/// 条件段的小标签,常驻的段返回 null。`comic` 和 `mode:comic` 选漫画模式时都发,显示成同一个。
+String? whenTag(String when) {
   final not = when.startsWith(kWhenNotPrefix);
   final key = not ? when.substring(kWhenNotPrefix.length).trim() : when;
   final mode = switch (key) {
@@ -177,8 +168,8 @@ String whenLabel(String when) {
     '${kModeWhenPrefix}natural' => l10nNow.modeNatural,
     _ => key,
   };
-  if (mode == null) return l10nNow.whenAlways;
-  return not ? l10nNow.whenModeOff(mode) : l10nNow.whenModeOn(mode);
+  if (mode == null) return null;
+  return not ? l10nNow.whenOffTag(mode) : mode;
 }
 
 /// `['nai45', 'nai5']` 这类写法 → 模型集合,认不出的忽略。

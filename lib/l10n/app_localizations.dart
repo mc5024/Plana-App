@@ -9076,29 +9076,11 @@ abstract class AppLocalizations {
   /// **'删除这一组?'**
   String get deleteRuleGroupQ;
 
-  /// No description provided for @whenAlways.
+  /// No description provided for @whenOffTag.
   ///
   /// In zh, this message translates to:
-  /// **'常驻'**
-  String get whenAlways;
-
-  /// No description provided for @whenModeOn.
-  ///
-  /// In zh, this message translates to:
-  /// **'选了{mode}时'**
-  String whenModeOn(String mode);
-
-  /// No description provided for @whenModeOff.
-  ///
-  /// In zh, this message translates to:
-  /// **'没选{mode}时'**
-  String whenModeOff(String mode);
-
-  /// No description provided for @triggerCondition.
-  ///
-  /// In zh, this message translates to:
-  /// **'触发条件'**
-  String get triggerCondition;
+  /// **'{mode}时不发'**
+  String whenOffTag(String mode);
 
   /// No description provided for @charsN.
   ///

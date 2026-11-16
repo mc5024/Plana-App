@@ -546,9 +546,9 @@ class _RuleCardView extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = context.scheme;
     final on = rules.any((r) => r.enabled);
-    final whens = {for (final r in rules) whenLabel(r.when)};
+    final tags = {for (final r in rules) whenTag(r.when)};
     final meta = [
-      if (whens.length == 1) whens.single,
+      if (tags.length == 1) ?tags.single,
       if (rules.length > 1) context.l10n.sectionsN(rules.length),
       context.l10n.charsN(rules.fold(0, (n, r) => n + r.content.length)),
     ].join(' · ');
@@ -630,65 +630,27 @@ class _RuleCardView extends StatelessWidget {
 String _tidy(String s) =>
     s.replaceFirst(RegExp(r'^(?:[ \t]*\r?\n)+'), '').trimRight();
 
-/// 选触发条件,没改返回 null。
-Future<String?> _pickWhen(BuildContext context, String current) async {
-  // `comic` 和 `mode:comic` 是一回事,对话框里落在同一项上
-  final shown = current == 'comic' ? '${kModeWhenPrefix}comic' : current;
-  final options = [...kWhenChoices, if (!kWhenChoices.contains(shown)) shown];
-  final picked = await showDialog<String>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(context.l10n.triggerCondition),
-      contentPadding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
-      content: RadioGroup<String>(
-        groupValue: shown,
-        onChanged: (v) => Navigator.of(ctx).pop(v),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final o in options)
-              RadioListTile<String>(value: o, title: Text(whenLabel(o))),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(),
-          child: Text(context.l10n.cancel),
-        ),
-      ],
-    ),
-  );
-  if (picked == null || picked == shown) return null;
-  Haptics.selection();
-  return picked;
-}
+/// 条件段卡头的小标签(如「漫画模式」),样式同预设卡标题后的标签。
+class _CondTag extends StatelessWidget {
+  const _CondTag(this.text);
 
-/// 触发条件按钮:当前条件 + 上下箭头,点开选。
-class _WhenButton extends StatelessWidget {
-  const _WhenButton({required this.when, required this.onTap});
-
-  final String when;
-  final VoidCallback onTap;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    return TextButton(
-      onPressed: onTap,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            whenLabel(when),
-            style: context.texts.labelLarge!.copyWith(
-              color: scheme.primary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(width: 2),
-          Icon(Icons.unfold_more, size: 18, color: scheme.outline),
-        ],
+    return Container(
+      margin: const EdgeInsets.only(left: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: context.texts.labelSmall!.copyWith(
+          color: scheme.onSurfaceVariant,
+        ),
       ),
     );
   }
@@ -704,7 +666,7 @@ Future<void> _confirmLeave(BuildContext context) async {
   if (ok && context.mounted) Navigator.pop(context);
 }
 
-/// 段落编辑页(一张卡里不管几段都用它):一段一张卡上下排开,卡头是段名、触发条件和 ⏻,
+/// 段落编辑页(一张卡里不管几段都用它):一段一张卡上下排开,卡头是段名、条件段的小标签和 ⏻,
 /// 下面就是这段的内容。顶栏保存一起存,没保存就返回要确认一下。
 class _GroupEditorPage extends StatefulWidget {
   const _GroupEditorPage({required this.title, required this.rules});
@@ -720,7 +682,6 @@ class _GroupEditorPageState extends State<_GroupEditorPage> {
   late final _ctls = [
     for (final r in widget.rules) TextEditingController(text: r.content),
   ];
-  late final _whens = [for (final r in widget.rules) r.when];
   late final _enabled = [for (final r in widget.rules) r.enabled];
   var _dirty = false;
 
@@ -744,9 +705,7 @@ class _GroupEditorPageState extends State<_GroupEditorPage> {
         );
         return;
       }
-      out.add(
-        r.copyWith(content: content, when: _whens[i], enabled: _enabled[i]),
-      );
+      out.add(r.copyWith(content: content, enabled: _enabled[i]));
     }
     Navigator.pop(context, out);
   }
@@ -810,7 +769,7 @@ class _GroupEditorPageState extends State<_GroupEditorPage> {
               padding: const EdgeInsets.fromLTRB(16, 6, 10, 0),
               child: Row(
                 children: [
-                  Expanded(
+                  Flexible(
                     child: Text(
                       ruleSectionLabel(widget.rules[i].name),
                       maxLines: 1,
@@ -821,13 +780,10 @@ class _GroupEditorPageState extends State<_GroupEditorPage> {
                       ),
                     ),
                   ),
-                  _WhenButton(
-                    when: _whens[i],
-                    onTap: () async {
-                      final v = await _pickWhen(context, _whens[i]);
-                      if (v != null) _touch(() => _whens[i] = v);
-                    },
-                  ),
+                  // 触发条件只显示,要改去全文编辑
+                  if (whenTag(widget.rules[i].when) case final tag?)
+                    _CondTag(tag),
+                  const Spacer(),
                   RoundIconBtn(
                     Icons.power_settings_new,
                     size: btnSize,
