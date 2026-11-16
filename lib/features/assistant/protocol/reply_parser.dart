@@ -1,5 +1,4 @@
-/// 模型回复怎么读:正文、思考类标签、```nai_draw 出图块、```image_gen 出图模型块,
-/// 以及流到一半时气泡里该显示什么。
+/// 模型回复怎么读:正文、思考类标签、```nai_draw 出图块,以及流到一半时气泡里该显示什么。
 ///
 /// 出图块能无损修好的就地修(记进 [ParsedReply.repairs]);信息本身缺了、硬修只能编的,
 /// 抛 [OutputFailure] 让模型重写。
@@ -9,19 +8,12 @@ import 'dart:convert';
 
 import '../../generate/char_position.dart' show formatFreeformPosition;
 import '../domain/agent_event.dart' show AgentDelta;
-import '../domain/image_gen.dart';
 import '../llm/llm_provider.dart' show LlmText;
 import '../runtime/prompt_assets.dart';
 import 'fenced_protocol.dart' show toolFence;
 
 final _drawFence = RegExp(
   r'```[ \t]*nai_draw[ \t]*\r?\n(.*?)```',
-  dotAll: true,
-  caseSensitive: false,
-);
-
-final _imageFence = RegExp(
-  r'```[ \t]*image_gen[ \t]*\r?\n(.*?)```',
   dotAll: true,
   caseSensitive: false,
 );
@@ -57,12 +49,7 @@ final _gridPos = RegExp(r'^\s*([A-Ea-e])\s*([1-5])\s*$');
 final _xyPos = RegExp(r'^\s*(\d*\.?\d+)\s*,\s*(\d*\.?\d+)\s*$');
 
 class ParsedReply {
-  const ParsedReply(
-    this.reply,
-    this.draw, {
-    this.repairs = const [],
-    this.imageGen,
-  });
+  const ParsedReply(this.reply, this.draw, [this.repairs = const []]);
 
   /// 给用户看的正文。
   final String reply;
@@ -72,9 +59,6 @@ class ParsedReply {
 
   /// 就地修好的格式问题,记进调试记录。
   final List<String> repairs;
-
-  /// 交给出图模型的那块;null = 这轮不调出图模型。
-  final ImageGenSpec? imageGen;
 }
 
 /// 回复读不出来,要模型重写。[instruction] 回灌给模型。
@@ -93,8 +77,6 @@ class OutputFailure implements Exception {
 ParsedReply parseReply(String raw, PromptTexts texts) {
   final repairs = <String>[];
   var text = raw.replaceAll(_pairedTag, '').replaceAll(toolFence, '');
-  final imageGen = _imageGen(text, texts, repairs);
-  text = text.replaceAll(_imageFence, '');
   Map<String, dynamic>? draw;
   final fences = _drawFence.allMatches(text).toList();
   if (fences.isNotEmpty) {
@@ -112,36 +94,8 @@ ParsedReply parseReply(String raw, PromptTexts texts) {
   return ParsedReply(
     text.replaceAll(_halfTag, '').trim(),
     draw == null ? null : checkDraw(draw, texts, repairs),
-    repairs: repairs,
-    imageGen: imageGen,
+    repairs,
   );
-}
-
-/// ```image_gen 块,同出图块取最后一个非空的。读不出来、没有 prompt 让模型重写。
-ImageGenSpec? _imageGen(String text, PromptTexts texts, List<String> repairs) {
-  final fences = _imageFence.allMatches(text).toList();
-  final chosen = fences.reversed
-      .where((m) => m[1]!.trim().isNotEmpty)
-      .firstOrNull;
-  if (chosen == null) return null;
-  if (fences.length > 1) {
-    repairs.add('${fences.length} 个 image_gen 围栏,取了最后一个非空的');
-  }
-  Object? v;
-  try {
-    v = jsonDecode(chosen[1]!.trim());
-  } on FormatException catch (e) {
-    throw OutputFailure(texts.get('image_gen_bad', {'detail': e.message}));
-  }
-  final spec = ImageGenSpec.fromJson(v);
-  if (spec == null) {
-    throw OutputFailure(
-      texts.get('image_gen_bad', {
-        'detail': v is Map ? 'prompt 不是非空字符串' : texts.get('draw_not_object'),
-      }),
-    );
-  }
-  return spec;
 }
 
 Map<String, dynamic> _decodeDraw(String body, PromptTexts texts) {
@@ -413,7 +367,7 @@ final _hiddenClose = {
     t: RegExp('<\\s*/\\s*$t\\s*>', caseSensitive: false),
 };
 final _liveFenceOpen = RegExp(
-  r'```[ \t]*(?:tool_call|nai_draw|image_gen)',
+  r'```[ \t]*(?:tool_call|nai_draw)',
   caseSensitive: false,
 );
 
@@ -425,7 +379,7 @@ final _liveTail = RegExp(r'(?:<[A-Za-z_/]{0,18}|`{1,3}[ \t]*[A-Za-z_]{1,9})$');
 /// 流到一半的原文 → 气泡里该显示的两块。
 ///
 /// 每帧拿全量原文重算:标签收尾那一刻正文会整段挪位。正文到第一个 ```tool_call /
-/// ```nai_draw / ```image_gen 围栏为止;普通的 ``` 代码块照留。思考类标签(含还没收尾的)划到思考那边,
+/// ```nai_draw 围栏为止;普通的 ``` 代码块照留。思考类标签(含还没收尾的)划到思考那边,
 /// Reference_Example 直接不显示。
 ({String body, String think}) streamView(String raw) {
   final think = <String>[];

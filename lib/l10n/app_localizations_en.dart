@@ -5075,27 +5075,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get toolGenerateImage => 'Generate image';
-
-  @override
-  String get imageModelField => 'Image model';
-
-  @override
-  String get imageGenConfirm => 'Confirm before generating';
-
-  @override
-  String get imageGenNoModel => 'This image model isn\'t available right now';
-
-  @override
-  String get imageGenNoImage => 'No image returned';
-
-  @override
-  String get addImageModel => 'Add image model';
-
-  @override
-  String get triggerWords => 'Trigger words';
-
-  @override
   String get toolSearchArtist => 'Use Style Library';
 
   @override

@@ -4673,27 +4673,6 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
-  String get toolGenerateImage => '生成图片';
-
-  @override
-  String get imageModelField => '出图模型';
-
-  @override
-  String get imageGenConfirm => '生成前确认';
-
-  @override
-  String get imageGenNoModel => '这个出图模型现在用不了';
-
-  @override
-  String get imageGenNoImage => '没有出图';
-
-  @override
-  String get addImageModel => '添加出图模型';
-
-  @override
-  String get triggerWords => '触发词';
-
-  @override
   String get toolSearchArtist => '使用画风库';
 
   @override

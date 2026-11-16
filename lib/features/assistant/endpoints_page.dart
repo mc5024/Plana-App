@@ -161,7 +161,7 @@ class _EndpointsPageState extends ConsumerState<EndpointsPage> {
                   child: _EndpointCard(
                     title: list[i].displayName,
                     subtitle: _subtitle(list[i]),
-                    dim: !list[i].usable && !list[i].canDraw,
+                    dim: !list[i].usable,
                     inUse: current == list[i].id,
                     open: _open == list[i].id,
                     onToggle: () => _toggle(list[i].id),
@@ -177,14 +177,14 @@ class _EndpointsPageState extends ConsumerState<EndpointsPage> {
   }
 }
 
-/// 卡上副行:起过名的补上服务名,认不出的地址补上格式,最后列模型(出图模型跟在后面)。
+/// 卡上副行:起过名的补上服务名,认不出的地址补上格式,最后列模型。
 String _subtitle(CustomEndpoint e) {
-  if (!e.usable && !e.canDraw) return l10nNow.notComplete;
+  if (!e.usable) return l10nNow.notComplete;
   return [
     if (e.name.trim().isNotEmpty) e.providerLabel,
     if (endpointPresetOf(e.format, e.baseUrl) == null)
       l10nNow.formatOf(agentApiFormatLabel(e.format)),
-    [...e.allModels, ...e.imageModels].join(l10nNow.listSep),
+    e.allModels.join(l10nNow.listSep),
   ].join(' · ');
 }
 
@@ -427,21 +427,12 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
   /// 「添加模型」那格。没点添加就保存的,也算一个。
   final _modelInput = TextEditingController();
 
-  /// 出图模型,和对话模型分开。
-  late List<String> _imageModels = [...?_src?.imageModels];
-  final _imageInput = TextEditingController();
-
-  /// 出图模型 → 自己填的触发词;没填的按模型 id 算。
-  late Map<String, List<String>> _imageTriggers = {...?_src?.imageTriggers};
-
   /// 点过「自定义」、地址还空着时也亮着它。
   bool _customPicked = false;
 
   bool _advanced = false;
   bool _obscureKey = true;
-
-  /// 正在拉列表的那一格:对话模型 false、出图模型 true;没在拉为 null。
-  bool? _loadingModels;
+  bool _loadingModels = false;
   bool _testing = false;
 
   /// 测试 / 校验的结果,显示在按钮上面。改了任何一格就清掉,免得留着过期的「连接正常」。
@@ -455,18 +446,11 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
   bool get _custom =>
       _preset == null && (_customPicked || _base.text.trim().isNotEmpty);
 
-  List<String> get _allModels => _withPending(_models, _modelInput);
-
-  /// Claude 格式不出图,恒为空。
-  List<String> get _allImageModels => _format == AgentApiFormat.anthropic
-      ? const []
-      : _withPending(_imageModels, _imageInput);
-
-  static List<String> _withPending(List<String> list, TextEditingController c) {
-    final pending = c.text.trim();
+  List<String> get _allModels {
+    final pending = _modelInput.text.trim();
     return [
-      ...list,
-      if (pending.isNotEmpty && !list.contains(pending)) pending,
+      ..._models,
+      if (pending.isNotEmpty && !_models.contains(pending)) pending,
     ];
   }
 
@@ -477,7 +461,6 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
     _path,
     _headers,
     _modelInput,
-    _imageInput,
   ];
 
   /// 打开时的样子,和它比出有没有改动。
@@ -538,11 +521,6 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
       apiKey: _key.text.trim(),
       model: models.firstOrNull ?? '',
       models: models,
-      imageModels: _allImageModels,
-      imageTriggers: {
-        for (final m in _allImageModels)
-          if (_imageTriggers[m] case final t? when t.isNotEmpty) m: t,
-      },
       apiPath: _path.text.trim(),
       headers: parseHeaderLines(_headers.text).headers,
     );
@@ -556,10 +534,7 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
       return context.l10n.urlMustHttp;
     }
     if (_key.text.trim().isEmpty) return context.l10n.noApiKeyYet;
-    // 只填出图模型的也行:这个接口只拿来生成图片
-    if (needModel && _allModels.isEmpty && _allImageModels.isEmpty) {
-      return context.l10n.noModelYet;
-    }
+    if (needModel && _allModels.isEmpty) return context.l10n.noModelYet;
     final bad = parseHeaderLines(_headers.text).bad;
     if (bad != null) {
       _advanced = true;
@@ -606,77 +581,22 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
     _changed();
   }
 
-  /// [image] = 出图模型那一格,否则对话模型。
-  List<String> _listOf(bool image) => image ? _imageModels : _models;
-
-  void _setList(bool image, List<String> v) =>
-      image ? _imageModels = v : _models = v;
-
-  TextEditingController _inputOf(bool image) =>
-      image ? _imageInput : _modelInput;
-
-  void _addModel({bool image = false}) {
-    final input = _inputOf(image);
-    final m = input.text.trim();
+  void _addModel() {
+    final m = _modelInput.text.trim();
     if (m.isEmpty) return;
     Haptics.selection();
     setState(() {
-      final list = _listOf(image);
-      if (!list.contains(m)) _setList(image, [...list, m]);
+      if (!_models.contains(m)) _models = [..._models, m];
     });
-    input.clear();
+    _modelInput.clear();
     _changed();
   }
 
-  void _removeModel(String m, {bool image = false}) {
+  void _removeModel(String m) {
     Haptics.selection();
     setState(() {
-      _setList(image, [..._listOf(image)]..remove(m));
+      _models = [..._models]..remove(m);
       _result = null;
-    });
-    _changed();
-  }
-
-  /// 改出图模型 [m] 的触发词:逗号、顿号或换行隔开,留空 = 按模型 id 算。
-  Future<void> _editTriggers(String m) async {
-    final c = TextEditingController(
-      text: (_imageTriggers[m] ?? const []).join(', '),
-    );
-    final v = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(m, style: mono(ctx, size: 15, weight: FontWeight.w600)),
-        content: TextField(
-          controller: c,
-          autofocus: true,
-          decoration: InputDecoration(
-            isDense: true,
-            labelText: ctx.l10n.triggerWords,
-            hintText: m,
-          ),
-          onSubmitted: (t) => Navigator.pop(ctx, t),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(ctx.l10n.cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, c.text),
-            child: Text(ctx.l10n.save),
-          ),
-        ],
-      ),
-    );
-    c.dispose();
-    if (v == null || !mounted) return;
-    final words = [
-      for (final w in v.split(RegExp(r'[,，、;；\n]')))
-        if (w.trim().isNotEmpty) w.trim(),
-    ];
-    setState(() {
-      _imageTriggers = {..._imageTriggers}..remove(m);
-      if (words.isNotEmpty) _imageTriggers[m] = words;
     });
     _changed();
   }
@@ -704,11 +624,11 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
   }
 
   /// 拉模型列表多选。列表里勾掉的移出去,手填的(列表里没有的)留着。
-  Future<void> _pickModels({bool image = false}) async {
+  Future<void> _pickModels() async {
     final miss = _missing(needModel: false);
     if (miss != null) return _fail(miss);
     setState(() {
-      _loadingModels = image;
+      _loadingModels = true;
       _result = null;
     });
     List<String> listed;
@@ -718,19 +638,18 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
       if (mounted) _fail('$e');
       return;
     } finally {
-      if (mounted) setState(() => _loadingModels = null);
+      if (mounted) setState(() => _loadingModels = false);
     }
     if (!mounted) return;
-    final current = _listOf(image);
-    final picked = await _showModelPicker(context, listed, current.toSet());
+    final picked = await _showModelPicker(context, listed, _models.toSet());
     if (picked == null || !mounted) return;
     setState(() {
-      _setList(image, [
-        for (final m in current)
+      _models = [
+        for (final m in _models)
           if (picked.contains(m) || !listed.contains(m)) m,
         for (final m in listed)
-          if (picked.contains(m) && !current.contains(m)) m,
-      ]);
+          if (picked.contains(m) && !_models.contains(m)) m,
+      ];
     });
     _changed();
   }
@@ -745,15 +664,7 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
     });
     final draft = _draft();
     try {
-      // 只填了出图模型的不发对话,拉一次模型列表看通不通
-      final Duration took;
-      if (draft.allModels.isEmpty) {
-        final watch = Stopwatch()..start();
-        await llmProviderFor(draft).listModels();
-        took = watch.elapsed;
-      } else {
-        took = await llmProviderFor(draft).ping();
-      }
+      final took = await llmProviderFor(draft).ping();
       if (!mounted) return;
       Haptics.selection();
       final secs = (took.inMilliseconds / 1000).toStringAsFixed(1);
@@ -778,7 +689,7 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
     FocusScope.of(context).unfocus();
     final draft = _draft();
     await ref.read(customEndpointsProvider.notifier).put(draft);
-    if (_src == null && draft.model.isNotEmpty) {
+    if (_src == null) {
       await ref
           .read(assistantModelPrefProvider.notifier)
           .set(customModelKey(draft.id, draft.model));
@@ -888,9 +799,71 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
               ),
             ),
           ),
-          _modelsRow(context.l10n.modelField),
-          if (_format != AgentApiFormat.anthropic)
-            _modelsRow(context.l10n.imageModelField, image: true),
+          _row(
+            context.l10n.modelField,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_models.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final m in _models)
+                          InputChip(
+                            label: Text(m, style: mono(context, size: 12)),
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                            onDeleted: () => _removeModel(m),
+                            deleteButtonTooltipMessage: context.l10n.remove,
+                          ),
+                      ],
+                    ),
+                  ),
+                _field(
+                  _modelInput,
+                  hint: _models.isEmpty
+                      ? context.l10n.modelIdHint
+                      : context.l10n.addAnotherModel,
+                  action: TextInputAction.done,
+                  onSubmitted: (_) => _addModel(),
+                  suffix: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_modelInput.text.trim().isNotEmpty)
+                        IconButton(
+                          onPressed: _addModel,
+                          icon: const Icon(Icons.add, size: 20),
+                          tooltip: context.l10n.add,
+                          color: scheme.primary,
+                        ),
+                      _loadingModels
+                          ? const Padding(
+                              padding: EdgeInsets.all(14),
+                              child: SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            )
+                          : IconButton(
+                              onPressed: _pickModels,
+                              icon: const Icon(
+                                Icons.format_list_bulleted,
+                                size: 20,
+                              ),
+                              tooltip: context.l10n.modelList,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
           _advancedHeader(),
           AnimatedSize(
             duration: Motion.medium,
@@ -985,81 +958,6 @@ class _EndpointFormState extends ConsumerState<_EndpointForm> {
     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     onSelected: (_) => onTap(),
   );
-
-  /// 模型那一格:已添加的一排可删的芯片 + 手填 / 从列表选。[image] = 出图模型,
-  /// 芯片上带着触发词,点一下改。
-  Widget _modelsRow(String label, {bool image = false}) {
-    final scheme = context.scheme;
-    final list = _listOf(image);
-    final input = _inputOf(image);
-    return _row(
-      label,
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (list.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final m in list)
-                    InputChip(
-                      label: Text(
-                        image && _imageTriggers[m] != null
-                            ? '$m · ${_imageTriggers[m]!.join(context.l10n.listSep)}'
-                            : m,
-                        style: mono(context, size: 12),
-                      ),
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      onPressed: image ? () => _editTriggers(m) : null,
-                      onDeleted: () => _removeModel(m, image: image),
-                      deleteButtonTooltipMessage: context.l10n.remove,
-                    ),
-                ],
-              ),
-            ),
-          _field(
-            input,
-            hint: list.isEmpty
-                ? context.l10n.modelIdHint
-                : context.l10n.addAnotherModel,
-            action: TextInputAction.done,
-            onSubmitted: (_) => _addModel(image: image),
-            suffix: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (input.text.trim().isNotEmpty)
-                  IconButton(
-                    onPressed: () => _addModel(image: image),
-                    icon: const Icon(Icons.add, size: 20),
-                    tooltip: context.l10n.add,
-                    color: scheme.primary,
-                  ),
-                _loadingModels == image
-                    ? const Padding(
-                        padding: EdgeInsets.all(14),
-                        child: SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    : IconButton(
-                        onPressed: _loadingModels == null
-                            ? () => _pickModels(image: image)
-                            : null,
-                        icon: const Icon(Icons.format_list_bulleted, size: 20),
-                        tooltip: context.l10n.modelList,
-                        color: scheme.onSurfaceVariant,
-                      ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   /// 一行:左边短标签,右边控件。标签对齐控件第一行的中线,[top] 按控件高度给。
   Widget _row(String label, Widget child, {double top = 15}) => Padding(

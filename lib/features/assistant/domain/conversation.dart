@@ -14,7 +14,6 @@ import '../../../l10n/l10n.dart';
 import '../assistant_mode.dart';
 import '../prompt_diff.dart';
 import 'agent_result.dart';
-import 'image_gen.dart';
 
 enum MsgRole { user, ai, error }
 
@@ -206,16 +205,10 @@ class PromptSnapshot {
 ///
 /// 只回正文的后果:模型看不见自己上一轮写了什么,下一句「把头发改成金色」只能
 /// 从头推一遍,连角色、画风都要**重新查一次工具** —— 用户看到的就是「怎么又查了一遍」。
-///
-/// [withDraw] 为 false 时只带 ```image_gen 那块:它短,而且「接着改上一张」要看它。
-String replayText(AssistantMsg m, {bool withDraw = true}) {
+String replayText(AssistantMsg m) {
   final d = m.draw;
-  final g = m.imageGen;
-  return [
-    m.text,
-    if (withDraw && d != null) '```nai_draw\n${jsonEncode(d.toJson())}\n```',
-    if (g != null) '```image_gen\n${jsonEncode(g.toJson())}\n```',
-  ].join('\n');
+  if (d == null) return m.text;
+  return '${m.text}\n```nai_draw\n${jsonEncode(d.toJson())}\n```';
 }
 
 /// `{kind: {名字: 内容}}` 的宽松解码。形状不对一律当空 —— 账本读坏了
@@ -441,8 +434,6 @@ class AssistantMsg {
     this.tools = const [],
     this.draw,
     this.change,
-    this.imageGen,
-    this.imageModel,
   });
 
   final String id;
@@ -459,8 +450,8 @@ class AssistantMsg {
 
   /// 从这一轮的提议出过的图(图库条目 id,新的在后)。仅 [MsgRole.ai]。
   ///
-  /// NAI 出的只在「图片显示在对话里」开着时才攒 —— 关着的时候出图会把页面切去图库,
-  /// 对话里再挂一份是重复;出图模型出的始终攒。图本身**始终**入库,这里存的只是个引用;库里删了
+  /// 只在「图片显示在对话里」开着时才攒 —— 关着的时候出图会把页面切去图库,
+  /// 对话里再挂一份是重复。图本身**始终**入库,这里存的只是个引用;库里删了
   /// 就查不到,界面按「没有」处理,不留破图。
   final List<String> imageIds;
 
@@ -511,13 +502,6 @@ class AssistantMsg {
   /// 用户点过「导入」之后才有:那一次写回的记录(含撤销要用的两份快照)。
   final AssistantChange? change;
 
-  /// AI 这一轮要出图模型出的图。仅 [MsgRole.ai]。出好的图和 NAI 的一样记进 [imageIds]。
-  final ImageGenSpec? imageGen;
-
-  /// [imageGen] 用哪个出图模型(`image_models.dart` 的 key):这一轮原话点到的,
-  /// 或者沿用上一轮的。
-  final String? imageModel;
-
   AssistantMsg copyWith({
     String? text,
     List<ToolTrace>? tools,
@@ -537,8 +521,6 @@ class AssistantMsg {
     tools: tools ?? this.tools,
     draw: draw,
     change: change ?? this.change,
-    imageGen: imageGen,
-    imageModel: imageModel,
   );
 
   Map<String, dynamic> toJson() => {
@@ -555,8 +537,6 @@ class AssistantMsg {
     if (tools.isNotEmpty) 'tools': [for (final t in tools) t.toJson()],
     if (draw != null) 'draw': draw!.toJson(),
     if (change != null) 'change': change!.toJson(),
-    if (imageGen != null) 'imageGen': imageGen!.toJson(),
-    if (imageModel != null) 'imageModel': imageModel,
   };
 
   factory AssistantMsg.fromJson(Map<String, dynamic> j) => AssistantMsg(
@@ -580,8 +560,6 @@ class AssistantMsg {
     change: j['change'] is Map<String, dynamic>
         ? AssistantChange.fromJson(j['change'] as Map<String, dynamic>)
         : null,
-    imageGen: ImageGenSpec.fromJson(j['imageGen']),
-    imageModel: j['imageModel'] as String?,
   );
 }
 

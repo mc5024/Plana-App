@@ -15,7 +15,6 @@ import '../../../l10n/l10n.dart';
 import '../agent_trace.dart';
 import '../domain/agent_event.dart';
 import '../domain/agent_result.dart';
-import '../domain/image_gen.dart';
 import '../domain/turn_request.dart';
 import '../llm/llm_image.dart';
 import '../llm/llm_provider.dart';
@@ -113,19 +112,7 @@ class LocalAgentRuntime implements AgentRuntime {
         toolLayer: active.isEmpty ? '' : await protocol.conventions(),
         outputFormat: await outputFormatText(),
         toolList: await protocol.toolList(active),
-        notes: [
-          for (final t in active) await t.systemNote(ctx),
-          if (req.imageGenModel.isNotEmpty)
-            await imageGenText(
-              req.imageGenModel,
-              texts.get(
-                req.imageGenTrigger.isEmpty
-                    ? 'image_gen_follow'
-                    : 'image_gen_trigger',
-                {'model': req.imageGenModel, 'trigger': req.imageGenTrigger},
-              ),
-            ),
-        ],
+        notes: [for (final t in active) await t.systemNote(ctx)],
       );
       final artistTokens = ctx.artistPlan.tokens;
       final ocTokens = ctx.ocPlan.tokens;
@@ -161,21 +148,10 @@ class LocalAgentRuntime implements AgentRuntime {
         placeholders ? collapse(req.userText) : req.userText,
         collapse(canvasBlock),
       ].where((s) => s.isNotEmpty);
-      // 原话点到了出图模型:在用户消息末尾再点一次,规则和外壳都只认 nai_draw
-      final imageHint = req.imageGenModel.isEmpty || req.imageGenTrigger.isEmpty
-          ? ''
-          : texts.get('image_gen_hint', {
-              'model': req.imageGenModel,
-              'trigger': req.imageGenTrigger,
-            });
 
       // 本轮这条用户消息。重发时剥掉图,末尾补一句说明
       List<LlmMessage> messagesFor({required bool noImage}) {
-        final parts = [
-          ...asked,
-          if (block.isNotEmpty) block,
-          if (imageHint.isNotEmpty) imageHint,
-        ];
+        final parts = [...asked, if (block.isNotEmpty) block];
         if (noImage) {
           if (parts.isEmpty) parts.add(texts.get('retry_image_only'));
           parts.add(texts.get('retry_no_image'));
@@ -378,12 +354,11 @@ class _Turn {
         continue;
       }
       if (parsed.repairs.isNotEmpty) hop['repairs'] = parsed.repairs;
-      final drew = parsed.draw != null || parsed.imageGen != null;
-      if (parsed.reply.isEmpty && !drew) {
+      if (parsed.reply.isEmpty && parsed.draw == null) {
         throw AgentFailure(l10nNow.modelEmptyReply);
       }
       // 重掷关着就不判拒绝,回复照常交出去
-      if (!drew && req.rerolls > 0) {
+      if (parsed.draw == null && req.rerolls > 0) {
         if (refusalHit(parsed.reply, req.refusalKeywords) case final hit?) {
           hop['refusal'] = hit;
           if (rerolls >= req.rerolls) throw _Refused(hit);
@@ -489,10 +464,9 @@ class _Turn {
       'reply': reply,
       'draw': parsed.draw,
       if (draw != parsed.draw) 'draw_expanded': draw,
-      if (parsed.imageGen case final g?) 'image_gen': g.toJson(),
       'resources': ledger,
     });
-    return _resultOf(reply, draw, ledger, parsed.imageGen);
+    return _resultOf(reply, draw, ledger);
   }
 }
 
@@ -525,7 +499,6 @@ AgentResult _resultOf(
   String reply,
   Map<String, dynamic>? draw,
   Map<String, Map<String, String>> resources,
-  ImageGenSpec? imageGen,
 ) {
   final d = draw ?? const <String, dynamic>{};
   return AgentResult(
@@ -539,6 +512,5 @@ AgentResult _resultOf(
     ],
     // 并好的账本原样带出去。不能回空:下一轮拿最新那条 AI 消息的账本发,回空等于冲掉记着的画风
     resources: resources,
-    imageGen: imageGen,
   );
 }

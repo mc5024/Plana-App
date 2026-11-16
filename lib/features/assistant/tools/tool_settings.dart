@@ -16,12 +16,6 @@ const _legacyKey = 'assistant_settings';
 /// 使用角色库的「OC 使用占位符」选项。
 const kOcPlaceholdersOption = 'search_oc/placeholders';
 
-/// 「生成图片」:模型在回复里写 ```image_gen 块,App 拿去调出图模型。
-const kImageGenTool = 'generate_image';
-
-/// 生成图片的「生成前确认」选项。
-const kImageGenConfirm = 'confirm';
-
 class ToolSettings {
   const ToolSettings({
     this.disabledTools = const {},

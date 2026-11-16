@@ -46,8 +46,6 @@ dependencies:
   animations: ^2.2.0
   flutter_secure_storage: ^10.3.1
   http: ^1.6.0
-  # 自定义接口改图走 multipart,图片段要标 Content-Type
-  http_parser: ^4.1.2
   archive: ^4.0.9
   msgpack_dart: ^1.0.1
   file_picker: ^10.1.0
@@ -131,7 +129,6 @@ flutter:
     # 零碎文字(texts.yaml)、各工具的说明(tools/)。见 lib/features/assistant/runtime/prompt_assets.dart。
     - assets/prompts/tool_layer.md
     - assets/prompts/output_format.md
-    - assets/prompts/image_gen.md
     - assets/prompts/texts.yaml
     - assets/prompts/tools/
     # 关于页那颗图标(77 KB)。**不是** icons/app_icon.png —— 那张是给

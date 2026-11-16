@@ -1,8 +1,6 @@
 /// AI 助手一轮的产出。两条链路(后端 / 自定义接口)都收成这一份,下游只认它。
 library;
 
-import 'image_gen.dart';
-
 /// 一个分角色分区(`characters[i]`)。
 ///
 /// [position] 是站位坐标串 `"x,y"`(两个 0~1 四位小数,**y 向下增大**),与
@@ -48,7 +46,6 @@ class AgentResult {
     this.negative = '',
     this.characters = const [],
     this.resources = const {},
-    this.imageGen,
   });
 
   /// 发给用户的正文。
@@ -64,9 +61,6 @@ class AgentResult {
   /// 沿用中的资源账本(画师串 / OC):`{kind: {名字: 内容}}`。挂到这一轮的 AI 消息上,
   /// 下一轮原样带回去。
   final Map<String, Map<String, String>> resources;
-
-  /// 交给出图模型的那块;null = 这轮不调出图模型。
-  final ImageGenSpec? imageGen;
 
   bool get hasDraw => positive.trim().isNotEmpty || characters.isNotEmpty;
 }

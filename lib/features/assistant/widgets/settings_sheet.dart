@@ -178,10 +178,7 @@ class _SettingsSheet extends ConsumerWidget {
             desc: context.l10n.assistantToolsDesc,
             value: tools == null
                 ? ''
-                : context.l10n.toolsEnabledN(
-                    enabledTools(tools).length +
-                        (tools.toolOn(kImageGenTool) ? 1 : 0),
-                  ),
+                : context.l10n.toolsEnabledN(enabledTools(tools).length),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => const AssistantToolsPage(),

@@ -106,8 +106,7 @@ class _ModelSheet extends ConsumerWidget {
                 onTap: () => _pick(context, ref, customModelKey(e.id, m)),
                 onEdit: () => openEndpointsPage(context, editId: e.id),
               )
-          // 只填了出图模型的接口不是没填完,只是不拿来对话
-          else if (!e.canDraw)
+          else
             _row(
               context,
               icon: Icons.bolt_outlined,

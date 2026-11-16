@@ -17,12 +17,6 @@ Future<String> outputFormatText() => promptAsset('output_format.md');
 /// 工具调用的通用约定(各工具自己的说明不在这里)。
 Future<String> toolLayerText() => promptAsset('tool_layer.md');
 
-/// 「生成图片」的说明。[model] 是这轮用的出图模型的名字,[when] 是什么时候写出图块。
-Future<String> imageGenText(String model, String when) async =>
-    (await promptAsset(
-      'image_gen.md',
-    )).replaceAll('{when}', when).replaceAll('{model}', model);
-
 final _var = RegExp(r'\{(\w+)\}');
 
 /// `assets/prompts/texts.yaml`:零碎的固定文字,按键取,`{名字}` 换成传进来的值。

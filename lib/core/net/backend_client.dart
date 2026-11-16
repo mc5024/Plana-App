@@ -1174,8 +1174,7 @@ class BackendClient {
     }
     if (v is Map) {
       return <String, dynamic>{
-        for (final e in v.entries)
-          '${e.key}': _extractParts(e.value, parts, seen),
+        for (final e in v.entries) '${e.key}': _extractParts(e.value, parts, seen),
       };
     }
     if (v is List) return [for (final x in v) _extractParts(x, parts, seen)];
@@ -2276,8 +2275,7 @@ class BackendClient {
   /// 撤销一把,立即生效。已经撤销过 / 不是自己的回 404。
   Future<void> revokeApiKey(String sessionId, int id) async {
     await _handle(
-      () =>
-          _http.delete(_u('/user/api-keys/$id'), headers: _headers(sessionId)),
+      () => _http.delete(_u('/user/api-keys/$id'), headers: _headers(sessionId)),
     );
   }
 
@@ -2564,10 +2562,6 @@ class BackendClient {
   /// AI 助手可选的 LLM 渠道 + 服务端当前默认(`MODEL_CHOICES` 原样下发)。
   /// 公开端点,不带会话 —— 它只是一张展示用的表,没有用户数据。
   Future<Map<String, dynamic>> agentModels() => _getJson('/agent/models');
-
-  /// AI 助手「生成图片」能用的后端出图渠道。带会话时每条附所在额度池的剩余次数。
-  Future<Map<String, dynamic>> agentImageChannels(String sessionId) =>
-      _getJson('/agent/image/channels', sessionId.isEmpty ? null : sessionId);
 }
 
 /// 用当前后端基址构造 client(基址变更自动重建)。
