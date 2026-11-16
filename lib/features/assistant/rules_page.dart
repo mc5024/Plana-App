@@ -1,11 +1,8 @@
-/// 规则预设页:每个模型在用哪一份、导入、导出、编辑、删除。
+/// 规则预设页:最上面「在用」写着每个模型用的是哪一份(点开换),下面是全部预设。
 ///
 /// 一张卡一份预设。默认规则按模型分两张(v4.5 版、v5 版),名称、作者、版本读内置
-/// 那份的 meta。**点卡片就用这份**,正在用的卡右上角挂一个「使用中」角标。
-/// 每个模型恰好有一张卡在用,默认规则兜底。
-///
-/// 编辑进段落页([RulesSectionsPage]):一段一张卡,逐段改,全文编辑在那页顶栏。
-/// 默认规则的原件在包里,改完另存为一份新预设。
+/// 那份的 meta。点卡进预设页([RulesPresetDetailPage]);卡上直接摆副本、导出、删除。
+/// 每个模型恰好有一份在用,默认规则兜底。
 library;
 
 import 'dart:convert';
@@ -16,14 +13,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/ui/setting_row.dart' show SettingSheet;
 import '../../core/util/haptics.dart';
 import '../generate/widgets/common.dart' show confirmDialog, hintSnack;
+import '../profile/widgets/settings_ui.dart';
 import 'presets/default_rules.dart';
 import 'presets/preset_rule.dart';
 import 'presets/rules_file.dart';
 import 'presets/rules_library.dart';
-import 'rules_sections_page.dart';
+import 'rules_preset_detail_page.dart';
 import '../../l10n/l10n.dart';
+
+/// 预设的显示名:默认规则带上版本(「Nyako v5」),两份默认规则同名。
+String presetDisplayName(WidgetRef ref, RulesPreset p) {
+  if (!p.isDefault) return p.name;
+  final f = p.models.single;
+  final info = ref.watch(defaultRulesProvider(f)).value;
+  return '${info?.name ?? p.name} ${info?.version ?? defaultRulesVersionOf(f)}'
+      .trim();
+}
 
 class RulesPresetPage extends ConsumerWidget {
   const RulesPresetPage({super.key});
@@ -45,8 +53,22 @@ class RulesPresetPage extends ConsumerWidget {
       body: lib == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
               children: [
+                SettingsLabel(context.l10n.rulesInUse),
+                SettingsCard(
+                  children: [
+                    for (final f in RulesFamily.values)
+                      SettingsRow(
+                        icon: Icons.rule_outlined,
+                        title: rulesFamilyLabel(f),
+                        value: presetDisplayName(ref, lib.activeFor(f)),
+                        onTap: () => _pickInUse(context, f),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SettingsLabel(context.l10n.rulesAllPresets),
                 for (final p in lib.all)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
@@ -67,10 +89,14 @@ class RulesPresetPage extends ConsumerWidget {
       for (final f in RulesFamily.values)
         if (lib.activeFor(f).id == p.id) f,
     };
-    void onUse(RulesFamily f) {
-      Haptics.selection();
-      ref.read(rulesLibraryProvider.notifier).use(f, p.id);
-    }
+    void open() => Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => p.isDefault
+            ? RulesPresetDetailPage(family: p.models.single)
+            : RulesPresetDetailPage(presetId: p.id),
+      ),
+    );
 
     if (p.isDefault) {
       // 默认规则只支持一个模型;名称、作者、版本读内置那份,没读到时用占位值
@@ -85,8 +111,8 @@ class RulesPresetPage extends ConsumerWidget {
         isDefault: true,
         models: p.models,
         inUse: inUse,
-        onUse: onUse,
-        onEdit: () => _openSections(context, RulesSectionsPage(family: f)),
+        onOpen: open,
+        onCopy: () => _duplicate(context, ref, p),
         onExport: () => _exportDefault(context, ref, f),
       );
     }
@@ -99,8 +125,8 @@ class RulesPresetPage extends ConsumerWidget {
       isDefault: false,
       models: p.models,
       inUse: inUse,
-      onUse: onUse,
-      onEdit: () => _openSections(context, RulesSectionsPage(presetId: p.id)),
+      onOpen: open,
+      onCopy: () => _duplicate(context, ref, p),
       onExport: () => _save(
         context,
         name: p.name,
@@ -111,6 +137,62 @@ class RulesPresetPage extends ConsumerWidget {
       ),
       onDelete: () => _delete(context, ref, p),
     );
+  }
+
+  Future<void> _pickInUse(BuildContext context, RulesFamily f) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: false,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: .18),
+      builder: (_) => _InUseSheet(family: f),
+    );
+  }
+
+  /// 副本:段落、作者、支持的模型照抄,名字后面加「(副本)」,不自动启用。
+  /// 默认规则的副本名字带版本(「Nyako v5 (副本)」)。
+  Future<void> _duplicate(
+    BuildContext context,
+    WidgetRef ref,
+    RulesPreset p,
+  ) async {
+    final String base;
+    final String author;
+    final Set<RulesFamily> models;
+    final List<PresetRule> rules;
+    if (p.isDefault) {
+      final f = p.models.single;
+      final d = await bundledDefaultRules(f);
+      base = '${d.name} ${d.version}'.trim();
+      author = d.author;
+      models = {f};
+      rules = d.rules;
+    } else {
+      base = p.name;
+      author = p.author;
+      models = p.models;
+      rules = p.rules;
+    }
+    final taken = {
+      for (final x in ref.read(rulesLibraryProvider).value?.presets ?? [])
+        x.name,
+    };
+    final first = '$base ${l10nNow.copySuffix}';
+    var name = first;
+    for (var n = 2; taken.contains(name); n++) {
+      name = '$first $n';
+    }
+    await ref
+        .read(rulesLibraryProvider.notifier)
+        .add(name: name, author: author, models: models, rules: rules);
+    if (context.mounted) {
+      hintSnack(
+        context,
+        context.l10n.savedAsNamed(name),
+        icon: Icons.check_circle_outline,
+      );
+    }
   }
 
   Future<void> _import(BuildContext context, WidgetRef ref) async {
@@ -188,9 +270,6 @@ class RulesPresetPage extends ConsumerWidget {
     }
   }
 
-  Future<void> _openSections(BuildContext context, Widget page) =>
-      Navigator.push<void>(context, MaterialPageRoute(builder: (_) => page));
-
   Future<void> _save(
     BuildContext context, {
     required String name,
@@ -248,6 +327,55 @@ class RulesPresetPage extends ConsumerWidget {
   }
 }
 
+/// 选某个模型用哪份规则:列出支持它的预设,在用的那份打勾,点一份就换过去。
+class _InUseSheet extends ConsumerWidget {
+  const _InUseSheet({required this.family});
+
+  final RulesFamily family;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lib = ref.watch(rulesLibraryProvider).value ?? const RulesLibrary();
+    final current = lib.activeFor(family).id;
+    final scheme = context.scheme;
+    return SettingSheet(
+      title: rulesFamilyLabel(family),
+      maxHeight: MediaQuery.sizeOf(context).height * .82,
+      children: [
+        for (final p in lib.all)
+          if (p.models.contains(family))
+            InkWell(
+              onTap: () {
+                Haptics.selection();
+                ref.read(rulesLibraryProvider.notifier).use(family, p.id);
+                Navigator.of(context).maybePop();
+              },
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 18, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        presetDisplayName(ref, p),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.texts.bodyLarge!.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: p.id == current ? scheme.primary : null,
+                        ),
+                      ),
+                    ),
+                    if (p.id == current)
+                      Icon(Icons.check, size: 20, color: scheme.primary),
+                  ],
+                ),
+              ),
+            ),
+      ],
+    );
+  }
+}
+
 class _PresetCard extends StatelessWidget {
   const _PresetCard({
     required this.title,
@@ -255,8 +383,8 @@ class _PresetCard extends StatelessWidget {
     required this.isDefault,
     required this.models,
     required this.inUse,
-    required this.onUse,
-    required this.onEdit,
+    required this.onOpen,
+    required this.onCopy,
     required this.onExport,
     this.onDelete,
   });
@@ -270,8 +398,8 @@ class _PresetCard extends StatelessWidget {
 
   /// 正在用这份的模型。
   final Set<RulesFamily> inUse;
-  final ValueChanged<RulesFamily> onUse;
-  final VoidCallback onEdit;
+  final VoidCallback onOpen;
+  final VoidCallback onCopy;
   final VoidCallback onExport;
 
   /// 默认规则删不了,传 null。
@@ -287,10 +415,13 @@ class _PresetCard extends StatelessWidget {
         : allInUse
         ? l10nNow.inUse
         : l10nNow.inUseBy(inUse.map(rulesFamilyLabel).join(l10nNow.listSep));
-    final notInUse = [
-      for (final f in RulesFamily.values)
-        if (models.contains(f) && !inUse.contains(f)) f,
-    ];
+    Widget btn(IconData icon, String tip, VoidCallback onTap, Color color) =>
+        IconButton(
+          tooltip: tip,
+          visualDensity: VisualDensity.compact,
+          onPressed: onTap,
+          icon: Icon(icon, size: 19, color: color),
+        );
     return Lifted(
       radius: BorderRadius.circular(16),
       child: Material(
@@ -303,15 +434,7 @@ class _PresetCard extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          // 点卡片 = 支持的模型都改用这份。两个模型想分开用的,点完再点另一个模型
-          // 要用的那张卡(比如它的默认规则),那个模型就换回去了
-          onTap: notInUse.isEmpty
-              ? null
-              : () {
-                  for (final f in notInUse) {
-                    onUse(f);
-                  }
-                },
+          onTap: onOpen,
           child: Stack(
             children: [
               Padding(
@@ -353,38 +476,26 @@ class _PresetCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    // 与提示词预设页同一排按钮:编辑、导出直接摆出来,不收进菜单
+                    // 副本、导出、删除直接摆出来,不收进菜单
                     const SizedBox(width: 4),
-                    IconButton(
-                      tooltip: context.l10n.edit,
-                      visualDensity: VisualDensity.compact,
-                      onPressed: onEdit,
-                      icon: Icon(
-                        Icons.edit_outlined,
-                        size: 19,
-                        color: scheme.onSurfaceVariant,
-                      ),
+                    btn(
+                      Icons.copy_all_outlined,
+                      context.l10n.duplicatePreset,
+                      onCopy,
+                      scheme.onSurfaceVariant,
                     ),
-                    IconButton(
-                      tooltip: context.l10n.export,
-                      visualDensity: VisualDensity.compact,
-                      onPressed: onExport,
-                      icon: Icon(
-                        Icons.ios_share,
-                        size: 19,
-                        color: scheme.onSurfaceVariant,
-                      ),
+                    btn(
+                      Icons.ios_share,
+                      context.l10n.export,
+                      onExport,
+                      scheme.onSurfaceVariant,
                     ),
                     if (onDelete != null)
-                      IconButton(
-                        tooltip: context.l10n.delete,
-                        visualDensity: VisualDensity.compact,
-                        onPressed: onDelete,
-                        icon: Icon(
-                          Icons.delete_outline,
-                          size: 19,
-                          color: scheme.error.withValues(alpha: .85),
-                        ),
+                      btn(
+                        Icons.delete_outline,
+                        context.l10n.delete,
+                        onDelete!,
+                        scheme.error.withValues(alpha: .85),
                       ),
                   ],
                 ),

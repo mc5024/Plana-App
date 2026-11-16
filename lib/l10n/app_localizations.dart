@@ -9016,6 +9016,30 @@ abstract class AppLocalizations {
   /// **'当前模式：仅自然语言'**
   String get ruleSecModeNatural;
 
+  /// No description provided for @rulesInUse.
+  ///
+  /// In zh, this message translates to:
+  /// **'在用'**
+  String get rulesInUse;
+
+  /// No description provided for @rulesAllPresets.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部预设'**
+  String get rulesAllPresets;
+
+  /// No description provided for @duplicatePreset.
+  ///
+  /// In zh, this message translates to:
+  /// **'创建副本'**
+  String get duplicatePreset;
+
+  /// No description provided for @ruleSectionsLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'段落'**
+  String get ruleSectionsLabel;
+
   /// No description provided for @ruleGroupPersona.
   ///
   /// In zh, this message translates to:

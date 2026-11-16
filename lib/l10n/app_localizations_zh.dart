@@ -5130,6 +5130,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get ruleSecModeNatural => '当前模式：仅自然语言';
 
   @override
+  String get rulesInUse => '在用';
+
+  @override
+  String get rulesAllPresets => '全部预设';
+
+  @override
+  String get duplicatePreset => '创建副本';
+
+  @override
+  String get ruleSectionsLabel => '段落';
+
+  @override
   String get ruleGroupPersona => '人设';
 
   @override

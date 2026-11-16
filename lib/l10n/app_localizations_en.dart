@@ -5566,6 +5566,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ruleSecModeNatural => 'Mode: Natural Language Only';
 
   @override
+  String get rulesInUse => 'In Use';
+
+  @override
+  String get rulesAllPresets => 'All Presets';
+
+  @override
+  String get duplicatePreset => 'Duplicate';
+
+  @override
+  String get ruleSectionsLabel => 'Sections';
+
+  @override
   String get ruleGroupPersona => 'Persona';
 
   @override

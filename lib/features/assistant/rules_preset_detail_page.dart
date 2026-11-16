@@ -1,9 +1,10 @@
-/// 规则预设的段落页:内置段按用途归成几张卡(见 [ruleCardsOf]),认不出的段名各自一张。
-/// 点卡改内容和触发条件(一组几段就上下排开一起改),点自己加的段名改名;
-/// ⏻ 停用、🗑 删除、长按拖动排序都按整张卡来,顶栏加一段或全文编辑。
+/// 预设页:上面是这份预设的名称、作者、支持的模型和在哪些模型上用着,下面是段落。
 ///
-/// 默认规则的原件在包里,改不了:第一次保存时另存为一份新预设,这个模型原先用默认规则的
-/// 就改用新存的这份,之后在这页接着改的都是那份。
+/// 段落里内置段按用途归成几张卡(见 [ruleCardsOf]),认不出的段名各自一张。点卡进编辑页,
+/// 卡里几段上下排开一起改;点自己加的段名改名;⏻ 停用、🗑 删除、长按拖动排序都按整张卡来。
+///
+/// 默认规则的原件在包里,改不了:名称、作者、支持的模型只读,段落第一次保存时另存为一份
+/// 新预设,这个模型原先用默认规则的就改用新存的这份,之后在这页接着改的都是那份。
 library;
 
 import 'package:flutter/material.dart';
@@ -15,24 +16,26 @@ import '../../core/util/haptics.dart';
 import '../../l10n/l10n.dart';
 import '../generate/widgets/common.dart'
     show RoundIconBtn, confirmDialog, hintSnack;
+import '../profile/widgets/settings_ui.dart';
 import 'presets/default_rules.dart';
 import 'presets/preset_rule.dart';
 import 'presets/rules_file.dart';
 import 'presets/rules_library.dart';
 
-class RulesSectionsPage extends ConsumerStatefulWidget {
-  /// [family] 给了就是那个模型的默认规则,否则是 [presetId] 那份导入的预设。
-  const RulesSectionsPage({super.key, this.family, this.presetId})
+class RulesPresetDetailPage extends ConsumerStatefulWidget {
+  /// [family] 给了就是那个模型的默认规则,否则是 [presetId] 那份预设。
+  const RulesPresetDetailPage({super.key, this.family, this.presetId})
     : assert((family == null) != (presetId == null));
 
   final RulesFamily? family;
   final String? presetId;
 
   @override
-  ConsumerState<RulesSectionsPage> createState() => _RulesSectionsPageState();
+  ConsumerState<RulesPresetDetailPage> createState() =>
+      _RulesPresetDetailPageState();
 }
 
-class _RulesSectionsPageState extends ConsumerState<RulesSectionsPage> {
+class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
   /// 在改的那份预设;默认规则还没另存时是 null。
   late String? _id = widget.presetId;
 
@@ -45,43 +48,116 @@ class _RulesSectionsPageState extends ConsumerState<RulesSectionsPage> {
   @override
   Widget build(BuildContext context) {
     final lib = ref.watch(rulesLibraryProvider).value;
-    final String title;
-    final List<PresetRule>? rules;
-    if (_id != null) {
-      final p = _preset(lib);
-      title = p?.name ?? '';
-      rules = p?.rules;
-    } else {
-      final d = ref.watch(defaultRulesProvider(widget.family!)).value;
-      title = d == null ? '' : '${d.name} ${d.version}'.trim();
-      rules = d?.rules;
-    }
+    final p = _id == null ? null : _preset(lib);
+    final d = _id == null
+        ? ref.watch(defaultRulesProvider(widget.family!)).value
+        : null;
+    final rules = p?.rules ?? d?.rules;
+    final title = p?.name ?? (d == null ? '' : '${d.name} ${d.version}'.trim());
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
         actions: [
           IconButton(
             tooltip: context.l10n.fullTextEdit,
-            onPressed: rules == null ? null : () => _editFullText(rules!),
+            onPressed: rules == null ? null : () => _editFullText(rules),
             icon: const Icon(Icons.notes),
-          ),
-          IconButton(
-            tooltip: context.l10n.addRuleSection,
-            onPressed: rules == null ? null : () => _add(rules!),
-            icon: const Icon(Icons.add),
           ),
         ],
       ),
-      body: rules == null
+      body: lib == null || rules == null
           ? const Center(child: CircularProgressIndicator())
-          : _list(rules),
+          : _body(lib, p, d, rules),
     );
   }
 
-  Widget _list(List<PresetRule> rules) {
+  Widget _body(
+    RulesLibrary lib,
+    RulesPreset? p,
+    DefaultRules? d,
+    List<PresetRule> rules,
+  ) {
+    final l = context.l10n;
+    final models = p?.models ?? {widget.family!};
+    final selfId = p?.id ?? 'default-${widget.family!.name}';
     final cards = ruleCardsOf(rules);
+    final header = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SettingsCard(
+          children: [
+            SettingsRow(
+              icon: Icons.drive_file_rename_outline,
+              title: l.presetName,
+              value: p?.name ?? d?.name ?? '',
+              onTap: p == null ? null : () => _editName(p),
+            ),
+            SettingsRow(
+              icon: Icons.person_outline,
+              title: l.author,
+              value: p?.author ?? d?.author ?? '',
+              onTap: p == null ? null : () => _editAuthor(p),
+            ),
+            if (p == null)
+              SettingsRow(
+                icon: Icons.sell_outlined,
+                title: l.version,
+                value: d?.version ?? '',
+              ),
+            SettingsRow(
+              icon: Icons.memory_outlined,
+              title: l.supportedModels,
+              value: [
+                for (final m in RulesFamily.values)
+                  if (models.contains(m)) rulesFamilyLabel(m),
+              ].join(l.listSep),
+              onTap: p == null ? null : () => _editModels(p),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        SettingsLabel(l.rulesInUse),
+        SettingsCard(
+          children: [
+            for (final m in RulesFamily.values)
+              if (models.contains(m))
+                SwitchListTile(
+                  value: lib.activeFor(m).id == selfId,
+                  // 默认规则关不掉:要换别的,去列表页的「在用」里选
+                  onChanged: p == null && lib.activeFor(m).id == selfId
+                      ? null
+                      : (v) {
+                          Haptics.selection();
+                          ref
+                              .read(rulesLibraryProvider.notifier)
+                              .use(m, v ? selfId : 'default-${m.name}');
+                        },
+                  title: Text(
+                    rulesFamilyLabel(m),
+                    style: context.texts.bodyMedium!.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  contentPadding: const EdgeInsets.fromLTRB(16, 2, 10, 2),
+                ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        SettingsLabel(l.ruleSectionsLabel),
+      ],
+    );
     return ReorderableListView.builder(
-      padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+      header: header,
+      footer: Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: FilledButton.tonalIcon(
+          onPressed: () => _add(rules),
+          icon: const Icon(Icons.add, size: 18),
+          label: Text(l.addRuleSection),
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+        ),
+      ),
       itemCount: cards.length,
       proxyDecorator: (child, _, _) => Material(
         color: Colors.transparent,
@@ -105,9 +181,7 @@ class _RulesSectionsPageState extends ConsumerState<RulesSectionsPage> {
           key: ObjectKey(members.first),
           padding: const EdgeInsets.only(bottom: 10),
           child: _RuleCardView(
-            title: c.group == null
-                ? members.single.name
-                : ruleGroupLabel(c.group!),
+            title: _cardTitle(rules, c),
             rules: members,
             onEdit: () => _edit(rules, c),
             onRename: c.group == null
@@ -124,7 +198,84 @@ class _RulesSectionsPageState extends ConsumerState<RulesSectionsPage> {
     );
   }
 
-  /// 存回去。默认规则第一次存是另存为一份新预设。
+  String _cardTitle(List<PresetRule> rules, RuleCard c) =>
+      c.group == null ? rules[c.indices.single].name : ruleGroupLabel(c.group!);
+
+  Future<void> _replace(
+    RulesPreset p, {
+    String? name,
+    String? author,
+    Set<RulesFamily>? models,
+  }) => ref
+      .read(rulesLibraryProvider.notifier)
+      .replace(
+        p.id,
+        name: name ?? p.name,
+        author: author ?? p.author,
+        models: models ?? p.models,
+        rules: p.rules,
+      );
+
+  Future<void> _editName(RulesPreset p) async {
+    final v = await _askText(context.l10n.presetName, p.name);
+    if (v == null || v.isEmpty || v == p.name) return;
+    await _replace(p, name: v);
+  }
+
+  Future<void> _editAuthor(RulesPreset p) async {
+    final v = await _askText(context.l10n.author, p.author);
+    if (v == null || v == p.author) return;
+    await _replace(p, author: v);
+  }
+
+  /// 支持的模型:多选,至少留一个。去掉的模型原先在用这份的,回到默认规则。
+  Future<void> _editModels(RulesPreset p) async {
+    final picked = await showDialog<Set<RulesFamily>>(
+      context: context,
+      builder: (context) {
+        var sel = {...p.models};
+        return StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            title: Text(context.l10n.supportedModels),
+            contentPadding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final m in RulesFamily.values)
+                  CheckboxListTile(
+                    value: sel.contains(m),
+                    title: Text(rulesFamilyLabel(m)),
+                    onChanged: (v) => setState(
+                      () =>
+                          sel = v == true ? {...sel, m} : ({...sel}..remove(m)),
+                    ),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(context.l10n.cancel),
+              ),
+              TextButton(
+                onPressed: sel.isEmpty
+                    ? null
+                    : () => Navigator.pop(context, sel),
+                child: Text(context.l10n.confirm),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (picked == null ||
+        picked.length == p.models.length && picked.containsAll(p.models)) {
+      return;
+    }
+    await _replace(p, models: picked);
+  }
+
+  /// 存段落。默认规则第一次存是另存为一份新预设。
   Future<void> _commit(
     List<PresetRule> rules, {
     String? name,
@@ -178,28 +329,16 @@ class _RulesSectionsPageState extends ConsumerState<RulesSectionsPage> {
     }
   }
 
-  /// 一段的卡进单段页;一组几段的进组页,几段上下排开一起改。
   Future<void> _edit(List<PresetRule> rules, RuleCard c) async {
-    final List<PresetRule>? edited;
-    if (c.indices.length == 1) {
-      final r = await Navigator.push<PresetRule>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => _SectionEditorPage(rule: rules[c.indices.single]),
+    final edited = await Navigator.push<List<PresetRule>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _GroupEditorPage(
+          title: _cardTitle(rules, c),
+          rules: [for (final i in c.indices) rules[i]],
         ),
-      );
-      edited = r == null ? null : [r];
-    } else {
-      edited = await Navigator.push<List<PresetRule>>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => _GroupEditorPage(
-            title: ruleGroupLabel(c.group!),
-            rules: [for (final i in c.indices) rules[i]],
-          ),
-        ),
-      );
-    }
+      ),
+    );
     if (edited == null) return;
     final next = [...rules];
     for (final (j, i) in c.indices.indexed) {
@@ -219,59 +358,65 @@ class _RulesSectionsPageState extends ConsumerState<RulesSectionsPage> {
   }
 
   Future<void> _add(List<PresetRule> rules) async {
-    final name = await _askName('');
+    final name = await _askSectionName('');
     if (name == null || !mounted) return;
-    final r = await Navigator.push<PresetRule>(
+    final edited = await Navigator.push<List<PresetRule>>(
       context,
       MaterialPageRoute(
-        builder: (_) => _SectionEditorPage(
-          rule: PresetRule(name: name, content: ''),
+        builder: (_) => _GroupEditorPage(
+          title: name,
+          rules: [PresetRule(name: name, content: '')],
         ),
       ),
     );
-    if (r != null) await _commit([...rules, r]);
+    if (edited != null) await _commit([...rules, ...edited]);
   }
 
   /// 点名字改名(只有认不出的段,内置段归在组里不单独改名)。
   Future<void> _rename(List<PresetRule> rules, int i) async {
     final shown = rules[i].name;
-    final name = await _askName(shown);
+    final name = await _askSectionName(shown);
     if (name == null || name == shown) return;
     await _commit([...rules]..[i] = rules[i].copyWith(name: name));
   }
 
-  /// 问段名,取消或留空返回 null。
-  Future<String?> _askName(String initial) async {
+  /// 问一行字,取消返回 null,其余去掉首尾空白返回。
+  Future<String?> _askText(String title, String initial) async {
     final ctrl = TextEditingController(text: initial);
-    final l = context.l10n;
-    final name = await showDialog<String>(
+    final v = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(initial.isEmpty ? l.addRuleSection : l.rename),
+        title: Text(title),
         content: TextField(
           controller: ctrl,
           autofocus: true,
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: l.ruleSectionName,
-          ),
+          decoration: const InputDecoration(isDense: true),
           onSubmitted: (v) => Navigator.pop(context, v),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(l.cancel),
+            child: Text(context.l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, ctrl.text),
-            child: Text(l.confirm),
+            child: Text(context.l10n.confirm),
           ),
         ],
       ),
     );
     ctrl.dispose();
-    final v = name?.trim() ?? '';
-    if (v.isEmpty) return null;
+    return v?.trim();
+  }
+
+  /// 问段名,取消或留空返回 null。
+  Future<String?> _askSectionName(String initial) async {
+    final l = context.l10n;
+    final v = await _askText(
+      initial.isEmpty ? l.addRuleSection : l.rename,
+      initial,
+    );
+    if (v == null || v.isEmpty) return null;
     // 和工具层同名的段读回来会被当成旧货丢掉
     if (v == kToolLayerName) {
       if (mounted) {
@@ -287,15 +432,12 @@ class _RulesSectionsPageState extends ConsumerState<RulesSectionsPage> {
   }
 
   Future<void> _delete(List<PresetRule> rules, RuleCard c) async {
-    final label = c.group == null
-        ? rules[c.indices.single].name
-        : ruleGroupLabel(c.group!);
     final ok = await confirmDialog(
       context,
       title: c.indices.length > 1
           ? context.l10n.deleteRuleGroupQ
           : context.l10n.deleteRuleSectionQ,
-      message: context.l10n.deleteRuleSectionBody(label),
+      message: context.l10n.deleteRuleSectionBody(_cardTitle(rules, c)),
       confirmLabel: context.l10n.delete,
     );
     if (!ok) return;
@@ -524,100 +666,8 @@ Future<void> _confirmLeave(BuildContext context) async {
   if (ok && context.mounted) Navigator.pop(context);
 }
 
-/// 一段的编辑页:内容直接铺在页面上,顶栏右边改触发条件、保存。
-/// 没保存就返回要确认一下。
-class _SectionEditorPage extends StatefulWidget {
-  const _SectionEditorPage({required this.rule});
-
-  final PresetRule rule;
-
-  @override
-  State<_SectionEditorPage> createState() => _SectionEditorPageState();
-}
-
-class _SectionEditorPageState extends State<_SectionEditorPage> {
-  late final _ctl = TextEditingController(text: widget.rule.content);
-  late var _when = widget.rule.when;
-  var _dirty = false;
-
-  @override
-  void dispose() {
-    _ctl.dispose();
-    super.dispose();
-  }
-
-  void _save() {
-    final content = _tidy(_ctl.text);
-    if (content.trim().isEmpty) {
-      hintSnack(
-        context,
-        context.l10n.ruleSectionEmpty,
-        icon: Icons.error_outline,
-      );
-      return;
-    }
-    Navigator.pop(context, widget.rule.copyWith(content: content, when: _when));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: !_dirty,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _confirmLeave(context);
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(ruleSectionLabel(widget.rule.name)),
-          actions: [
-            _WhenButton(
-              when: _when,
-              onTap: () async {
-                final v = await _pickWhen(context, _when);
-                if (v != null) {
-                  setState(() {
-                    _when = v;
-                    _dirty = true;
-                  });
-                }
-              },
-            ),
-            IconButton(
-              tooltip: context.l10n.save,
-              onPressed: _save,
-              icon: const Icon(Icons.check),
-            ),
-          ],
-        ),
-        body: SafeArea(
-          top: false,
-          child: TextField(
-            controller: _ctl,
-            expands: true,
-            maxLines: null,
-            autofocus: widget.rule.content.isEmpty,
-            keyboardType: TextInputType.multiline,
-            textAlignVertical: TextAlignVertical.top,
-            // YAML 靠缩进和原样的键名,输入法的自动更正只会帮倒忙
-            autocorrect: false,
-            enableSuggestions: false,
-            style: mono(context, size: 13, weight: FontWeight.w400),
-            onChanged: (_) {
-              if (!_dirty) setState(() => _dirty = true);
-            },
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.fromLTRB(16, 4, 16, 16),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 一组几段的编辑页:一段一张卡上下排开,卡头是段名、触发条件和 ⏻,
-/// 下面就是这段的内容。顶栏保存一起存。
+/// 段落编辑页(一张卡里不管几段都用它):一段一张卡上下排开,卡头是段名、触发条件和 ⏻,
+/// 下面就是这段的内容。顶栏保存一起存,没保存就返回要确认一下。
 class _GroupEditorPage extends StatefulWidget {
   const _GroupEditorPage({required this.title, required this.rules});
 
@@ -760,6 +810,7 @@ class _GroupEditorPageState extends State<_GroupEditorPage> {
               opacity: on ? 1 : .45,
               child: TextField(
                 controller: _ctls[i],
+                autofocus: i == 0 && widget.rules[i].content.isEmpty,
                 maxLines: null,
                 minLines: 3,
                 keyboardType: TextInputType.multiline,
