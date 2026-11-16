@@ -2,7 +2,8 @@
 ///
 /// 默认规则按模型分两张(v4.5 版、v5 版),名称、作者、版本读内置那份的 meta。
 /// 点卡进预设页([RulesPresetDetailPage]);卡上直接摆副本、导出、删除。
-/// 卡底下是它支持的模型,点哪个就是那个模型改用这份;每个模型恰好有一份在用,默认规则兜底。
+/// 卡底下一条分段只显示它支持的模型、哪些在用;启用的模型在预设页里改。
+/// 每个模型恰好有一份在用,默认规则兜底。
 library;
 
 import 'dart:convert';
@@ -13,7 +14,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/util/haptics.dart';
 import '../generate/widgets/common.dart' show confirmDialog, hintSnack;
 import 'presets/default_rules.dart';
 import 'presets/preset_rule.dart';
@@ -64,18 +64,6 @@ class RulesPresetPage extends ConsumerWidget {
       for (final f in RulesFamily.values)
         if (lib.activeFor(f).id == p.id) f,
     };
-    // 点没在用的模型 = 那个模型改用这份;点在用的 = 退回默认规则(默认规则本身退无可退)
-    void onUse(RulesFamily f) {
-      final n = ref.read(rulesLibraryProvider.notifier);
-      if (!inUse.contains(f)) {
-        Haptics.selection();
-        n.use(f, p.id);
-      } else if (!p.isDefault) {
-        Haptics.selection();
-        n.use(f, defaultPresetOf(f).id);
-      }
-    }
-
     void open() => Navigator.push<void>(
       context,
       MaterialPageRoute(
@@ -98,7 +86,6 @@ class RulesPresetPage extends ConsumerWidget {
         isDefault: true,
         models: p.models,
         inUse: inUse,
-        onUse: onUse,
         onOpen: open,
         onCopy: () => _duplicate(context, ref, p),
         onExport: () => _exportDefault(context, ref, f),
@@ -113,7 +100,6 @@ class RulesPresetPage extends ConsumerWidget {
       isDefault: false,
       models: p.models,
       inUse: inUse,
-      onUse: onUse,
       onOpen: open,
       onCopy: () => _duplicate(context, ref, p),
       onExport: () => _save(
@@ -312,7 +298,6 @@ class _PresetCard extends StatelessWidget {
     required this.isDefault,
     required this.models,
     required this.inUse,
-    required this.onUse,
     required this.onOpen,
     required this.onCopy,
     required this.onExport,
@@ -329,8 +314,6 @@ class _PresetCard extends StatelessWidget {
   /// 正在用这份的模型。
   final Set<RulesFamily> inUse;
 
-  /// 点了卡底下的某个模型。
-  final ValueChanged<RulesFamily> onUse;
   final VoidCallback onOpen;
   final VoidCallback onCopy;
   final VoidCallback onExport;
@@ -417,69 +400,34 @@ class _PresetCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    for (final f in RulesFamily.values)
-                      if (models.contains(f))
-                        _ModelChip(
-                          label: rulesFamilyLabel(f),
-                          on: inUse.contains(f),
-                          onTap: () => onUse(f),
-                        ),
-                  ],
+                // 只显示:支持的模型一段一个,选中的是在用的。点这里和点卡一样进预设页,
+                // 在那里改启用的模型
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: IgnorePointer(
+                    child: SegmentedButton<RulesFamily>(
+                      multiSelectionEnabled: true,
+                      emptySelectionAllowed: true,
+                      expandedInsets: EdgeInsets.zero,
+                      style: const ButtonStyle(
+                        visualDensity: VisualDensity.compact,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      segments: [
+                        for (final f in RulesFamily.values)
+                          if (models.contains(f))
+                            ButtonSegment(
+                              value: f,
+                              label: Text(rulesFamilyLabel(f)),
+                            ),
+                      ],
+                      selected: inUse,
+                      onSelectionChanged: (_) {},
+                    ),
+                  ),
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 卡底下的一个模型:在用时实底 + 勾 +「在用」,没在用是描边,点了改用这份。
-class _ModelChip extends StatelessWidget {
-  const _ModelChip({
-    required this.label,
-    required this.on,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool on;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = context.scheme;
-    final fg = on ? scheme.onPrimaryContainer : scheme.onSurfaceVariant;
-    return Material(
-      color: on ? scheme.primaryContainer : Colors.transparent,
-      shape: StadiumBorder(
-        side: on ? BorderSide.none : BorderSide(color: scheme.outlineVariant),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(on ? 8 : 12, 5, 12, 5),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (on) ...[
-                Icon(Icons.check, size: 15, color: fg),
-                const SizedBox(width: 4),
-              ],
-              Text(
-                on ? context.l10n.inUseOn(label) : label,
-                style: context.texts.labelMedium!.copyWith(
-                  color: fg,
-                  fontWeight: on ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-            ],
           ),
         ),
       ),

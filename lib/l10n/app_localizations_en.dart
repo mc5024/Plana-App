@@ -5561,9 +5561,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ruleSecModeNatural => 'Mode: Natural Language Only';
 
   @override
-  String inUseOn(String model) {
-    return '$model · In Use';
-  }
+  String get enabledModels => 'Enabled Models';
+
+  @override
+  String get notEnabled => 'Not in use';
 
   @override
   String get duplicatePreset => 'Duplicate';

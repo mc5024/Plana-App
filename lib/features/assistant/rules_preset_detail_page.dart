@@ -1,4 +1,4 @@
-/// 预设页:上面是这份预设的名称、作者、支持的模型,下面是段落。哪个模型用它在列表页的卡上点。
+/// 预设页:上面是这份预设的名称、作者、支持的模型和启用的模型,下面是段落。
 ///
 /// 段落里内置段按用途归成几张卡(见 [ruleCardsOf]),认不出的段名各自一张。点卡进编辑页,
 /// 卡里几段上下排开一起改;点自己加的段名改名;⏻ 停用、🗑 删除、长按拖动排序都按整张卡来。
@@ -67,13 +67,24 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
       ),
       body: lib == null || rules == null
           ? const Center(child: CircularProgressIndicator())
-          : _body(p, d, rules),
+          : _body(lib, p, d, rules),
     );
   }
 
-  Widget _body(RulesPreset? p, DefaultRules? d, List<PresetRule> rules) {
+  Widget _body(
+    RulesLibrary lib,
+    RulesPreset? p,
+    DefaultRules? d,
+    List<PresetRule> rules,
+  ) {
     final l = context.l10n;
     final models = p?.models ?? {widget.family!};
+    final selfId = p?.id ?? defaultPresetOf(widget.family!).id;
+    final enabled = [
+      for (final m in RulesFamily.values)
+        if (models.contains(m) && lib.activeFor(m).id == selfId)
+          rulesFamilyLabel(m),
+    ];
     final cards = ruleCardsOf(rules);
     final header = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -106,6 +117,12 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
                   if (models.contains(m)) rulesFamilyLabel(m),
               ].join(l.listSep),
               onTap: p == null ? null : () => _editModels(p),
+            ),
+            SettingsRow(
+              icon: Icons.check_circle_outline,
+              title: l.enabledModels,
+              value: enabled.isEmpty ? l.notEnabled : enabled.join(l.listSep),
+              onTap: () => _editEnabled(lib, models, selfId),
             ),
           ],
         ),
@@ -197,50 +214,99 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
 
   /// 支持的模型:多选,至少留一个。去掉的模型原先在用这份的,回到默认规则。
   Future<void> _editModels(RulesPreset p) async {
-    final picked = await showDialog<Set<RulesFamily>>(
-      context: context,
-      builder: (context) {
-        var sel = {...p.models};
-        return StatefulBuilder(
-          builder: (context, setState) => AlertDialog(
-            title: Text(context.l10n.supportedModels),
-            contentPadding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final m in RulesFamily.values)
-                  CheckboxListTile(
-                    value: sel.contains(m),
-                    title: Text(rulesFamilyLabel(m)),
-                    onChanged: (v) => setState(
-                      () =>
-                          sel = v == true ? {...sel, m} : ({...sel}..remove(m)),
-                    ),
-                  ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(context.l10n.cancel),
-              ),
-              TextButton(
-                onPressed: sel.isEmpty
-                    ? null
-                    : () => Navigator.pop(context, sel),
-                child: Text(context.l10n.confirm),
-              ),
-            ],
-          ),
-        );
-      },
+    final picked = await _pickModels(
+      title: context.l10n.supportedModels,
+      options: RulesFamily.values,
+      initial: p.models,
+      allowEmpty: false,
     );
-    if (picked == null ||
-        picked.length == p.models.length && picked.containsAll(p.models)) {
-      return;
-    }
+    if (picked == null || _sameSet(picked, p.models)) return;
     await _replace(p, models: picked);
   }
+
+  /// 启用的模型:在支持的模型里多选,勾上的改用这份,取消的回到默认规则。
+  /// 默认规则正在用时勾不掉(退无可退),要换去别的预设里勾。
+  Future<void> _editEnabled(
+    RulesLibrary lib,
+    Set<RulesFamily> models,
+    String selfId,
+  ) async {
+    final on = {
+      for (final m in models)
+        if (lib.activeFor(m).id == selfId) m,
+    };
+    final isDefault = selfId.startsWith('default');
+    final picked = await _pickModels(
+      title: context.l10n.enabledModels,
+      options: [
+        for (final m in RulesFamily.values)
+          if (models.contains(m)) m,
+      ],
+      initial: on,
+      locked: isDefault ? on : const {},
+    );
+    if (picked == null || _sameSet(picked, on)) return;
+    final n = ref.read(rulesLibraryProvider.notifier);
+    for (final m in models) {
+      if (picked.contains(m) && !on.contains(m)) {
+        await n.use(m, selfId);
+      } else if (!picked.contains(m) && on.contains(m)) {
+        await n.use(m, defaultPresetOf(m).id);
+      }
+    }
+  }
+
+  static bool _sameSet(Set<RulesFamily> a, Set<RulesFamily> b) =>
+      a.length == b.length && a.containsAll(b);
+
+  /// 模型多选弹窗,取消返回 null。[locked] 里的勾着且改不了。
+  Future<Set<RulesFamily>?> _pickModels({
+    required String title,
+    required List<RulesFamily> options,
+    required Set<RulesFamily> initial,
+    bool allowEmpty = true,
+    Set<RulesFamily> locked = const {},
+  }) => showDialog<Set<RulesFamily>>(
+    context: context,
+    builder: (context) {
+      var sel = {...initial};
+      return StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text(title),
+          contentPadding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final m in options)
+                CheckboxListTile(
+                  value: sel.contains(m),
+                  title: Text(rulesFamilyLabel(m)),
+                  onChanged: locked.contains(m)
+                      ? null
+                      : (v) => setState(
+                          () => sel = v == true
+                              ? {...sel, m}
+                              : ({...sel}..remove(m)),
+                        ),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(context.l10n.cancel),
+            ),
+            TextButton(
+              onPressed: sel.isEmpty && !allowEmpty
+                  ? null
+                  : () => Navigator.pop(context, sel),
+              child: Text(context.l10n.confirm),
+            ),
+          ],
+        ),
+      );
+    },
+  );
 
   /// 存段落。默认规则第一次存是另存为一份新预设。
   Future<void> _commit(

@@ -5125,9 +5125,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get ruleSecModeNatural => '当前模式：仅自然语言';
 
   @override
-  String inUseOn(String model) {
-    return '$model 在用';
-  }
+  String get enabledModels => '启用的模型';
+
+  @override
+  String get notEnabled => '未启用';
 
   @override
   String get duplicatePreset => '创建副本';

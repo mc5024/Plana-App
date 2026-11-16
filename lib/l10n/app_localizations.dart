@@ -9010,11 +9010,17 @@ abstract class AppLocalizations {
   /// **'当前模式：仅自然语言'**
   String get ruleSecModeNatural;
 
-  /// No description provided for @inUseOn.
+  /// No description provided for @enabledModels.
   ///
   /// In zh, this message translates to:
-  /// **'{model} 在用'**
-  String inUseOn(String model);
+  /// **'启用的模型'**
+  String get enabledModels;
+
+  /// No description provided for @notEnabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'未启用'**
+  String get notEnabled;
 
   /// No description provided for @duplicatePreset.
   ///
