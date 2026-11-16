@@ -37,6 +37,7 @@ import 'assistant_settings.dart';
 import 'application/assistant_controller.dart';
 import 'application/proposal_service.dart' show canvasHasContent;
 import 'domain/image_model.dart';
+import 'image_gen/image_models.dart' show assistantImageModelProvider;
 import 'presets/preset_rule.dart' show RulesFamily, rulesFamilyOf;
 import 'widgets/history_sheet.dart';
 import 'widgets/inline_images.dart';
@@ -163,13 +164,18 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
     super.build(context);
     final scheme = context.scheme;
     final st = ref.watch(assistantProvider);
+    // 选着图像模型就直接出图,和创作页那边的 NAI 模型、对话模型都不相干
+    final drawing = ref.watch(assistantImageModelProvider) != null;
     // 没有 Bot 授权也能用,但只能走免费模型或自定义接口:两样都没有就先挡住
     final usable =
+        drawing ||
         ref.watch(assistantBackendAvailableProvider) ||
         ref.watch(assistantEndpointProvider) != null;
-    final supported = assistantSupportsModel(
-      ref.watch(generateProvider.select((g) => g.params.model)),
-    );
+    final supported =
+        drawing ||
+        assistantSupportsModel(
+          ref.watch(generateProvider.select((g) => g.params.model)),
+        );
     _maybeShowIntro();
 
     return Column(
@@ -1187,6 +1193,10 @@ class _MsgTile extends ConsumerWidget {
   /// 「纯文本格式」那一轮([AssistantMsg.promptAsText])不出结果条:提示词接在正文下面,
   /// 显示成纯文本,点一下复制。
   Widget _ai(BuildContext context, ColorScheme scheme) {
+    // 图像模型出的那轮没有正文,只有图
+    if (msg.imageGen != null && msg.text.trim().isEmpty) {
+      return InlineImages(msg: msg);
+    }
     final asText = msg.promptAsText;
     final strip = msg.draw != null && !asText;
     final maxW = MediaQuery.sizeOf(context).width * .84;

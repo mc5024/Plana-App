@@ -14,6 +14,7 @@ import '../../../l10n/l10n.dart';
 import '../assistant_mode.dart';
 import '../prompt_diff.dart';
 import 'agent_result.dart';
+import 'image_gen.dart';
 
 enum MsgRole { user, ai, error }
 
@@ -434,6 +435,8 @@ class AssistantMsg {
     this.tools = const [],
     this.draw,
     this.change,
+    this.imageGen,
+    this.imageModel,
   });
 
   final String id;
@@ -450,8 +453,8 @@ class AssistantMsg {
 
   /// 从这一轮的提议出过的图(图库条目 id,新的在后)。仅 [MsgRole.ai]。
   ///
-  /// 只在「图片显示在对话里」开着时才攒 —— 关着的时候出图会把页面切去图库,
-  /// 对话里再挂一份是重复。图本身**始终**入库,这里存的只是个引用;库里删了
+  /// NAI 出的只在「图片显示在对话里」开着时才攒 —— 关着的时候出图会把页面切去图库,
+  /// 对话里再挂一份是重复;图像模型出的始终攒。图本身**始终**入库,这里存的只是个引用;库里删了
   /// 就查不到,界面按「没有」处理,不留破图。
   final List<String> imageIds;
 
@@ -502,6 +505,12 @@ class AssistantMsg {
   /// 用户点过「导入」之后才有:那一次写回的记录(含撤销要用的两份快照)。
   final AssistantChange? change;
 
+  /// 选着图像模型时这一轮的出图请求。仅 [MsgRole.ai];这种消息没有正文,出的图在 [imageIds]。
+  final ImageGenSpec? imageGen;
+
+  /// [imageGen] 用的图像模型(`image_gen/image_models.dart` 的 key),重新生成照用它。
+  final String? imageModel;
+
   AssistantMsg copyWith({
     String? text,
     List<ToolTrace>? tools,
@@ -521,6 +530,8 @@ class AssistantMsg {
     tools: tools ?? this.tools,
     draw: draw,
     change: change ?? this.change,
+    imageGen: imageGen,
+    imageModel: imageModel,
   );
 
   Map<String, dynamic> toJson() => {
@@ -537,6 +548,8 @@ class AssistantMsg {
     if (tools.isNotEmpty) 'tools': [for (final t in tools) t.toJson()],
     if (draw != null) 'draw': draw!.toJson(),
     if (change != null) 'change': change!.toJson(),
+    if (imageGen != null) 'imageGen': imageGen!.toJson(),
+    'imageModel': ?imageModel,
   };
 
   factory AssistantMsg.fromJson(Map<String, dynamic> j) => AssistantMsg(
@@ -560,6 +573,8 @@ class AssistantMsg {
     change: j['change'] is Map<String, dynamic>
         ? AssistantChange.fromJson(j['change'] as Map<String, dynamic>)
         : null,
+    imageGen: ImageGenSpec.fromJson(j['imageGen']),
+    imageModel: j['imageModel'] as String?,
   );
 }
 

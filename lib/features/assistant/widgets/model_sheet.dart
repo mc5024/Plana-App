@@ -1,5 +1,5 @@
-/// 选 AI 助手用哪个模型:Plana 后端的渠道,或者自己填的接口。
-/// 没有 Bot 授权时后端那组只列免费模型。
+/// 选 AI 助手用哪个模型:Plana 后端的渠道,或者自己填的接口;最下面一组是图像模型,
+/// 选了就不走对话模型,发的话直接交给它出图。没有 Bot 授权时后端那组只列免费模型。
 ///
 /// 两组共用**同一种行**:左边一个图标、中间完整型号名、右边留给「编辑」。
 /// 不写 `short_label`(「GLM」「豆包」这种简称看不出是哪一代),也不写线路说明
@@ -23,6 +23,7 @@ import '../../generate/widgets/common.dart' show dropFocusSoon;
 import '../agent_model.dart';
 import '../custom_endpoint.dart';
 import '../endpoints_page.dart';
+import '../image_gen/image_models.dart' show imageModelChoicesProvider;
 import '../../../l10n/l10n.dart';
 
 Future<void> showModelSheet(BuildContext context) async {
@@ -52,6 +53,7 @@ class _ModelSheet extends ConsumerWidget {
     List<AgentModelChoice> shown(AgentModelList l) =>
         authorized ? l.choices : l.free;
     final hidden = !authorized && async.hasValue && shown(async.value!).isEmpty;
+    final images = ref.watch(imageModelChoicesProvider);
 
     return SettingSheet(
       title: context.l10n.selectModel,
@@ -106,7 +108,8 @@ class _ModelSheet extends ConsumerWidget {
                 onTap: () => _pick(context, ref, customModelKey(e.id, m)),
                 onEdit: () => openEndpointsPage(context, editId: e.id),
               )
-          else
+          // 只填了出图模型的接口不是没填完,只是不拿来对话
+          else if (!e.canDraw)
             _row(
               context,
               icon: Icons.bolt_outlined,
@@ -123,6 +126,28 @@ class _ModelSheet extends ConsumerWidget {
           accent: true,
           onTap: () => openEndpointsPage(context),
         ),
+        // 图像模型:选了就不走对话模型,发的话直接交给它出图
+        if (images.isNotEmpty) ...[
+          settingSection(context, context.l10n.imageModels),
+          for (final m in images)
+            _row(
+              context,
+              icon: Icons.image_outlined,
+              title: m.name,
+              // 没授权的后端渠道只说暂未开放,不引导去授权
+              subtitle:
+                  m.endpoint?.displayName ??
+                  (m.available ? null : context.l10n.notAvailableYet),
+              dim: !m.available,
+              selected: '$kImageKeyPrefix${m.key}' == currentKey,
+              onTap: m.available
+                  ? () => _pick(context, ref, '$kImageKeyPrefix${m.key}')
+                  : () {},
+              onEdit: m.endpoint == null
+                  ? null
+                  : () => openEndpointsPage(context, editId: m.endpoint!.id),
+            ),
+        ],
       ],
     );
   }

@@ -5075,6 +5075,24 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get imageModels => 'Image models';
+
+  @override
+  String get imageModelField => 'Image models';
+
+  @override
+  String get drawingImage => 'Generating';
+
+  @override
+  String get imagePromptEmpty => 'Say what to draw or how to change it';
+
+  @override
+  String get imageGenNoModel => 'This image model isn\'t available right now';
+
+  @override
+  String get imageGenNoImage => 'No image returned';
+
+  @override
   String get toolSearchArtist => 'Use Style Library';
 
   @override

@@ -11,6 +11,9 @@
 /// 不闪一下斜纹。
 ///
 /// 图**始终在图库里**,库里删掉的直接不画,不留一格破图 —— 最新那张删了就往前找一张。
+///
+/// 选着图像模型时出的图也画在这个框里;重新生成时没有逐帧预览和进度,只走一条细条,
+/// 没出成的原因写在框下面,带「重试」。
 library;
 
 import 'dart:math' as math;
@@ -45,6 +48,12 @@ class InlineImages extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final jobId = ref.watch(assistantProvider.select((s) => s.jobs[msg.id]));
+    final drawing = ref.watch(
+      assistantProvider.select((s) => s.imageRuns.contains(msg.id)),
+    );
+    final error = ref.watch(
+      assistantProvider.select((s) => s.imageErrors[msg.id]),
+    );
     GenJob? job;
     if (jobId != null) {
       for (final j in ref.watch(generationProvider).jobs) {
@@ -61,6 +70,7 @@ class InlineImages extends ConsumerWidget {
       }
     }
     final running = job;
+    final hasFrame = running != null || drawing || latest != null;
 
     // 开始出图、出完、失败时这一块的高度会变:让它长出来 / 收回去,不一下子顶开。
     // 没东西时也留着这层(零高),否则第一张出现时没有「从零长」的起点。
@@ -68,33 +78,49 @@ class InlineImages extends ConsumerWidget {
       duration: Motion.medium,
       curve: Motion.emphasized,
       alignment: Alignment.topLeft,
-      child: running == null && latest == null
+      child: !hasFrame && error == null
           ? const SizedBox(width: double.infinity)
           : Padding(
               padding: const EdgeInsets.only(top: 10),
-              child: LayoutBuilder(
-                // 「正在出」和「出好的」在同一个框里交叉淡入。两张尺寸可能不同:
-                // 叠在左上角,长短交给外面那层 AnimatedSize,别居中了左右晃一下
-                builder: (context, box) => AnimatedSwitcher(
-                  duration: Motion.medium,
-                  layoutBuilder: (current, previous) => Stack(
-                    alignment: Alignment.topLeft,
-                    children: [...previous, ?current],
-                  ),
-                  child: running != null
-                      ? _Running(
-                          key: ValueKey('running:${running.id}'),
-                          job: running,
-                          under: latest,
-                          maxW: box.maxWidth,
-                        )
-                      : _Done(
-                          key: ValueKey(latest!.id),
-                          msgId: msg.id,
-                          result: latest,
-                          maxW: box.maxWidth,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (hasFrame)
+                    LayoutBuilder(
+                      // 「正在出」和「出好的」在同一个框里交叉淡入。两张尺寸可能不同:
+                      // 叠在左上角,长短交给外面那层 AnimatedSize,别居中了左右晃一下
+                      builder: (context, box) => AnimatedSwitcher(
+                        duration: Motion.medium,
+                        layoutBuilder: (current, previous) => Stack(
+                          alignment: Alignment.topLeft,
+                          children: [...previous, ?current],
                         ),
-                ),
+                        child: running != null
+                            ? _Running(
+                                key: ValueKey('running:${running.id}'),
+                                job: running,
+                                under: latest,
+                                maxW: box.maxWidth,
+                              )
+                            : drawing
+                            ? _Drawing(
+                                key: const ValueKey('drawing'),
+                                under: latest,
+                                maxW: box.maxWidth,
+                              )
+                            : _Done(
+                                key: ValueKey(latest!.id),
+                                msgId: msg.id,
+                                result: latest,
+                                maxW: box.maxWidth,
+                                imageGen: msg.imageGen != null,
+                              ),
+                      ),
+                    ),
+                  if (error != null)
+                    _GenError(msgId: msg.id, error: error, below: hasFrame),
+                ],
               ),
             ),
     );
@@ -140,11 +166,15 @@ class _Done extends ConsumerWidget {
     required this.msgId,
     required this.result,
     required this.maxW,
+    this.imageGen = false,
   });
 
   final String msgId;
   final ResultImage result;
   final double maxW;
+
+  /// 这张是图像模型出的:「重新生成」再调一次图像模型。
+  final bool imageGen;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -163,7 +193,11 @@ class _Done extends ConsumerWidget {
           StripeThumb(width: size.width, height: size.height, radius: 0),
         // 跑着的时候框里换成了进度,这颗跟着一起不在 —— 同一条消息连投两单,
         // 进度条只跟得住一单。
-        Positioned(right: 10, bottom: 10, child: _AgainButton(msgId: msgId)),
+        Positioned(
+          right: 10,
+          bottom: 10,
+          child: _AgainButton(msgId: msgId, imageGen: imageGen),
+        ),
       ]),
     );
   }
@@ -257,26 +291,113 @@ class _Running extends ConsumerWidget {
   }
 }
 
+/// 图像模型在重新生成:没有逐帧预览也没有进度,只走一条不确定的细条。
+/// 垫着上一张(压暗);上一张在图库里删了就是方框斜纹。
+class _Drawing extends ConsumerWidget {
+  const _Drawing({super.key, required this.maxW, this.under});
+
+  final double maxW;
+  final ResultImage? under;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final last = under;
+    final (w, h) = last != null ? (last.width, last.height) : (1, 1);
+    final size = _box(w, h, maxW);
+    final lastBytes = last == null ? null : _bytesOf(ref, last);
+    return _frame(context, size, [
+      if (lastBytes != null) ...[
+        _Bitmap(bytes: lastBytes, size: size),
+        ColoredBox(color: Colors.black.withValues(alpha: .35)),
+      ] else
+        StripeThumb(width: size.width, height: size.height, radius: 0),
+      Positioned(
+        left: 0,
+        right: 0,
+        bottom: 0,
+        child: SizedBox(
+          height: 4,
+          child: LinearProgressIndicator(
+            backgroundColor: Colors.black.withValues(alpha: .25),
+            valueColor: AlwaysStoppedAnimation(context.scheme.primary),
+          ),
+        ),
+      ),
+    ]);
+  }
+}
+
+/// 图像模型没出成:原因原样写出来(审核拒、额度用完这些只有原话说得清),旁边一颗「重试」。
+class _GenError extends ConsumerWidget {
+  const _GenError({
+    required this.msgId,
+    required this.error,
+    required this.below,
+  });
+
+  final String msgId;
+  final String error;
+
+  /// 挂在图框下面。
+  final bool below;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = context.scheme;
+    return Padding(
+      padding: EdgeInsets.only(top: below ? 6 : 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Icon(Icons.error_outline, size: 16, color: scheme.error),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                error,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                style: context.texts.labelMedium!.copyWith(color: scheme.error),
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () =>
+                ref.read(assistantProvider.notifier).generateImage(msgId),
+            child: Text(context.l10n.retry),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// 浮在图右下角的「重新生成」。
 ///
 /// 摆图里而不是图下面:一颗按钮单独占一行,而它跟这张图是绑死的 —— 浮进去
 /// 既省一行,也说清楚了「重出的是这张」。底色带半透明,压在深色浅色图上都看得见。
 /// 48 见方:它压在一整张可点的图上,点偏了就被带去图库。
 class _AgainButton extends ConsumerWidget {
-  const _AgainButton({required this.msgId});
+  const _AgainButton({required this.msgId, this.imageGen = false});
 
   final String msgId;
+  final bool imageGen;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = context.scheme;
+    final n = ref.read(assistantProvider.notifier);
     return Material(
       color: scheme.surface.withValues(alpha: .88),
       shape: const CircleBorder(),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         // 图本体点了是去图库,这颗要吃掉自己的点击,别顺着漏下去
-        onTap: () => ref.read(assistantProvider.notifier).generateFrom(msgId),
+        onTap: () => imageGen ? n.generateImage(msgId) : n.generateFrom(msgId),
         child: Tooltip(
           message: context.l10n.regenerate,
           child: Padding(

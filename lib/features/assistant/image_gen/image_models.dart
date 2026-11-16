@@ -1,0 +1,115 @@
+/// 图像模型:选模型弹层里「图像模型」那组。后端渠道(免费额度,要 Bot 授权)在前,各接口里填的
+/// 出图模型在后;后端那张表由服务端下发,不在 App 里写死。
+///
+/// 选中时存在助手模型那个偏好里,值是 `image:` 加这里的 key(见 [kImageKeyPrefix]):
+/// 后端渠道 `plana:<渠道>`,接口沿用对话模型那套 `custom:<接口 id>/<模型>`。
+library;
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/auth/bot_session_store.dart';
+import '../../../core/net/backend_client.dart';
+import '../agent_model.dart';
+import '../custom_endpoint.dart';
+
+const kPlanaImagePrefix = 'plana:';
+
+class ImageModelChoice {
+  const ImageModelChoice({
+    required this.key,
+    required this.name,
+    required this.model,
+    this.endpoint,
+    this.available = true,
+  });
+
+  final String key;
+  final String name;
+
+  /// 后端渠道 key / 接口里的模型 id。
+  final String model;
+
+  /// 走哪个接口;null = 后端渠道。
+  final CustomEndpoint? endpoint;
+
+  /// 后端渠道没有 Bot 授权时为 false。
+  final bool available;
+}
+
+typedef PlanaImageChannel = ({String key, String name});
+
+/// `GET /api/agent/image/channels` 的响应。
+typedef PlanaImageChannels = ({
+  List<PlanaImageChannel> channels,
+  bool authorized,
+});
+
+PlanaImageChannels parsePlanaImageChannels(Map<String, dynamic> j) => (
+  channels: [
+    for (final c in (j['channels'] as List? ?? const []))
+      if (c is Map && '${c['key'] ?? ''}'.isNotEmpty)
+        (key: '${c['key']}', name: '${c['name'] ?? c['key']}'),
+  ],
+  authorized: j['authorized'] == true,
+);
+
+/// 后端渠道。拿不到(没配后端、老后端没这个接口)就是空表。
+final planaImageChannelsProvider = FutureProvider<PlanaImageChannels>((
+  ref,
+) async {
+  final sid = (await ref.watch(botSessionProvider.future))?.sessionId ?? '';
+  try {
+    return parsePlanaImageChannels(
+      await ref.watch(backendClientProvider).agentImageChannels(sid),
+    );
+  } catch (_) {
+    return (channels: const <PlanaImageChannel>[], authorized: false);
+  }
+});
+
+List<ImageModelChoice> imageModelChoices(
+  PlanaImageChannels? plana,
+  List<CustomEndpoint> endpoints,
+) => [
+  for (final c in plana?.channels ?? const <PlanaImageChannel>[])
+    ImageModelChoice(
+      key: '$kPlanaImagePrefix${c.key}',
+      name: c.name,
+      model: c.key,
+      available: plana!.authorized,
+    ),
+  for (final e in endpoints)
+    if (e.canDraw)
+      for (final m in e.imageModels)
+        ImageModelChoice(
+          key: customModelKey(e.id, m),
+          name: m,
+          model: m,
+          endpoint: e,
+        ),
+];
+
+/// [key] 对应的那个,不在了或用不了为 null。
+ImageModelChoice? imageModelOf(List<ImageModelChoice> all, String? key) {
+  for (final c in all) {
+    if (c.key == key && c.available) return c;
+  }
+  return null;
+}
+
+final imageModelChoicesProvider = Provider<List<ImageModelChoice>>(
+  (ref) => imageModelChoices(
+    ref.watch(planaImageChannelsProvider).value,
+    ref.watch(customEndpointsProvider).value ?? const [],
+  ),
+);
+
+/// 选着的图像模型;选的不是图像模型、或者它现在用不了为 null。
+final assistantImageModelProvider = Provider<ImageModelChoice?>((ref) {
+  final key = imageChoiceKeyOf(
+    ref.watch(assistantModelPrefProvider).value ?? '',
+  );
+  return key == null
+      ? null
+      : imageModelOf(ref.watch(imageModelChoicesProvider), key);
+});

@@ -8212,6 +8212,42 @@ abstract class AppLocalizations {
   /// **'{n} 个已开'**
   String toolsEnabledN(int n);
 
+  /// No description provided for @imageModels.
+  ///
+  /// In zh, this message translates to:
+  /// **'图像模型'**
+  String get imageModels;
+
+  /// No description provided for @imageModelField.
+  ///
+  /// In zh, this message translates to:
+  /// **'出图模型'**
+  String get imageModelField;
+
+  /// No description provided for @drawingImage.
+  ///
+  /// In zh, this message translates to:
+  /// **'出图中'**
+  String get drawingImage;
+
+  /// No description provided for @imagePromptEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'说一句要画什么或者怎么改'**
+  String get imagePromptEmpty;
+
+  /// No description provided for @imageGenNoModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个图像模型现在用不了'**
+  String get imageGenNoModel;
+
+  /// No description provided for @imageGenNoImage.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有出图'**
+  String get imageGenNoImage;
+
   /// No description provided for @toolSearchArtist.
   ///
   /// In zh, this message translates to:

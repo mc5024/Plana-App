@@ -46,6 +46,8 @@ dependencies:
   animations: ^2.2.0
   flutter_secure_storage: ^10.3.1
   http: ^1.6.0
+  # 自定义接口改图走 multipart,图片段要标 Content-Type
+  http_parser: ^4.1.2
   archive: ^4.0.9
   msgpack_dart: ^1.0.1
   file_picker: ^10.1.0

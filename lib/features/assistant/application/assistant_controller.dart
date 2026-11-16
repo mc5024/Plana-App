@@ -10,6 +10,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 
 import '../../../core/app_info.dart' show kAppVersion;
 import '../../../core/auth/bot_session_store.dart';
@@ -17,10 +18,13 @@ import '../../../core/live_progress/live_progress.dart';
 import '../../../core/net/backend_config.dart';
 import '../../../core/store/app_stores.dart';
 import '../../../core/store/gen_settings.dart' show genSettingsProvider;
+import '../../../core/util/image_ops.dart' show decodeImageSize, ensurePng;
 import '../../../l10n/l10n.dart';
+import '../../gallery/albums/album_state.dart' show gallerySaveTargetProvider;
+import '../../gallery/gallery_state.dart' show galleryProvider;
 import '../../generate/canvas_state.dart';
 import '../../generate/generate_state.dart';
-import '../../generate/models.dart' show GenerateState;
+import '../../generate/models.dart' show GenerateState, imageSizeOf;
 import '../../inspiration/public_tags.dart'
     show mergeMineTags, publicTagsProvider;
 import '../../inspiration/tag_library.dart';
@@ -29,13 +33,17 @@ import '../agent_model.dart';
 import '../agent_trace.dart';
 import '../assistant_mode.dart';
 import '../assistant_settings.dart';
-import '../custom_endpoint.dart' show CustomEndpoint;
+import '../custom_endpoint.dart' show CustomEndpoint, customEndpointsProvider;
 import '../domain/agent_event.dart';
 import '../domain/agent_result.dart';
 import '../domain/conversation.dart';
+import '../domain/image_gen.dart';
 import '../domain/image_model.dart';
 import '../domain/turn_request.dart';
 import '../../editor/data/tag_completion.dart' show tagCompletionProvider;
+import '../image_gen/image_gen_client.dart';
+import '../image_gen/image_models.dart';
+import '../llm/llm_image.dart' show prepareLlmImage;
 import '../presets/preset_rule.dart';
 import '../presets/rules_library.dart';
 import '../runtime/agent_runtime.dart';
@@ -82,6 +90,8 @@ class AssistantState {
     this.liveReasoning = '',
     this.changedUnseen = false,
     this.jobs = const {},
+    this.imageRuns = const {},
+    this.imageErrors = const {},
     this.mode = AssistantMode.normal,
   });
 
@@ -117,6 +127,12 @@ class AssistantState {
   /// 不落盘:任务 id 是本次运行内的序号。
   final Map<String, String> jobs;
 
+  /// 正在用图像模型重新生成的消息 id。不落盘。
+  final Set<String> imageRuns;
+
+  /// 图像模型重新生成没出成的原因:消息 id → 错误原文。不落盘,再出一次就清掉。
+  final Map<String, String> imageErrors;
+
   /// 有写回、但用户还没切去创作页看过 —— 底部导航「创作」上那颗角标。
   final bool changedUnseen;
 
@@ -133,6 +149,8 @@ class AssistantState {
     String? liveReasoning,
     bool? changedUnseen,
     Map<String, String>? jobs,
+    Set<String>? imageRuns,
+    Map<String, String>? imageErrors,
     AssistantMode? mode,
   }) => AssistantState(
     msgs: msgs ?? this.msgs,
@@ -145,6 +163,8 @@ class AssistantState {
     liveReasoning: liveReasoning ?? this.liveReasoning,
     changedUnseen: changedUnseen ?? this.changedUnseen,
     jobs: jobs ?? this.jobs,
+    imageRuns: imageRuns ?? this.imageRuns,
+    imageErrors: imageErrors ?? this.imageErrors,
     mode: mode ?? this.mode,
   );
 }
@@ -159,8 +179,14 @@ const _keepFences = 2;
 /// 发一轮时等公共库列表(我发布的画风 / OC)最多多久,过了这轮只用本机条目。
 const _publicLibraryWait = Duration(seconds: 5);
 
+/// 等后端图像模型列表最多多久,过了只看自定义接口。
+const _imageChannelsWait = Duration(seconds: 5);
+
 class AssistantController extends Notifier<AssistantState> {
   StreamSubscription<AgentEvent>? _sub;
+
+  /// 正在跑的那一轮图像模型请求;停的时候关掉它。
+  http.Client? _imageClient;
 
   /// 发号作废:取消 / 又发了一次时,回来的旧事件对不上号,整轮丢弃。
   int _seq = 0;
@@ -394,6 +420,18 @@ class AssistantController extends Notifier<AssistantState> {
     required bool withCanvas,
     String? queuedId,
   }) async {
+    // 选着图像模型:不走对话模型,原话直接交给它出图
+    final imageKey = imageChoiceKeyOf(
+      ref.read(assistantModelPrefProvider).value ?? '',
+    );
+    if (imageKey != null) {
+      return _sendImage(
+        trimmed,
+        image: image,
+        queuedId: queuedId,
+        modelKey: imageKey,
+      );
+    }
     // 界面已经挡了,这儿再挡一道:自动生成、重试这些不经过界面
     final model = ref.read(generateProvider).params.model;
     if (!assistantSupportsModel(model)) {
@@ -724,6 +762,212 @@ class AssistantController extends Notifier<AssistantState> {
     unawaited(_drain());
   }
 
+  // ---- 图像模型 ----
+
+  /// 选着图像模型时发一轮:原话交给图像模型出一张,不走对话模型。附了图带上附图,
+  /// 没附图但上一轮出过图就带上那张,好接着改。
+  Future<void> _sendImage(
+    String text, {
+    Uint8List? image,
+    String? queuedId,
+    required String modelKey,
+  }) async {
+    final hash = image == null ? null : await _repo.putImage(image);
+    final spec = ImageGenSpec(
+      prompt: text,
+      attached: image != null,
+      refId: image == null ? _lastImageId() : null,
+    );
+    final seq = ++_seq;
+    _set(
+      state.copyWith(
+        msgs: [
+          ...state.msgs,
+          AssistantMsg(
+            id: queuedId ?? _newId(),
+            role: MsgRole.user,
+            text: text,
+            at: _now,
+            imageHash: hash,
+            mode: state.mode,
+          ),
+        ],
+        queue: [
+          for (final q in state.queue)
+            if (q.id != queuedId) q,
+        ],
+        running: true,
+        liveTools: const [],
+        liveText: '',
+        liveReasoning: '',
+        stage: l10nNow.drawingImage,
+      ),
+    );
+    if (ref.read(genSettingsProvider).value?.genNotify ?? true) {
+      LiveProgress.instance.beginAssistant();
+    }
+    final client = _imageClient = http.Client();
+    try {
+      if (text.isEmpty) throw AgentFailure(l10nNow.imagePromptEmpty);
+      final png = await _drawImage(
+        modelKey,
+        spec,
+        attached: image,
+        client: client,
+      );
+      if (seq != _seq) return;
+      final id = await _saveImage(png);
+      if (seq != _seq) return;
+      LiveProgress.instance.endAssistant(success: true, keep: !_appForeground);
+      _set(
+        state.copyWith(
+          msgs: [
+            ...state.msgs,
+            AssistantMsg(
+              id: _newId(),
+              role: MsgRole.ai,
+              text: '',
+              at: _now,
+              imageIds: [id],
+              imageGen: spec,
+              imageModel: modelKey,
+            ),
+          ],
+          running: false,
+          stage: '',
+        ),
+      );
+      unawaited(_drain());
+    } catch (e) {
+      if (seq != _seq) return;
+      _pushError('$e');
+    } finally {
+      client.close();
+      if (identical(_imageClient, client)) _imageClient = null;
+    }
+  }
+
+  /// 图上的「重新生成」:照这条消息的请求再出一张,在原框里换。
+  Future<void> generateImage(String msgId) async {
+    final msg = _msg(msgId);
+    final spec = msg?.imageGen;
+    final key = msg?.imageModel;
+    if (spec == null || key == null || state.imageRuns.contains(msgId)) return;
+    _set(
+      state.copyWith(
+        imageRuns: {...state.imageRuns, msgId},
+        imageErrors: {...state.imageErrors}..remove(msgId),
+      ),
+      persist: false,
+    );
+    String? error;
+    String? imageId;
+    final client = http.Client();
+    try {
+      final attached = spec.attached
+          ? await _repo.image(askOf(msgId)?.imageHash)
+          : null;
+      imageId = await _saveImage(
+        await _drawImage(key, spec, attached: attached, client: client),
+      );
+    } catch (e) {
+      error = '$e';
+    } finally {
+      client.close();
+    }
+    final errors = {...state.imageErrors}..remove(msgId);
+    if (error != null) errors[msgId] = error;
+    var msgs = state.msgs;
+    final i = msgs.indexWhere((m) => m.id == msgId);
+    // 出图这段时间里被截断/归档了就不挂
+    final attach = imageId != null && i >= 0;
+    if (attach) {
+      msgs = [...msgs];
+      msgs[i] = msgs[i].copyWith(imageIds: [...msgs[i].imageIds, imageId]);
+    }
+    _set(
+      state.copyWith(
+        msgs: msgs,
+        imageRuns: {...state.imageRuns}..remove(msgId),
+        imageErrors: errors,
+      ),
+      persist: attach,
+    );
+  }
+
+  /// 按 [spec] 让 [modelKey] 那个图像模型出一张,返回 PNG。[attached] 是这轮提问附的图。
+  Future<Uint8List> _drawImage(
+    String modelKey,
+    ImageGenSpec spec, {
+    Uint8List? attached,
+    required http.Client client,
+  }) async {
+    final choice = imageModelOf(await _imageChoices(), modelKey);
+    if (choice == null) throw AgentFailure(l10nNow.imageGenNoModel);
+    final last = spec.refId == null ? null : await _galleryBytes(spec.refId!);
+    final images = [
+      if (attached != null) await prepareLlmImage(attached),
+      if (last != null) await prepareLlmImage(last),
+    ];
+    final sid = (await ref.read(botSessionProvider.future))?.sessionId ?? '';
+    final bytes = await imageGenClientFor(
+      choice,
+      backendBase: ref.read(backendBaseProvider).value ?? '',
+      sessionId: sid,
+    ).generate((prompt: spec.prompt, images: images), client: client);
+    return ensurePng(bytes);
+  }
+
+  /// 出好的图进图库,返回条目 id。
+  Future<String> _saveImage(Uint8List png) async {
+    final (w, h) = imageSizeOf(png) ?? await decodeImageSize(png);
+    final r = await ref
+        .read(galleryProvider.notifier)
+        .addResultToGallery(
+          bytes: png,
+          width: w,
+          height: h,
+          seed: 0,
+          target: ref.read(gallerySaveTargetProvider),
+        );
+    return r.id;
+  }
+
+  /// 全部图像模型。后端渠道列表最多等 [_imageChannelsWait]。
+  Future<List<ImageModelChoice>> _imageChoices() async {
+    PlanaImageChannels? plana;
+    try {
+      plana = await ref
+          .read(planaImageChannelsProvider.future)
+          .timeout(_imageChannelsWait);
+    } catch (_) {}
+    List<CustomEndpoint> endpoints;
+    try {
+      endpoints = await ref.read(customEndpointsProvider.future);
+    } catch (_) {
+      endpoints = const [];
+    }
+    return imageModelChoices(plana, endpoints);
+  }
+
+  /// 上一轮(最近那条 AI 消息)出的、还在图库里的最新一张;没有为 null。
+  String? _lastImageId() {
+    final last = state.msgs.where((m) => m.role == MsgRole.ai).lastOrNull;
+    if (last == null) return null;
+    final results = ref.read(galleryProvider).results;
+    for (final id in last.imageIds.reversed) {
+      if (results.any((r) => r.id == id)) return id;
+    }
+    return null;
+  }
+
+  Future<Uint8List?> _galleryBytes(String id) async {
+    final r = ref.read(galleryProvider).results.where((r) => r.id == id);
+    if (r.isEmpty) return null;
+    return r.first.bytes ??
+        await ref.read(appStoresProvider).gallery.readImage(id);
+  }
+
   /// 「自动写入创作页」/「出词后自动生成」两个开关的落点:先导入再出图。
   /// 发问之后切去了别的画布,两样都不自动做。
   void _autoAfterDraw(String msgId, String sourceCanvasId) {
@@ -777,6 +1021,8 @@ class AssistantController extends Notifier<AssistantState> {
     _seq++;
     _sub?.cancel();
     _sub = null;
+    _imageClient?.close();
+    _imageClient = null;
     LiveProgress.instance.cancelAssistant();
     _set(
       state.copyWith(

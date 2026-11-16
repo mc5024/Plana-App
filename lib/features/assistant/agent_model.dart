@@ -21,6 +21,7 @@ import '../../core/net/backend_client.dart';
 import '../../core/store/app_stores.dart';
 import '../../core/store/prefs_store.dart';
 import 'custom_endpoint.dart';
+import 'image_gen/image_models.dart' show assistantImageModelProvider;
 import 'llm/http_provider.dart' show llmProviderFor;
 import 'llm/llm_provider.dart' show LlmCapabilities;
 import 'llm/plana_channel_provider.dart' show kChannelCapabilities;
@@ -171,6 +172,15 @@ const kCustomKeyPrefix = 'custom:';
 String customModelKey(String endpointId, [String model = '']) =>
     '$kCustomKeyPrefix$endpointId${model.isEmpty ? '' : '/$model'}';
 
+/// 选中图像模型时存这个前缀加图像模型的 key(见 `image_gen/image_models.dart`)。
+/// 同一个偏好键:选了图像模型就不走对话模型,发的话直接交给它出图。
+const kImageKeyPrefix = 'image:';
+
+/// 选中的是不是图像模型;是就给出图像模型的 key。
+String? imageChoiceKeyOf(String key) => key.startsWith(kImageKeyPrefix)
+    ? key.substring(kImageKeyPrefix.length)
+    : null;
+
 /// 选中的是不是自定义接口;是就给出接口 id。
 String? customEndpointIdOf(String key) {
   if (!key.startsWith(kCustomKeyPrefix)) return null;
@@ -233,13 +243,11 @@ class AssistantModelPrefNotifier extends AsyncNotifier<String> {
 /// 没有 Bot 授权时发界面上显示的那条免费模型,不发空串:后端的全局默认未必免费。
 final assistantModelKeyProvider = Provider<String>((ref) {
   final k = ref.watch(assistantModelPrefProvider).value ?? '';
-  if (ref.watch(assistantBotAuthorizedProvider)) {
-    return customEndpointIdOf(k) == null ? k : '';
-  }
+  bool backend(String key) =>
+      customEndpointIdOf(key) == null && imageChoiceKeyOf(key) == null;
+  if (ref.watch(assistantBotAuthorizedProvider)) return backend(k) ? k : '';
   final shown = ref.watch(assistantModelProvider);
-  return shown == null || customEndpointIdOf(shown.key) != null
-      ? ''
-      : shown.key;
+  return shown == null || !backend(shown.key) ? '' : shown.key;
 });
 
 /// 有没有 Bot 授权。没有也能用助手,但只能用免费模型和自定义接口,资料只给本地库;
@@ -261,6 +269,10 @@ final assistantBackendAvailableProvider = Provider<bool>((ref) {
 /// 授权回来就还是它。
 final assistantModelProvider = Provider<AgentModelChoice?>((ref) {
   final pinned = ref.watch(assistantModelPrefProvider).value ?? '';
+  // 图像模型用不了(授权没了、接口删了)时回落到对话模型那边照常显示
+  if (ref.watch(assistantImageModelProvider) case final m?) {
+    return AgentModelChoice(key: pinned, name: m.name);
+  }
   // 自定义接口不在后端那张表里,名字从本机的接口列表取
   if (customEndpointIdOf(pinned) != null) {
     for (final e in ref.watch(customEndpointsProvider).value ?? const []) {

@@ -4673,6 +4673,24 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get imageModels => '图像模型';
+
+  @override
+  String get imageModelField => '出图模型';
+
+  @override
+  String get drawingImage => '出图中';
+
+  @override
+  String get imagePromptEmpty => '说一句要画什么或者怎么改';
+
+  @override
+  String get imageGenNoModel => '这个图像模型现在用不了';
+
+  @override
+  String get imageGenNoImage => '没有出图';
+
+  @override
   String get toolSearchArtist => '使用画风库';
 
   @override
