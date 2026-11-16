@@ -4,9 +4,8 @@
 /// 那份的 meta。**点卡片就用这份**,正在用的卡右上角挂一个「使用中」角标。
 /// 每个模型恰好有一张卡在用,默认规则兜底。
 ///
-/// 编辑是全文编辑:摊开的就是导出的那份文本,不做逐段的表单 —— 规则文件的写法与
-/// 服务端预设一致,整份摊开最直接,电脑上改好的也能整段贴进来。默认规则的原件在
-/// 包里,改完另存为一份新预设。
+/// 编辑进段落页([RulesSectionsPage]):一段一张卡,逐段改,全文编辑在那页顶栏。
+/// 默认规则的原件在包里,改完另存为一份新预设。
 library;
 
 import 'dart:convert';
@@ -23,6 +22,7 @@ import 'presets/default_rules.dart';
 import 'presets/preset_rule.dart';
 import 'presets/rules_file.dart';
 import 'presets/rules_library.dart';
+import 'rules_sections_page.dart';
 import '../../l10n/l10n.dart';
 
 class RulesPresetPage extends ConsumerWidget {
@@ -86,7 +86,7 @@ class RulesPresetPage extends ConsumerWidget {
         models: p.models,
         inUse: inUse,
         onUse: onUse,
-        onEdit: () => _editDefault(context, ref, f),
+        onEdit: () => _openSections(context, RulesSectionsPage(family: f)),
         onExport: () => _exportDefault(context, ref, f),
       );
     }
@@ -100,7 +100,7 @@ class RulesPresetPage extends ConsumerWidget {
       models: p.models,
       inUse: inUse,
       onUse: onUse,
-      onEdit: () => _edit(context, ref, p),
+      onEdit: () => _openSections(context, RulesSectionsPage(presetId: p.id)),
       onExport: () => _save(
         context,
         name: p.name,
@@ -159,7 +159,6 @@ class RulesPresetPage extends ConsumerWidget {
     }
   }
 
-
   /// 默认规则导出时名字带上版本(「Nyako v5」)——
   /// 两个版本同名,导进来之后分不出哪张是哪张。
   Future<void> _exportDefault(
@@ -189,101 +188,8 @@ class RulesPresetPage extends ConsumerWidget {
     }
   }
 
-  Future<RulesFile?> _openEditor(
-    BuildContext context, {
-    required String title,
-    required String text,
-  }) => Navigator.push<RulesFile>(
-    context,
-    MaterialPageRoute(
-      builder: (_) => _RulesEditorPage(title: title, text: text),
-    ),
-  );
-
-  /// 全文编辑导入的预设,存回原处。
-  Future<void> _edit(BuildContext context, WidgetRef ref, RulesPreset p) async {
-    final file = await _openEditor(
-      context,
-      title: p.name,
-      text: encodeRulesFile(
-        name: p.name,
-        author: p.author,
-        models: p.models,
-        rules: p.rules,
-      ),
-    );
-    if (file == null) return;
-    await ref
-        .read(rulesLibraryProvider.notifier)
-        .replace(
-          p.id,
-          name: file.name,
-          author: file.author,
-          models: file.models,
-          rules: file.rules,
-        );
-    if (context.mounted) {
-      hintSnack(
-        context,
-        context.l10n.savedNamed(file.name),
-        icon: Icons.check_circle_outline,
-      );
-    }
-  }
-
-  /// 默认规则的原件在包里,改不了:改完另存为一份新预设。这个模型原先用的是
-  /// 默认规则的,改用新存的这份 —— 点「编辑」是想改自己在用的规则,存完还挂在原件上
-  /// 等于白改。
-  Future<void> _editDefault(
-    BuildContext context,
-    WidgetRef ref,
-    RulesFamily f,
-  ) async {
-    final DefaultRules d;
-    try {
-      // 卡片进页面时刚取过,走缓存就行,不让人干等一趟网络
-      d = await bundledDefaultRules(f);
-    } catch (e) {
-      if (context.mounted) {
-        hintSnack(
-          context,
-          context.l10n.readDefaultRulesFailed('$e'),
-          icon: Icons.error_outline,
-        );
-      }
-      return;
-    }
-    if (!context.mounted) return;
-    final name = '${d.name} ${d.version}'.trim();
-    final file = await _openEditor(
-      context,
-      title: name,
-      text: encodeRulesFile(
-        name: name,
-        author: d.author,
-        models: {f},
-        rules: d.rules,
-      ),
-    );
-    if (file == null) return;
-    final wasDefault =
-        ref.read(rulesLibraryProvider).value?.activeFor(f).isDefault ?? false;
-    final n = ref.read(rulesLibraryProvider.notifier);
-    final id = await n.add(
-      name: file.name,
-      author: file.author,
-      models: file.models,
-      rules: file.rules,
-    );
-    if (wasDefault && file.models.contains(f)) await n.use(f, id);
-    if (context.mounted) {
-      hintSnack(
-        context,
-        context.l10n.savedAsNamed(file.name),
-        icon: Icons.check_circle_outline,
-      );
-    }
-  }
+  Future<void> _openSections(BuildContext context, Widget page) =>
+      Navigator.push<void>(context, MaterialPageRoute(builder: (_) => page));
 
   Future<void> _save(
     BuildContext context, {
@@ -643,104 +549,6 @@ class _ImportSheetState extends State<_ImportSheet> {
             child: Text(context.l10n.importLabel),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// 全文编辑:摊开的是导出的那份文本。保存时按导入同一套规矩读回来,读不通就
-/// 原地报错、不关页面;没保存就返回要确认一下,几万字的规则丢了找不回来。
-class _RulesEditorPage extends StatefulWidget {
-  const _RulesEditorPage({required this.title, required this.text});
-
-  final String title;
-  final String text;
-
-  @override
-  State<_RulesEditorPage> createState() => _RulesEditorPageState();
-}
-
-class _RulesEditorPageState extends State<_RulesEditorPage> {
-  late final _ctl = TextEditingController(text: widget.text);
-  var _dirty = false;
-
-  @override
-  void dispose() {
-    _ctl.dispose();
-    super.dispose();
-  }
-
-  void _save() {
-    final RulesFile file;
-    try {
-      file = decodeRulesFile(_ctl.text);
-    } on FormatException catch (e) {
-      hintSnack(context, e.message, icon: Icons.error_outline);
-      return;
-    }
-    // 导入时这两样能在弹层里补,这里没有弹层,文本里就得写全
-    final missing = file.name.isEmpty
-        ? context.l10n.missingPresetName
-        : file.models.isEmpty
-        ? context.l10n.missingModels
-        : null;
-    if (missing != null) {
-      hintSnack(context, missing, icon: Icons.error_outline);
-      return;
-    }
-    Navigator.pop(context, file);
-  }
-
-  Future<void> _confirmLeave() async {
-    final ok = await confirmDialog(
-      context,
-      title: context.l10n.discardChangesQ,
-      message: context.l10n.unsavedLost2,
-      confirmLabel: context.l10n.discardAction,
-    );
-    if (ok && mounted) Navigator.pop(context);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: !_dirty,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _confirmLeave();
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(widget.title),
-          actions: [
-            IconButton(
-              tooltip: context.l10n.save,
-              onPressed: _save,
-              icon: const Icon(Icons.check),
-            ),
-          ],
-        ),
-        // 文本直接铺在页面上,不再套一层底色框:整页就是编辑区
-        body: SafeArea(
-          top: false,
-          child: TextField(
-            controller: _ctl,
-            expands: true,
-            maxLines: null,
-            keyboardType: TextInputType.multiline,
-            textAlignVertical: TextAlignVertical.top,
-            // YAML 靠缩进和原样的键名,输入法的自动更正只会帮倒忙
-            autocorrect: false,
-            enableSuggestions: false,
-            style: mono(context, size: 13, weight: FontWeight.w400),
-            onChanged: (_) {
-              if (!_dirty) setState(() => _dirty = true);
-            },
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.fromLTRB(16, 4, 16, 16),
-            ),
-          ),
-        ),
       ),
     );
   }

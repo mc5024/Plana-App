@@ -47,7 +47,10 @@ bool modeNeedsPresetSection(AssistantMode m) =>
 
 /// 这份规则能选哪几个模式。
 Set<AssistantMode> supportedModes(List<PresetRule> rules) {
-  final whens = {for (final r in rules) r.when};
+  final whens = {
+    for (final r in rules)
+      if (r.enabled) r.when,
+  };
   return {
     for (final m in AssistantMode.values)
       if (!modeNeedsPresetSection(m) || whens.contains(assistantModeWhen(m))) m,

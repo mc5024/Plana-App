@@ -14,6 +14,10 @@ const _fileFormat = 'plana-rules';
 /// 导入时给工具层留的余量:发出去的是「预设 + 工具层」,整份还得在服务端上限里。
 const _toolLayerReserveChars = 6000;
 
+/// 改完的规则是否超限(同导入的门槛),没超返回 null。
+String? rulesEditLimitError(List<PresetRule> rules) =>
+    rulesLimitError(rules, reserveChars: _toolLayerReserveChars);
+
 /// 读出来的规则文件。名字、作者、模型文件里可能没写(比如一整份服务端预设),
 /// 由导入界面让用户补上。
 class RulesFile {
@@ -56,6 +60,7 @@ String encodeRulesFile({
   for (final r in rules) {
     b.writeln('  - name: ${jsonEncode(r.name)}');
     if (r.when.isNotEmpty) b.writeln('    when: ${jsonEncode(r.when)}');
+    if (!r.enabled) b.writeln('    enabled: false');
     final lines = r.content.split('\n');
     // 第一行以空格开头时必须写缩进指示符,否则 YAML 会把那几个空格当成缩进吃掉
     final firstIndented = lines

@@ -5051,11 +5051,6 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
-  String readDefaultRulesFailed(String error) {
-    return '读取默认规则失败:$error';
-  }
-
-  @override
   String savedAsNamed(String name) {
     return '已另存为「$name」';
   }
@@ -5091,6 +5086,92 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get hasConditional => '含条件段';
+
+  @override
+  String get ruleSecRole => '角色定义';
+
+  @override
+  String get ruleSecModelTraits => '模型特性';
+
+  @override
+  String get ruleSecPromptConstruction => '提示词构建';
+
+  @override
+  String get ruleSecNaturalConstruction => '纯自然语言构建';
+
+  @override
+  String get ruleSecWeightControl => '权重控制';
+
+  @override
+  String get ruleSecCharacters => '角色处理';
+
+  @override
+  String get ruleSecMultiCharacter => '多角色绘图';
+
+  @override
+  String get ruleSecComic => '漫画 / 分镜';
+
+  @override
+  String get ruleSecCustomTags => '自定义标签';
+
+  @override
+  String get ruleSecTextRendering => '画面文字';
+
+  @override
+  String get ruleSecAlpha => '透明通道';
+
+  @override
+  String get ruleSecOutput => '绘图输出';
+
+  @override
+  String get ruleSecModeComic => '当前模式：漫画';
+
+  @override
+  String get ruleSecModeNatural => '当前模式：仅自然语言';
+
+  @override
+  String get whenAlways => '常驻';
+
+  @override
+  String whenModeOn(String mode) {
+    return '选了$mode时';
+  }
+
+  @override
+  String whenModeOff(String mode) {
+    return '没选$mode时';
+  }
+
+  @override
+  String get triggerCondition => '触发条件';
+
+  @override
+  String charsN(int n) {
+    return '$n 字';
+  }
+
+  @override
+  String get fullTextEdit => '全文编辑';
+
+  @override
+  String get addRuleSection => '添加一段';
+
+  @override
+  String get ruleSectionName => '段名';
+
+  @override
+  String get deleteRuleSectionQ => '删除这一段?';
+
+  @override
+  String deleteRuleSectionBody(String name) {
+    return '「$name」的内容会一起删掉。';
+  }
+
+  @override
+  String get ruleSectionEmpty => '内容不能为空';
+
+  @override
+  String get ruleSectionNameReserved => '这个段名留给工具层,换一个';
 
   @override
   String get supportedModels => '支持的模型';

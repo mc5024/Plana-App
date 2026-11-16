@@ -28,7 +28,12 @@ RulesFamily rulesFamilyOf(String imageModel) =>
 final _leadingBlankLines = RegExp(r'^(?:[ \t]*\r?\n)+');
 
 class PresetRule {
-  const PresetRule({required this.name, required this.content, this.when = ''});
+  const PresetRule({
+    required this.name,
+    required this.content,
+    this.when = '',
+    this.enabled = true,
+  });
 
   /// 段名,与服务端预设 yaml 的 name 同义。
   final String name;
@@ -37,10 +42,26 @@ class PresetRule {
   /// 条件段的模式名(如 `comic`、`mode:natural`),空 = 常驻。
   final String when;
 
+  /// 停用的段留着内容,不发给模型。
+  final bool enabled;
+
+  PresetRule copyWith({
+    String? name,
+    String? content,
+    String? when,
+    bool? enabled,
+  }) => PresetRule(
+    name: name ?? this.name,
+    content: content ?? this.content,
+    when: when ?? this.when,
+    enabled: enabled ?? this.enabled,
+  );
+
   Map<String, dynamic> toJson() => {
     'name': name,
     'content': content,
     if (when.isNotEmpty) 'when': when,
+    if (!enabled) 'enabled': false,
   };
 
   static PresetRule? fromJson(Object? j) {
@@ -55,8 +76,51 @@ class PresetRule {
       name: name,
       content: content,
       when: '${j['when'] ?? ''}'.trim(),
+      enabled: j['enabled'] != false,
     );
   }
+}
+
+/// 内置段名 → 显示名;认不出的(自己加的、改过名的)原样显示。
+String ruleSectionLabel(String name) => switch (name) {
+  'role' => l10nNow.ruleSecRole,
+  'model_traits' => l10nNow.ruleSecModelTraits,
+  'prompt_construction' => l10nNow.ruleSecPromptConstruction,
+  'natural_construction' => l10nNow.ruleSecNaturalConstruction,
+  'weight_control' => l10nNow.ruleSecWeightControl,
+  'character_tag_rules' => l10nNow.ruleSecCharacters,
+  'multi_character_composition' => l10nNow.ruleSecMultiCharacter,
+  'comic_composition' => l10nNow.ruleSecComic,
+  'custom_tags' => l10nNow.ruleSecCustomTags,
+  'text_rendering' => l10nNow.ruleSecTextRendering,
+  'alpha_transparency' => l10nNow.ruleSecAlpha,
+  'output_specification' => l10nNow.ruleSecOutput,
+  'mode_comic' => l10nNow.ruleSecModeComic,
+  'mode_natural' => l10nNow.ruleSecModeNatural,
+  _ => name,
+};
+
+/// 段落编辑页里能选的触发条件,顺序即对话框里的顺序。
+const kWhenChoices = [
+  '',
+  '${kModeWhenPrefix}comic',
+  '${kModeWhenPrefix}natural',
+  '$kWhenNotPrefix${kModeWhenPrefix}comic',
+  '$kWhenNotPrefix${kModeWhenPrefix}natural',
+];
+
+/// 触发条件的显示名。`comic` 和 `mode:comic` 选漫画模式时都发,显示成同一个。
+String whenLabel(String when) {
+  final not = when.startsWith(kWhenNotPrefix);
+  final key = not ? when.substring(kWhenNotPrefix.length).trim() : when;
+  final mode = switch (key) {
+    '' => null,
+    'comic' || '${kModeWhenPrefix}comic' => l10nNow.modeComic,
+    '${kModeWhenPrefix}natural' => l10nNow.modeNatural,
+    _ => key,
+  };
+  if (mode == null) return l10nNow.whenAlways;
+  return not ? l10nNow.whenModeOff(mode) : l10nNow.whenModeOn(mode);
 }
 
 /// `['nai45', 'nai5']` 这类写法 → 模型集合,认不出的忽略。
@@ -81,12 +145,13 @@ const kModeWhenPrefix = 'mode:';
 const kWhenNotPrefix = '!';
 
 /// 按用户选的模式([chosen],见 `assistantModeKeys`)挑段,拼成一整块:
+///   · 停用的不留;
 ///   · 不带条件的永远留;
 ///   · 带条件的只在选了那个模式时留;
 ///   · `!` 开头的反过来,没选才留。
 String renderRules(List<PresetRule> rules, List<String> chosen) => [
   for (final r in rules)
-    if (_whenWanted(r.when, chosen)) r.content,
+    if (r.enabled && _whenWanted(r.when, chosen)) r.content,
 ].join('\n\n');
 
 bool _whenWanted(String when, List<String> chosen) {
@@ -97,14 +162,19 @@ bool _whenWanted(String when, List<String> chosen) {
   return chosen.contains(when);
 }
 
-/// 超限时的提示,没超限返回 null。[reserveChars] 是给之后挂上去的工具层留的。
+/// 超限时的提示,没超限返回 null。只算启用的段(停用的不发)。
+/// [reserveChars] 是给之后挂上去的工具层留的。
 String? rulesLimitError(List<PresetRule> rules, {int reserveChars = 0}) {
-  if (rules.length + (reserveChars > 0 ? 1 : 0) > kRulesMaxSections) {
+  final sent = [
+    for (final r in rules)
+      if (r.enabled) r,
+  ];
+  if (sent.length + (reserveChars > 0 ? 1 : 0) > kRulesMaxSections) {
     return l10nNow.rulesTooManySections(
       kRulesMaxSections - (reserveChars > 0 ? 1 : 0),
     );
   }
-  final total = rules.fold<int>(
+  final total = sent.fold<int>(
     0,
     (n, r) => n + r.name.length + r.content.length,
   );

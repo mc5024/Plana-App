@@ -5481,11 +5481,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String readDefaultRulesFailed(String error) {
-    return 'Couldn\'t read the default rules: $error';
-  }
-
-  @override
   String savedAsNamed(String name) {
     return 'Saved as “$name”';
   }
@@ -5527,6 +5522,93 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get hasConditional => 'Has conditional sections';
+
+  @override
+  String get ruleSecRole => 'Role';
+
+  @override
+  String get ruleSecModelTraits => 'Model Traits';
+
+  @override
+  String get ruleSecPromptConstruction => 'Prompt Construction';
+
+  @override
+  String get ruleSecNaturalConstruction => 'Natural-Language Construction';
+
+  @override
+  String get ruleSecWeightControl => 'Weight Control';
+
+  @override
+  String get ruleSecCharacters => 'Characters';
+
+  @override
+  String get ruleSecMultiCharacter => 'Multiple Characters';
+
+  @override
+  String get ruleSecComic => 'Comics / Panels';
+
+  @override
+  String get ruleSecCustomTags => 'Custom Tags';
+
+  @override
+  String get ruleSecTextRendering => 'On-Image Text';
+
+  @override
+  String get ruleSecAlpha => 'Alpha Channel';
+
+  @override
+  String get ruleSecOutput => 'Draw Output';
+
+  @override
+  String get ruleSecModeComic => 'Mode: Comic';
+
+  @override
+  String get ruleSecModeNatural => 'Mode: Natural Language Only';
+
+  @override
+  String get whenAlways => 'Always';
+
+  @override
+  String whenModeOn(String mode) {
+    return 'When $mode is on';
+  }
+
+  @override
+  String whenModeOff(String mode) {
+    return 'When $mode is off';
+  }
+
+  @override
+  String get triggerCondition => 'Trigger';
+
+  @override
+  String charsN(int n) {
+    return '$n chars';
+  }
+
+  @override
+  String get fullTextEdit => 'Edit Full Text';
+
+  @override
+  String get addRuleSection => 'Add Section';
+
+  @override
+  String get ruleSectionName => 'Section name';
+
+  @override
+  String get deleteRuleSectionQ => 'Delete this section?';
+
+  @override
+  String deleteRuleSectionBody(String name) {
+    return 'The content of “$name” will be deleted too.';
+  }
+
+  @override
+  String get ruleSectionEmpty => 'Content can\'t be empty';
+
+  @override
+  String get ruleSectionNameReserved =>
+      'This name is reserved for the tool layer';
 
   @override
   String get supportedModels => 'Supported Models';

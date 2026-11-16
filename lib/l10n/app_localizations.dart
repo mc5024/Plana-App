@@ -8878,12 +8878,6 @@ abstract class AppLocalizations {
   /// **'已导入「{name}」'**
   String importedNamed(String name);
 
-  /// No description provided for @readDefaultRulesFailed.
-  ///
-  /// In zh, this message translates to:
-  /// **'读取默认规则失败:{error}'**
-  String readDefaultRulesFailed(String error);
-
   /// No description provided for @savedAsNamed.
   ///
   /// In zh, this message translates to:
@@ -8937,6 +8931,162 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'含条件段'**
   String get hasConditional;
+
+  /// No description provided for @ruleSecRole.
+  ///
+  /// In zh, this message translates to:
+  /// **'角色定义'**
+  String get ruleSecRole;
+
+  /// No description provided for @ruleSecModelTraits.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型特性'**
+  String get ruleSecModelTraits;
+
+  /// No description provided for @ruleSecPromptConstruction.
+  ///
+  /// In zh, this message translates to:
+  /// **'提示词构建'**
+  String get ruleSecPromptConstruction;
+
+  /// No description provided for @ruleSecNaturalConstruction.
+  ///
+  /// In zh, this message translates to:
+  /// **'纯自然语言构建'**
+  String get ruleSecNaturalConstruction;
+
+  /// No description provided for @ruleSecWeightControl.
+  ///
+  /// In zh, this message translates to:
+  /// **'权重控制'**
+  String get ruleSecWeightControl;
+
+  /// No description provided for @ruleSecCharacters.
+  ///
+  /// In zh, this message translates to:
+  /// **'角色处理'**
+  String get ruleSecCharacters;
+
+  /// No description provided for @ruleSecMultiCharacter.
+  ///
+  /// In zh, this message translates to:
+  /// **'多角色绘图'**
+  String get ruleSecMultiCharacter;
+
+  /// No description provided for @ruleSecComic.
+  ///
+  /// In zh, this message translates to:
+  /// **'漫画 / 分镜'**
+  String get ruleSecComic;
+
+  /// No description provided for @ruleSecCustomTags.
+  ///
+  /// In zh, this message translates to:
+  /// **'自定义标签'**
+  String get ruleSecCustomTags;
+
+  /// No description provided for @ruleSecTextRendering.
+  ///
+  /// In zh, this message translates to:
+  /// **'画面文字'**
+  String get ruleSecTextRendering;
+
+  /// No description provided for @ruleSecAlpha.
+  ///
+  /// In zh, this message translates to:
+  /// **'透明通道'**
+  String get ruleSecAlpha;
+
+  /// No description provided for @ruleSecOutput.
+  ///
+  /// In zh, this message translates to:
+  /// **'绘图输出'**
+  String get ruleSecOutput;
+
+  /// No description provided for @ruleSecModeComic.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前模式：漫画'**
+  String get ruleSecModeComic;
+
+  /// No description provided for @ruleSecModeNatural.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前模式：仅自然语言'**
+  String get ruleSecModeNatural;
+
+  /// No description provided for @whenAlways.
+  ///
+  /// In zh, this message translates to:
+  /// **'常驻'**
+  String get whenAlways;
+
+  /// No description provided for @whenModeOn.
+  ///
+  /// In zh, this message translates to:
+  /// **'选了{mode}时'**
+  String whenModeOn(String mode);
+
+  /// No description provided for @whenModeOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'没选{mode}时'**
+  String whenModeOff(String mode);
+
+  /// No description provided for @triggerCondition.
+  ///
+  /// In zh, this message translates to:
+  /// **'触发条件'**
+  String get triggerCondition;
+
+  /// No description provided for @charsN.
+  ///
+  /// In zh, this message translates to:
+  /// **'{n} 字'**
+  String charsN(int n);
+
+  /// No description provided for @fullTextEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'全文编辑'**
+  String get fullTextEdit;
+
+  /// No description provided for @addRuleSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加一段'**
+  String get addRuleSection;
+
+  /// No description provided for @ruleSectionName.
+  ///
+  /// In zh, this message translates to:
+  /// **'段名'**
+  String get ruleSectionName;
+
+  /// No description provided for @deleteRuleSectionQ.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除这一段?'**
+  String get deleteRuleSectionQ;
+
+  /// No description provided for @deleteRuleSectionBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'「{name}」的内容会一起删掉。'**
+  String deleteRuleSectionBody(String name);
+
+  /// No description provided for @ruleSectionEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'内容不能为空'**
+  String get ruleSectionEmpty;
+
+  /// No description provided for @ruleSectionNameReserved.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个段名留给工具层,换一个'**
+  String get ruleSectionNameReserved;
 
   /// No description provided for @supportedModels.
   ///

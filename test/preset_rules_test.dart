@@ -446,10 +446,7 @@ sections:
         toolList: '[可用工具]',
         notes: const ['', '[OC 占位符模式]'],
       );
-      expect(
-        system,
-        'R\n\n<tool_usage>\n\n[输出格式]\n\n[可用工具]\n\n[OC 占位符模式]',
-      );
+      expect(system, 'R\n\n<tool_usage>\n\n[输出格式]\n\n[可用工具]\n\n[OC 占位符模式]');
     });
 
     test('系统提示也按用户选的模式挑段', () {
@@ -541,6 +538,54 @@ sections:
       expect(supportedModes(withModes), AssistantMode.values.toSet());
       expect(supportedModes(rules), {AssistantMode.normal});
     });
+
+    test('停用的段不发、不算模式、不占上限,导出导回来还是停用', () {
+      final off = [
+        for (final r in withModes)
+          r.name == 'mode_comic' || r.name == 'role'
+              ? r.copyWith(enabled: false)
+              : r,
+      ];
+      expect(renderRules(off, assistantModeKeys(AssistantMode.comic)), 'C');
+      expect(supportedModes(off), {
+        AssistantMode.normal,
+        AssistantMode.natural,
+      });
+
+      final big = [
+        const PresetRule(name: 'a', content: 'x'),
+        PresetRule(name: 'b', content: 'y' * kRulesMaxChars, enabled: false),
+      ];
+      expect(rulesLimitError(big), isNull);
+      expect(
+        rulesLimitError([big[0], big[1].copyWith(enabled: true)]),
+        isNotNull,
+      );
+
+      final back = decodeRulesFile(
+        encodeRulesFile(
+          name: 'n',
+          author: '',
+          models: {RulesFamily.nai5},
+          rules: off,
+        ),
+      );
+      expect(
+        [for (final r in back.rules) r.enabled],
+        [for (final r in off) r.enabled],
+      );
+      expect(PresetRule.fromJson(off.first.toJson())!.enabled, isFalse);
+      expect(withModes.first.toJson().containsKey('enabled'), isFalse);
+    });
+
+    test('触发条件显示名:comic 与 mode:comic 同名,! 开头是没选时', () {
+      expect(whenLabel(''), whenLabel(kWhenChoices.first));
+      expect(whenLabel('comic'), whenLabel('mode:comic'));
+      expect(whenLabel('!mode:natural'), isNot(whenLabel('mode:natural')));
+      expect(whenLabel('mode:custom'), contains('mode:custom'));
+      expect(ruleSectionLabel('role'), isNot('role'));
+      expect(ruleSectionLabel('我的段'), '我的段');
+    });
   });
 
   test('默认规则:NAI5 全部模式都能选,4.5 没有漫画规则所以不给选漫画', () async {
@@ -557,7 +602,10 @@ sections:
   test('默认 NAI5 规则:平时发混合写法,选了仅自然语言整段换成纯自然语言写法', () async {
     final rules = await bundledRules(RulesFamily.nai5);
     final plain = renderRules(rules, const []);
-    final natural = renderRules(rules, assistantModeKeys(AssistantMode.natural));
+    final natural = renderRules(
+      rules,
+      assistantModeKeys(AssistantMode.natural),
+    );
     expect(plain, contains('tag + 短句 + 自然语言混排'));
     expect(plain, isNot(contains('提示词构建：纯自然语言')));
     expect(natural, contains('提示词构建：纯自然语言'));
