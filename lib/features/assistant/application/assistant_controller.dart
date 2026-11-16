@@ -10,6 +10,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 
 import '../../../core/app_info.dart' show kAppVersion;
 import '../../../core/auth/bot_session_store.dart';
@@ -17,10 +18,13 @@ import '../../../core/live_progress/live_progress.dart';
 import '../../../core/net/backend_config.dart';
 import '../../../core/store/app_stores.dart';
 import '../../../core/store/gen_settings.dart' show genSettingsProvider;
+import '../../../core/util/image_ops.dart' show decodeImageSize, ensurePng;
 import '../../../l10n/l10n.dart';
+import '../../gallery/albums/album_state.dart' show gallerySaveTargetProvider;
+import '../../gallery/gallery_state.dart' show galleryProvider;
 import '../../generate/canvas_state.dart';
 import '../../generate/generate_state.dart';
-import '../../generate/models.dart' show GenerateState;
+import '../../generate/models.dart' show GenerateState, imageSizeOf;
 import '../../inspiration/public_tags.dart'
     show mergeMineTags, publicTagsProvider;
 import '../../inspiration/tag_library.dart';
@@ -29,13 +33,18 @@ import '../agent_model.dart';
 import '../agent_trace.dart';
 import '../assistant_mode.dart';
 import '../assistant_settings.dart';
-import '../custom_endpoint.dart' show CustomEndpoint;
+import '../custom_endpoint.dart' show CustomEndpoint, customEndpointsProvider;
 import '../domain/agent_event.dart';
 import '../domain/agent_result.dart';
 import '../domain/conversation.dart';
+import '../domain/image_gen.dart';
 import '../domain/image_model.dart';
 import '../domain/turn_request.dart';
 import '../../editor/data/tag_completion.dart' show tagCompletionProvider;
+import '../image_gen/image_gen_client.dart';
+import '../image_gen/image_models.dart';
+import '../llm/llm_image.dart' show prepareLlmImage;
+import '../llm/llm_provider.dart' show LlmImage;
 import '../presets/preset_rule.dart';
 import '../presets/rules_library.dart';
 import '../runtime/agent_runtime.dart';
@@ -82,6 +91,8 @@ class AssistantState {
     this.liveReasoning = '',
     this.changedUnseen = false,
     this.jobs = const {},
+    this.imageRuns = const {},
+    this.imageErrors = const {},
     this.mode = AssistantMode.normal,
   });
 
@@ -117,6 +128,12 @@ class AssistantState {
   /// 不落盘:任务 id 是本次运行内的序号。
   final Map<String, String> jobs;
 
+  /// 正在调出图模型的消息 id。不落盘。
+  final Set<String> imageRuns;
+
+  /// 出图模型上一次没出成的原因:消息 id → 错误原文。不落盘,再出一次就清掉。
+  final Map<String, String> imageErrors;
+
   /// 有写回、但用户还没切去创作页看过 —— 底部导航「创作」上那颗角标。
   final bool changedUnseen;
 
@@ -133,6 +150,8 @@ class AssistantState {
     String? liveReasoning,
     bool? changedUnseen,
     Map<String, String>? jobs,
+    Set<String>? imageRuns,
+    Map<String, String>? imageErrors,
     AssistantMode? mode,
   }) => AssistantState(
     msgs: msgs ?? this.msgs,
@@ -145,6 +164,8 @@ class AssistantState {
     liveReasoning: liveReasoning ?? this.liveReasoning,
     changedUnseen: changedUnseen ?? this.changedUnseen,
     jobs: jobs ?? this.jobs,
+    imageRuns: imageRuns ?? this.imageRuns,
+    imageErrors: imageErrors ?? this.imageErrors,
     mode: mode ?? this.mode,
   );
 }
@@ -158,6 +179,9 @@ const _keepFences = 2;
 
 /// 发一轮时等公共库列表(我发布的画风 / OC)最多多久,过了这轮只用本机条目。
 const _publicLibraryWait = Duration(seconds: 5);
+
+/// 等后端出图渠道列表最多多久,过了只看自定义接口。
+const _imageChannelsWait = Duration(seconds: 5);
 
 class AssistantController extends Notifier<AssistantState> {
   StreamSubscription<AgentEvent>? _sub;
@@ -287,7 +311,7 @@ class AssistantController extends Notifier<AssistantState> {
             out.add({'role': 'user', 'content': pendingUser});
             pendingUser = null;
           }
-          final replay = withFence.contains(m.id) ? replayText(m) : m.text;
+          final replay = replayText(m, withDraw: withFence.contains(m.id));
           if (replay.trim().isNotEmpty) {
             out.add({'role': 'assistant', 'content': replay});
           }
@@ -484,6 +508,9 @@ class AssistantController extends Notifier<AssistantState> {
     } catch (_) {
       toolSettings = const ToolSettings();
     }
+    final imageGen = toolSettings.toolOn(kImageGenTool)
+        ? await _imageModel(toolSettings)
+        : null;
 
     final family = rulesFamilyOf(imageModel);
     List<PresetRule>? custom;
@@ -515,6 +542,7 @@ class AssistantController extends Notifier<AssistantState> {
       'no_draw': noDraw,
       'tools': [for (final t in enabledTools(toolSettings)) t.name],
       'oc_placeholders': toolSettings.ocPlaceholders,
+      if (imageGen != null) 'image_gen': imageGen.key,
       'history_turns': settings.historyTurns,
       'retries': settings.retries,
       'rerolls': settings.rerolls,
@@ -541,6 +569,7 @@ class AssistantController extends Notifier<AssistantState> {
       retries: settings.retries,
       rerolls: settings.rerolls,
       refusalKeywords: settings.refusalKeywords,
+      imageGenModel: imageGen?.name ?? '',
     );
     // 上面几处 await 期间可能已经点了停止,或者又发了一条:这一轮作废。
     // runtime 只有 listen 才发请求,在这儿拦住就不花钱。
@@ -691,7 +720,7 @@ class AssistantController extends Notifier<AssistantState> {
           );
     final text = r.replyText.trim().isNotEmpty
         ? r.replyText.trim()
-        : (draw != null
+        : (draw != null || r.imageGen != null
               ? l10nNow.replyDoneFallback
               : l10nNow.replyEmptyFallback);
     final id = _newId();
@@ -710,6 +739,7 @@ class AssistantController extends Notifier<AssistantState> {
             withCanvas: canvas,
             mode: mode,
             noDraw: noDraw,
+            imageGen: r.imageGen,
           ),
         ],
         running: false,
@@ -721,7 +751,128 @@ class AssistantController extends Notifier<AssistantState> {
     );
     // 纯文本那种只给复制:不自动导入、不自动出图
     if (draw != null && !noDraw) _autoAfterDraw(id, sourceCanvasId);
+    // 出图模型那块:工具开着、没开「生成前确认」就直接出
+    final toolSettings =
+        ref.read(toolSettingsProvider).value ?? const ToolSettings();
+    if (r.imageGen != null &&
+        toolSettings.toolOn(kImageGenTool) &&
+        !toolSettings.optionOn(kImageGenTool, kImageGenConfirm)) {
+      unawaited(generateImage(id));
+    }
     unawaited(_drain());
+  }
+
+  /// 生成图片用哪个出图模型;没有能用的为 null。后端渠道列表最多等 [_imageChannelsWait]。
+  Future<ImageModelChoice?> _imageModel(ToolSettings s) async {
+    PlanaImageChannels? plana;
+    try {
+      plana = await ref
+          .read(planaImageChannelsProvider.future)
+          .timeout(_imageChannelsWait);
+    } catch (_) {}
+    List<CustomEndpoint> endpoints;
+    try {
+      endpoints = await ref.read(customEndpointsProvider.future);
+    } catch (_) {
+      endpoints = const [];
+    }
+    return pickImageModel(imageModelChoices(plana, endpoints), s.imageModel);
+  }
+
+  /// 拿某条消息的 image_gen 块调出图模型出一张,进图库并挂到这条消息上。
+  /// 自动出图、图框里的「生成」「重新生成」「重试」都走这里。
+  Future<void> generateImage(String msgId) async {
+    final spec = _msg(msgId)?.imageGen;
+    if (spec == null || state.imageRuns.contains(msgId)) return;
+    _set(
+      state.copyWith(
+        imageRuns: {...state.imageRuns, msgId},
+        imageErrors: {...state.imageErrors}..remove(msgId),
+      ),
+      persist: false,
+    );
+    String? error;
+    String? imageId;
+    final client = http.Client();
+    try {
+      final tools = await ref.read(toolSettingsProvider.future);
+      final choice = await _imageModel(tools);
+      if (choice == null) throw AgentFailure(l10nNow.imageGenNoModel);
+      final sid = (await ref.read(botSessionProvider.future))?.sessionId ?? '';
+      final bytes =
+          await imageGenClientFor(
+            choice,
+            backendBase: ref.read(backendBaseProvider).value ?? '',
+            sessionId: sid,
+          ).generate((
+            prompt: spec.prompt,
+            images: await _imageRefs(msgId, spec.refs),
+            aspect: spec.aspect,
+          ), client: client);
+      final png = await ensurePng(bytes);
+      final (w, h) = imageSizeOf(png) ?? await decodeImageSize(png);
+      final r = await ref
+          .read(galleryProvider.notifier)
+          .addResultToGallery(
+            bytes: png,
+            width: w,
+            height: h,
+            seed: 0,
+            target: ref.read(gallerySaveTargetProvider),
+          );
+      imageId = r.id;
+      // 后端渠道扣了额度,工具页的剩余次数跟着刷新
+      if (choice.endpoint == null) ref.invalidate(planaImageChannelsProvider);
+    } catch (e) {
+      error = '$e';
+    } finally {
+      client.close();
+    }
+    final errors = {...state.imageErrors}..remove(msgId);
+    if (error != null) errors[msgId] = error;
+    var msgs = state.msgs;
+    final i = msgs.indexWhere((m) => m.id == msgId);
+    // 出图这段时间里被截断/归档了就不挂
+    final attach = imageId != null && i >= 0;
+    if (attach) {
+      msgs = [...msgs];
+      msgs[i] = msgs[i].copyWith(imageIds: [...msgs[i].imageIds, imageId]);
+    }
+    _set(
+      state.copyWith(
+        msgs: msgs,
+        imageRuns: {...state.imageRuns}..remove(msgId),
+        imageErrors: errors,
+      ),
+      persist: attach,
+    );
+  }
+
+  /// image_gen 块要带的参考图:这轮提问附的图、这条之前对话里最近一张出好的图。读不到的跳过。
+  Future<List<LlmImage>> _imageRefs(String msgId, List<String> refs) async {
+    final i = state.msgs.indexWhere((m) => m.id == msgId);
+    if (i < 0) return const [];
+    final out = <LlmImage>[];
+    if (refs.contains(kImageRefAttached)) {
+      final img = await _repo.image(askOf(msgId)?.imageHash);
+      if (img != null) out.add(await prepareLlmImage(img));
+    }
+    if (refs.contains(kImageRefLast)) {
+      final results = ref.read(galleryProvider).results;
+      Uint8List? last;
+      for (var k = i - 1; k >= 0 && last == null; k--) {
+        for (final id in state.msgs[k].imageIds.reversed) {
+          final r = results.where((r) => r.id == id).firstOrNull;
+          if (r == null) continue;
+          last =
+              r.bytes ??
+              await ref.read(appStoresProvider).gallery.readImage(id);
+          if (last != null) break;
+        }
+      }
+      if (last != null) out.add(await prepareLlmImage(last));
+    }
+    return out;
   }
 
   /// 「自动写入创作页」/「出词后自动生成」两个开关的落点:先导入再出图。

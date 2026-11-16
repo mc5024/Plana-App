@@ -16,10 +16,17 @@ const _legacyKey = 'assistant_settings';
 /// 使用角色库的「OC 使用占位符」选项。
 const kOcPlaceholdersOption = 'search_oc/placeholders';
 
+/// 「生成图片」:模型在回复里写 ```image_gen 块,App 拿去调出图模型。
+const kImageGenTool = 'generate_image';
+
+/// 生成图片的「生成前确认」选项。
+const kImageGenConfirm = 'confirm';
+
 class ToolSettings {
   const ToolSettings({
     this.disabledTools = const {},
     this.enabledOptions = const {},
+    this.imageModel = '',
   });
 
   /// 关掉的工具名。记关着的,以后新加的工具默认开着。
@@ -27,6 +34,9 @@ class ToolSettings {
 
   /// 开着的附带选项,`工具名/选项 id`。
   final Set<String> enabledOptions;
+
+  /// 生成图片选的出图模型(见 `image_models.dart`);空 = 第一个能用的。
+  final String imageModel;
 
   bool toolOn(String tool) => !disabledTools.contains(tool);
 
@@ -39,19 +49,23 @@ class ToolSettings {
   ToolSettings copyWith({
     Set<String>? disabledTools,
     Set<String>? enabledOptions,
+    String? imageModel,
   }) => ToolSettings(
     disabledTools: disabledTools ?? this.disabledTools,
     enabledOptions: enabledOptions ?? this.enabledOptions,
+    imageModel: imageModel ?? this.imageModel,
   );
 
   Map<String, dynamic> toJson() => {
     'disabledTools': disabledTools.toList()..sort(),
     'enabledOptions': enabledOptions.toList()..sort(),
+    if (imageModel.isNotEmpty) 'imageModel': imageModel,
   };
 
   factory ToolSettings.fromJson(Map<String, dynamic> j) => ToolSettings(
     disabledTools: _set(j['disabledTools']),
     enabledOptions: _set(j['enabledOptions']),
+    imageModel: j['imageModel']?.toString() ?? '',
   );
 
   /// 旧版助手设置 → 工具设置:资料库范围选「不使用」的,关掉使用画风库、使用角色库;
@@ -139,4 +153,7 @@ class ToolSettingsNotifier extends AsyncNotifier<ToolSettings> {
       enabledOptions: _toggled(s.enabledOptions, '$tool/$option', on),
     ),
   );
+
+  Future<void> setImageModel(String key) =>
+      _patch((s) => s.copyWith(imageModel: key));
 }

@@ -139,6 +139,7 @@ class CustomEndpoint {
     required this.apiKey,
     required this.model,
     this.models = const [],
+    this.imageModels = const [],
     this.apiPath = '',
     this.headers = const {},
   });
@@ -161,6 +162,15 @@ class CustomEndpoint {
 
   /// 这个接口下存的全部模型。
   final List<String> models;
+
+  /// 出图模型(「生成图片」用),和对话模型分开存。Claude 格式不出图,恒为空。
+  final List<String> imageModels;
+
+  /// 这个接口能不能出图:格式支持、填了 Key、有出图模型。
+  bool get canDraw =>
+      format != AgentApiFormat.anthropic &&
+      apiKey.trim().isNotEmpty &&
+      imageModels.isNotEmpty;
 
   /// [models] 为空时(只给了 [model] 的)按 [model] 一个算。
   List<String> get allModels =>
@@ -225,6 +235,7 @@ class CustomEndpoint {
     String? apiKey,
     String? model,
     List<String>? models,
+    List<String>? imageModels,
     String? apiPath,
     Map<String, String>? headers,
   }) => CustomEndpoint(
@@ -235,6 +246,7 @@ class CustomEndpoint {
     apiKey: apiKey ?? this.apiKey,
     model: model ?? this.model,
     models: models ?? this.models,
+    imageModels: imageModels ?? this.imageModels,
     apiPath: apiPath ?? this.apiPath,
     headers: headers ?? this.headers,
   );
@@ -247,6 +259,7 @@ class CustomEndpoint {
     'apiKey': apiKey,
     'model': allModels.firstOrNull ?? '',
     'models': allModels,
+    if (imageModels.isNotEmpty) 'imageModels': imageModels,
     if (apiPath.isNotEmpty) 'apiPath': apiPath,
     if (headers.isNotEmpty) 'headers': headers,
   };
@@ -273,6 +286,11 @@ class CustomEndpoint {
       apiKey: e['apiKey']?.toString() ?? '',
       model: models.firstOrNull ?? '',
       models: models,
+      imageModels: [
+        if (e['imageModels'] case final List l)
+          for (final m in l)
+            if ('$m'.trim().isNotEmpty) '$m'.trim(),
+      ],
       apiPath: e['apiPath']?.toString() ?? '',
       headers: switch (e['headers']) {
         final Map h => {

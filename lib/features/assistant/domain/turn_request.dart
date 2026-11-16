@@ -41,6 +41,7 @@ class AgentTurnRequest {
     this.retries = AssistantSettings.retriesDefault,
     this.rerolls = AssistantSettings.rerollsDefault,
     this.refusalKeywords = kRefusalKeywords,
+    this.imageGenModel = '',
   });
 
   final String userText;
@@ -83,4 +84,7 @@ class AgentTurnRequest {
 
   /// 回复命中就算拒绝的词。
   final List<String> refusalKeywords;
+
+  /// 「生成图片」用的出图模型的名字;空 = 这轮不给模型这个能力。
+  final String imageGenModel;
 }

@@ -45,6 +45,10 @@ draw_characters_not_object: >-
 draw_character_no_positive: >-
   nai_draw 代码块里 characters 的第 {index} 个角色（name: {name}）没有 positive。分区必须带该角色自己的英文 tag，否则这个角色画不出来。补上，或者本来就是单角色就把 characters 留空数组 []。正文照常写给用户。
 
+# 出图模型那块读不出来
+image_gen_bad: >-
+  ```image_gen 代码块读不出来（{detail}）。**正文照常写给用户**，只把代码块改成一个合法 JSON 对象：{"prompt": "交给出图模型的话", "refs": [], "aspect": "16:9"}，prompt 必填、是非空字符串。
+
 # 重试剥图时补在用户消息末尾
 retry_no_image: |-
   [重试中]

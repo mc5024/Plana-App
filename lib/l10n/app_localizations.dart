@@ -8212,6 +8212,48 @@ abstract class AppLocalizations {
   /// **'{n} 个已开'**
   String toolsEnabledN(int n);
 
+  /// No description provided for @toolGenerateImage.
+  ///
+  /// In zh, this message translates to:
+  /// **'生成图片'**
+  String get toolGenerateImage;
+
+  /// No description provided for @imageModelField.
+  ///
+  /// In zh, this message translates to:
+  /// **'出图模型'**
+  String get imageModelField;
+
+  /// No description provided for @imageGenConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'生成前确认'**
+  String get imageGenConfirm;
+
+  /// No description provided for @imageGenNoModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有能用的出图模型,到工具页里选一个'**
+  String get imageGenNoModel;
+
+  /// No description provided for @imageGenNoImage.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有出图'**
+  String get imageGenNoImage;
+
+  /// No description provided for @addImageModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加出图模型'**
+  String get addImageModel;
+
+  /// No description provided for @timesLeft.
+  ///
+  /// In zh, this message translates to:
+  /// **'剩 {n} 次'**
+  String timesLeft(int n);
+
   /// No description provided for @toolSearchArtist.
   ///
   /// In zh, this message translates to:
