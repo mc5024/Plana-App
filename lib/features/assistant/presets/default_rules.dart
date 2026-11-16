@@ -21,9 +21,12 @@ class DefaultRules {
   final String name;
   final String author;
 
-  /// `v4.5` / `v5` 这类,显示成「v5 版」。
+  /// `v4.5` / `v5` 这类,只拼进 [displayName]。
   final String version;
   final List<PresetRule> rules;
+
+  /// 显示名:两份默认规则同名,带上版本(「Nyako v5」)才分得开。
+  String get displayName => '$name $version'.trim();
 
   /// 内置 JSON → 默认规则。缺的 meta 用占位值补上,规则一段都没有返回 null。
   static DefaultRules? fromJson(Object? j, RulesFamily f) {
@@ -63,7 +66,11 @@ Future<DefaultRules> bundledDefaultRules(RulesFamily f) =>
 Future<List<PresetRule>> bundledRules(RulesFamily f) async =>
     (await bundledDefaultRules(f)).rules;
 
-/// 规则预设页显示默认规则那两项用:名称、作者、版本。
+/// 读出来之前的占位显示名。
+String defaultRulesFallbackName(RulesFamily f) =>
+    '$kDefaultRulesName ${defaultRulesVersionOf(f)}';
+
+/// 规则预设页显示默认规则那两项用:名称、作者。
 final defaultRulesProvider = FutureProvider.family<DefaultRules, RulesFamily>(
   (ref, f) => bundledDefaultRules(f),
 );

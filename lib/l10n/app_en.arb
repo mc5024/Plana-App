@@ -1493,7 +1493,6 @@
   "searchNModels": "Search {n} models",
   "doneSelectedN": "Done · {n} selected",
   "rulePresets": "Rule Presets",
-  "versionN": "v{v}",
   "sectionsN": "{n, plural, =1{1 section} other{{n} sections}}",
   "notUtf8": "Can't read this file; make sure it's UTF-8 text",
   "importedNamed": "Imported “{name}”",

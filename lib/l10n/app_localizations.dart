@@ -8854,12 +8854,6 @@ abstract class AppLocalizations {
   /// **'规则预设'**
   String get rulePresets;
 
-  /// No description provided for @versionN.
-  ///
-  /// In zh, this message translates to:
-  /// **'{v} 版'**
-  String versionN(String v);
-
   /// No description provided for @sectionsN.
   ///
   /// In zh, this message translates to:

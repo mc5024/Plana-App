@@ -79,14 +79,14 @@ class RulesPresetPage extends ConsumerWidget {
     );
 
     if (p.isDefault) {
-      // 默认规则只支持一个模型;名称、作者、版本读内置那份,没读到时用占位值
+      // 默认规则只支持一个模型;名称(带版本)、作者读内置那份,没读到时用占位值
       final f = p.models.single;
       final info = ref.watch(defaultRulesProvider(f)).value;
       return _PresetCard(
-        title: info?.name ?? p.name,
+        title: info?.displayName ?? defaultRulesFallbackName(f),
         subtitle: [
           info?.author ?? p.author,
-          l10nNow.versionN(info?.version ?? defaultRulesVersionOf(f)),
+          if (info != null) l10nNow.sectionsN(info.rules.length),
         ].where((s) => s.isNotEmpty).join(' · '),
         isDefault: true,
         models: p.models,
@@ -120,7 +120,6 @@ class RulesPresetPage extends ConsumerWidget {
   }
 
   /// 副本:段落、作者、支持的模型照抄,名字后面加「(副本)」,不自动启用。
-  /// 默认规则的副本名字带版本(「Nyako v5 (副本)」)。
   Future<void> _duplicate(
     BuildContext context,
     WidgetRef ref,
@@ -133,7 +132,7 @@ class RulesPresetPage extends ConsumerWidget {
     if (p.isDefault) {
       final f = p.models.single;
       final d = await bundledDefaultRules(f);
-      base = '${d.name} ${d.version}'.trim();
+      base = d.displayName;
       author = d.author;
       models = {f};
       rules = d.rules;
@@ -143,15 +142,8 @@ class RulesPresetPage extends ConsumerWidget {
       models = p.models;
       rules = p.rules;
     }
-    final taken = {
-      for (final x in ref.read(rulesLibraryProvider).value?.presets ?? [])
-        x.name,
-    };
-    final first = '$base ${l10nNow.copySuffix}';
-    var name = first;
-    for (var n = 2; taken.contains(name); n++) {
-      name = '$first $n';
-    }
+    final name = (ref.read(rulesLibraryProvider).value ?? const RulesLibrary())
+        .copyNameOf(base);
     await ref
         .read(rulesLibraryProvider.notifier)
         .add(name: name, author: author, models: models, rules: rules);
@@ -249,8 +241,7 @@ class RulesPresetPage extends ConsumerWidget {
     );
   }
 
-  /// 默认规则导出时名字带上版本(「Nyako v5」)——
-  /// 两个版本同名,导进来之后分不出哪张是哪张。
+  /// 默认规则导出时名字用显示名(「Nyako v5」),两份导进来才分得开。
   Future<void> _exportDefault(
     BuildContext context,
     WidgetRef ref,
@@ -261,11 +252,11 @@ class RulesPresetPage extends ConsumerWidget {
       if (!context.mounted) return;
       await _save(
         context,
-        name: '${d.name} ${d.version}'.trim(),
+        name: d.displayName,
         author: d.author,
         models: {f},
         rules: d.rules,
-        fileName: 'plana-rules-${_safe('${d.name}-${d.version}')}.yaml',
+        fileName: 'plana-rules-${_safe(d.displayName)}.yaml',
       );
     } catch (e) {
       if (context.mounted) {

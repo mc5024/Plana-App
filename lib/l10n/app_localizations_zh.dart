@@ -691,7 +691,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get editPreset => '编辑预设';
 
   @override
-  String get presetPageIntro => '激活的预设在生成时自动作为前缀拼进正/负提示词,不占用输入框。默认预设不可修改;右上角可新建自定义预设。';
+  String get presetPageIntro =>
+      '激活的预设在生成时自动作为前缀拼进正/负提示词,不占用输入框。默认预设不可修改;右上角可新建自定义预设。';
 
   @override
   String get presetGroupLegacy => '4.5 及更早';
@@ -2528,7 +2529,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get clearTagPreviews => '清空灵感预览图';
 
   @override
-  String get clearTagPreviewsBody => '将删除本机生成的条目预览图,并从条目上摘除引用;条目本身与提示词不受影响,预览需重新生成。';
+  String get clearTagPreviewsBody =>
+      '将删除本机生成的条目预览图,并从条目上摘除引用;条目本身与提示词不受影响,预览需重新生成。';
 
   @override
   String clearTagPreviewsBodyN(int n) {
@@ -2550,7 +2552,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get clearEncodingCache => '清空编码缓存';
 
   @override
-  String get clearEncodingCacheBody => '清空后,下次用这些图生成时需重新编码;直连线路每张图约扣 2 Anlas。不影响 Vibe 库文件本身。';
+  String get clearEncodingCacheBody =>
+      '清空后,下次用这些图生成时需重新编码;直连线路每张图约扣 2 Anlas。不影响 Vibe 库文件本身。';
 
   @override
   String get clearVibeLib => '清空 Vibe 库';
@@ -2745,7 +2748,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get loginAndAdd => '登录并添加';
 
   @override
-  String get tokenWhere => 'NovelAI 网站 → User Settings → Account → Get Persistent API Token。';
+  String get tokenWhere =>
+      'NovelAI 网站 → User Settings → Account → Get Persistent API Token。';
 
   @override
   String get needNaiAccess => '直连生成需要你的网络可以访问 NovelAI 官网。';
@@ -2772,7 +2776,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get apiKey => '接口 key';
 
   @override
-  String get passwordLocalHint => '密码只在本机参与密钥计算,不上传也不保存;登录得到 30 天有效的令牌,到期前 App 会自动换新。';
+  String get passwordLocalHint =>
+      '密码只在本机参与密钥计算,不上传也不保存;登录得到 30 天有效的令牌,到期前 App 会自动换新。';
 
   @override
   String get email => '邮箱';
@@ -3088,97 +3093,113 @@ class AppLocalizationsZh extends AppLocalizations {
   String get helpCanvasTitle => '画布';
 
   @override
-  String get helpCanvasBody => '每张画布各存一套提示词和出图参数，随时切换。\n· 只有张数和循环档位是所有画布共用的\n💡 切换画布不影响进行中的出图\n💡「历史」保留最近 50 次出图，可恢复';
+  String get helpCanvasBody =>
+      '每张画布各存一套提示词和出图参数，随时切换。\n· 只有张数和循环档位是所有画布共用的\n💡 切换画布不影响进行中的出图\n💡「历史」保留最近 50 次出图，可恢复';
 
   @override
   String get helpResolutionTitle => '分辨率';
 
   @override
-  String get helpResolutionBody => '按总像素(宽 × 高)分档:\n· 免费 → ≤ 1024×1024,即绿线以内;需 Opus 订阅、步数 ≤28\n· 消耗点数 → 超出绿线,尺寸越大越贵\n· 超出上限 → 超过 1024×3072(红线),无法生成';
+  String get helpResolutionBody =>
+      '按总像素(宽 × 高)分档:\n· 免费 → ≤ 1024×1024,即绿线以内;需 Opus 订阅、步数 ≤28\n· 消耗点数 → 超出绿线,尺寸越大越贵\n· 超出上限 → 超过 1024×3072(红线),无法生成';
 
   @override
   String get helpImg2imgStrengthTitle => '图生图强度 (Strength)';
 
   @override
-  String get helpImg2imgStrengthBody => '控制原图对最终画面的影响程度。\n· 值越低 → 越接近原图，改动越少\n· 值越高 → 越自由发挥，重绘越多\n💡 0.01 时几乎不重绘；与 Noise 同时调到最低 → 完美复制原图\n💡 AI 过度忽略提示词时，可尝试提高 Prompt Guidance';
+  String get helpImg2imgStrengthBody =>
+      '控制原图对最终画面的影响程度。\n· 值越低 → 越接近原图，改动越少\n· 值越高 → 越自由发挥，重绘越多\n💡 0.01 时几乎不重绘；与 Noise 同时调到最低 → 完美复制原图\n💡 AI 过度忽略提示词时，可尝试提高 Prompt Guidance';
 
   @override
   String get helpImg2imgNoiseTitle => '噪声 (Noise)';
 
   @override
-  String get helpImg2imgNoiseBody => '在原图基础上额外注入随机扰动。\n· 0 → 完全基于原图，结果更稳定\n· 值越高 → 增加创作自由度，更多新元素\n💡 原图大面积空白时，调高可让 AI 主动补充细节\n💡 高 Noise 反复重生成可能产生视觉瑕疵';
+  String get helpImg2imgNoiseBody =>
+      '在原图基础上额外注入随机扰动。\n· 0 → 完全基于原图，结果更稳定\n· 值越高 → 增加创作自由度，更多新元素\n💡 原图大面积空白时，调高可让 AI 主动补充细节\n💡 高 Noise 反复重生成可能产生视觉瑕疵';
 
   @override
   String get helpVibeStrengthTitle => '风格强度 (Reference Strength)';
 
   @override
-  String get helpVibeStrengthBody => '控制 Vibe 风格对画面的影响力度。\n· 值越高 → 越接近参考图的风格、配色等视觉线索\n· 值越低 → 仅作轻微风格指引\n💡 多个 Vibe 同时使用时，强度总和建议 ≤ 1\n💡 过高时 AI 会开始忽略文字 prompt';
+  String get helpVibeStrengthBody =>
+      '控制 Vibe 风格对画面的影响力度。\n· 值越高 → 越接近参考图的风格、配色等视觉线索\n· 值越低 → 仅作轻微风格指引\n💡 多个 Vibe 同时使用时，强度总和建议 ≤ 1\n💡 过高时 AI 会开始忽略文字 prompt';
 
   @override
   String get helpNormalizeVibeTitle => '均衡强度 (Normalize)';
 
   @override
-  String get helpNormalizeVibeBody => '开启 → 所有 Vibe 的强度按比例缩小，合计强度 ≤ 1\n关闭 → 每个 Vibe 的强度独立相加';
+  String get helpNormalizeVibeBody =>
+      '开启 → 所有 Vibe 的强度按比例缩小，合计强度 ≤ 1\n关闭 → 每个 Vibe 的强度独立相加';
 
   @override
   String get helpInfoExtractedTitle => '信息提取 (Information Extracted)';
 
   @override
-  String get helpInfoExtractedBody => '从原图中提取的信息量。\n· 值越低 → 先丢失高频细节（纹理、风格），优先保留构图\n· 值越高 → 同时保留构图与纹理 / 风格细节\n💡 设置为新值时扣 2 点数，使用历史值时免费\n💡 无原图时无法重设该值';
+  String get helpInfoExtractedBody =>
+      '从原图中提取的信息量。\n· 值越低 → 先丢失高频细节（纹理、风格），优先保留构图\n· 值越高 → 同时保留构图与纹理 / 风格细节\n💡 设置为新值时扣 2 点数，使用历史值时免费\n💡 无原图时无法重设该值';
 
   @override
   String get helpCharRefStrengthTitle => '参考强度 (Strength)';
 
   @override
-  String get helpCharRefStrengthBody => '控制角色 / 风格参考对画面的整体影响力。\n· 值越高 → 越严格还原参考图特征\n· 值越低 → 参考图仅作弱引导\n💡 每张图额外消耗 5 Anlas，多个 PR 累加\n💡 过高时面部表情 / 角度 / 姿势会过度贴近参考图';
+  String get helpCharRefStrengthBody =>
+      '控制角色 / 风格参考对画面的整体影响力。\n· 值越高 → 越严格还原参考图特征\n· 值越低 → 参考图仅作弱引导\n💡 每张图额外消耗 5 Anlas，多个 PR 累加\n💡 过高时面部表情 / 角度 / 姿势会过度贴近参考图';
 
   @override
   String get helpFidelityTitle => '还原度 (Fidelity)';
 
   @override
-  String get helpFidelityBody => '控制 prompt 能否压过参考图。\n· 值越高 → 参考图占主导，prompt 难以改变它\n· 值越低 → prompt 占主导，更易调整画面\n💡 实际效果可能因图而异，建议多尝试';
+  String get helpFidelityBody =>
+      '控制 prompt 能否压过参考图。\n· 值越高 → 参考图占主导，prompt 难以改变它\n· 值越低 → prompt 占主导，更易调整画面\n💡 实际效果可能因图而异，建议多尝试';
 
   @override
   String get helpStepsTitle => '采样步数 (Steps)';
 
   @override
-  String get helpStepsBody => '采样步数，控制去噪迭代次数。\n步数越高画面越精细，但生成越慢。\n步数过多反而收益递减，甚至适得其反。\n💡 步数 ≤28 时不额外消耗 Anlas';
+  String get helpStepsBody =>
+      '采样步数，控制去噪迭代次数。\n步数越高画面越精细，但生成越慢。\n步数过多反而收益递减，甚至适得其反。\n💡 步数 ≤28 时不额外消耗 Anlas';
 
   @override
   String get helpCfgTitle => '提示词引导强度 (CFG Scale)';
 
   @override
-  String get helpCfgBody => '控制 AI 对提示词的遵循程度。\n· 值越低 → AI 越自由发挥，画面更绘画感、柔和、梦幻\n· 值越高 → 越严格遵循描述，细节更精细锐利\n💡 V3 及以上模型官方推荐 5~6\n💡 过高反而会反作用，色彩过饱和、画面崩坏';
+  String get helpCfgBody =>
+      '控制 AI 对提示词的遵循程度。\n· 值越低 → AI 越自由发挥，画面更绘画感、柔和、梦幻\n· 值越高 → 越严格遵循描述，细节更精细锐利\n💡 V3 及以上模型官方推荐 5~6\n💡 过高反而会反作用，色彩过饱和、画面崩坏';
 
   @override
   String get helpVarietyPlusTitle => '多样性增强模式 (Variety+)';
 
   @override
-  String get helpVarietyPlusBody => '轻微调整采样过程，提升构图与姿势的多样性。\n开启 → 增加构图和姿势的变化\n关闭 → 出图更稳定一致\n💡 在低 Prompt Guidance 下效果更明显';
+  String get helpVarietyPlusBody =>
+      '轻微调整采样过程，提升构图与姿势的多样性。\n开启 → 增加构图和姿势的变化\n关闭 → 出图更稳定一致\n💡 在低 Prompt Guidance 下效果更明显';
 
   @override
   String get helpSamplerTitle => '采样算法 (Sampler)';
 
   @override
-  String get helpSamplerBody => '决定去噪路径，影响画面风格与稳定性。\n· Euler Ancestral — 经典万能，随机性高\n· Euler — 确定性版本，构图更稳定\n· DPM++ 2S Ancestral — 细节丰富\n· DPM++ 2M SDE — 高质量 + 随机性\n· DPM++ 2M — 高质量确定性采样\n· DPM++ SDE — 兼具细节与多样性\n💡 建议保持默认或推荐 DPM++ 2M / Euler Ancestral\n💡 不同 sampler 的差异在低 Steps 时更明显';
+  String get helpSamplerBody =>
+      '决定去噪路径，影响画面风格与稳定性。\n· Euler Ancestral — 经典万能，随机性高\n· Euler — 确定性版本，构图更稳定\n· DPM++ 2S Ancestral — 细节丰富\n· DPM++ 2M SDE — 高质量 + 随机性\n· DPM++ 2M — 高质量确定性采样\n· DPM++ SDE — 兼具细节与多样性\n💡 建议保持默认或推荐 DPM++ 2M / Euler Ancestral\n💡 不同 sampler 的差异在低 Steps 时更明显';
 
   @override
   String get helpNoiseScheduleTitle => '噪声衰减曲线 (Noise Schedule)';
 
   @override
-  String get helpNoiseScheduleBody => '决定 Sampler 在每一步的噪声衰减节奏，影响画面质感。\n· karras — 最常用，出图稳定细节好\n· exponential — 指数衰减，对比度更强\n· polyexponential — 多项式衰减，过渡平滑\n💡建议保持默认 karras';
+  String get helpNoiseScheduleBody =>
+      '决定 Sampler 在每一步的噪声衰减节奏，影响画面质感。\n· karras — 最常用，出图稳定细节好\n· exponential — 指数衰减，对比度更强\n· polyexponential — 多项式衰减，过渡平滑\n💡建议保持默认 karras';
 
   @override
   String get helpSeedTitle => '随机种子 (Seed)';
 
   @override
-  String get helpSeedBody => '随机种子，决定初始噪声。\n相同种子 + 相同参数 → 基本一致的画面\n适合微调时锁定构图。\n留空 → 每次随机生成不同结果\n💡 sampler 本身有微小随机性，相同种子也可能存在细微差别\n💡 NAI / Anima / Krea 三者的 seed 互不通用，与外部 Stable Diffusion 也不通用';
+  String get helpSeedBody =>
+      '随机种子，决定初始噪声。\n相同种子 + 相同参数 → 基本一致的画面\n适合微调时锁定构图。\n留空 → 每次随机生成不同结果\n💡 sampler 本身有微小随机性，相同种子也可能存在细微差别\n💡 NAI / Anima / Krea 三者的 seed 互不通用，与外部 Stable Diffusion 也不通用';
 
   @override
   String get helpCfgRescaleTitle => 'CFG 引导修正系数 (Rescale)';
 
   @override
-  String get helpCfgRescaleBody => '抑制高引导值带来的过饱和与色彩溢出。\n0 = 不修正，值越高 → 修正越强\n通常保持 0；Guidance >7 时可尝试 0.1~0.3\n💡 画面出现「边缘色彩过强 / 油炸感 (deepfried)」时调高';
+  String get helpCfgRescaleBody =>
+      '抑制高引导值带来的过饱和与色彩溢出。\n0 = 不修正，值越高 → 修正越强\n通常保持 0；Guidance >7 时可尝试 0.1~0.3\n💡 画面出现「边缘色彩过强 / 油炸感 (deepfried)」时调高';
 
   @override
   String get allAlbumsName => '全部相册';
@@ -4311,7 +4332,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noCodex => '暂无法典';
 
   @override
-  String get codexAbout => '词条与例图数据来自\nhttps://novelai.quicktagcloud.com/\n\n本应用仅作展示与检索,内容版权归各法典作者所有。\n\n感谢所有法典作者与贡献者的整理分享。';
+  String get codexAbout =>
+      '词条与例图数据来自\nhttps://novelai.quicktagcloud.com/\n\n本应用仅作展示与检索,内容版权归各法典作者所有。\n\n感谢所有法典作者与贡献者的整理分享。';
 
   @override
   String get sourcesThanks => '来源与致谢';
@@ -4856,7 +4878,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get assistantModelUnsupported => 'AI 助手暂不支持这个模型';
 
   @override
-  String get assistantModelUnsupportedBody => 'Anima 与 Krea 的提示词体系和 NAI 是两套。\n去创作页换成 NAI 4.5 或 5 再来。';
+  String get assistantModelUnsupportedBody =>
+      'Anima 与 Krea 的提示词体系和 NAI 是两套。\n去创作页换成 NAI 4.5 或 5 再来。';
 
   @override
   String get goChangeModel => '去换模型';
@@ -5008,11 +5031,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get rulePresets => '规则预设';
-
-  @override
-  String versionN(String v) {
-    return '$v 版';
-  }
 
   @override
   String sectionsN(int n) {
@@ -5190,13 +5208,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get rulesHeader1 => '# Plana AI 助手规则预设';
 
   @override
-  String get rulesHeader2 => '# 每段一个 name 和 content。带 when 的是条件段,例如 when: comic 只在画漫画时发送。';
+  String get rulesHeader2 =>
+      '# 每段一个 name 和 content。带 when 的是条件段,例如 when: comic 只在画漫画时发送。';
 
   @override
-  String get rulesHeader3 => '# when 以 mode: 开头的是模式段,例如 when: \"mode:comic\" 只在选了漫画模式时发送。';
+  String get rulesHeader3 =>
+      '# when 以 mode: 开头的是模式段,例如 when: \"mode:comic\" 只在选了漫画模式时发送。';
 
   @override
-  String get rulesHeader4 => '# when 前面加 ! 表示没选时才发送,例如 when: \"!mode:natural\" 选了仅自然语言就不发。';
+  String get rulesHeader4 =>
+      '# when 前面加 ! 表示没选时才发送,例如 when: \"!mode:natural\" 选了仅自然语言就不发。';
 
   @override
   String badFileFormat(String detail) {

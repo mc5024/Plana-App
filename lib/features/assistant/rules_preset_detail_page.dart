@@ -3,8 +3,8 @@
 /// 段落里内置段按用途归成几张卡(见 [ruleCardsOf]),认不出的段名各自一张。点卡进编辑页,
 /// 卡里几段上下排开一起改;点自己加的段名改名;⏻ 停用、🗑 删除、长按拖动排序都按整张卡来。
 ///
-/// 默认规则的原件在包里,改不了:名称、作者、支持的模型只读,段落第一次保存时另存为一份
-/// 新预设,这个模型原先用默认规则的就改用新存的这份,之后在这页接着改的都是那份。
+/// 默认规则的原件在包里,改不了:名称、作者、支持的模型只读,段落第一次保存时另存为
+/// 「原名 (副本)」,这个模型原先用默认规则的就改用这份副本,之后在这页接着改的都是它。
 library;
 
 import 'package:flutter/material.dart';
@@ -53,7 +53,7 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
         ? ref.watch(defaultRulesProvider(widget.family!)).value
         : null;
     final rules = p?.rules ?? d?.rules;
-    final title = p?.name ?? (d == null ? '' : '${d.name} ${d.version}'.trim());
+    final title = p?.name ?? d?.displayName ?? '';
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
@@ -94,7 +94,7 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
             SettingsRow(
               icon: Icons.drive_file_rename_outline,
               title: l.presetName,
-              value: p?.name ?? d?.name ?? '',
+              value: p?.name ?? d?.displayName ?? '',
               onTap: p == null ? null : () => _editName(p),
             ),
             SettingsRow(
@@ -103,12 +103,6 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
               value: p?.author ?? d?.author ?? '',
               onTap: p == null ? null : () => _editAuthor(p),
             ),
-            if (p == null)
-              SettingsRow(
-                icon: Icons.sell_outlined,
-                title: l.version,
-                value: d?.version ?? '',
-              ),
             SettingsRow(
               icon: Icons.memory_outlined,
               title: l.supportedModels,
@@ -337,7 +331,11 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
     _copying = true;
     try {
       final d = await bundledDefaultRules(f);
-      final copyName = name ?? '${d.name} ${d.version}'.trim();
+      // 副本叫「Nyako v5 (副本)」;全文编辑里改了名字的用改过的
+      final copyName = name == null || name == d.displayName
+          ? (ref.read(rulesLibraryProvider).value ?? const RulesLibrary())
+                .copyNameOf(d.displayName)
+          : name;
       final copyModels = models ?? {f};
       final wasDefault =
           ref.read(rulesLibraryProvider).value?.activeFor(f).isDefault ?? true;
@@ -496,7 +494,7 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
         ? await bundledDefaultRules(f)
         : null;
     if (!mounted) return;
-    final name = p?.name ?? '${d?.name ?? ''} ${d?.version ?? ''}'.trim();
+    final name = p?.name ?? d?.displayName ?? '';
     final file = await Navigator.push<RulesFile>(
       context,
       MaterialPageRoute(

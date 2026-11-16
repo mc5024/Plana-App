@@ -1804,8 +1804,6 @@
   "doneSelectedN": "完成 · 已选 {n} 个",
   "@doneSelectedN": {"placeholders": {"n": {"type": "int"}}},
   "rulePresets": "规则预设",
-  "versionN": "{v} 版",
-  "@versionN": {"placeholders": {"v": {"type": "String"}}},
   "sectionsN": "{n} 段",
   "@sectionsN": {"placeholders": {"n": {"type": "int"}}},
   "notUtf8": "读不了这个文件,请确认是 UTF-8 文本",

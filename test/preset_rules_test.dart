@@ -17,6 +17,7 @@ import 'package:plana_app/features/assistant/presets/rules_file.dart';
 import 'package:plana_app/features/assistant/presets/rules_library.dart';
 import 'package:plana_app/features/assistant/runtime/prompt_assets.dart';
 import 'package:plana_app/features/assistant/runtime/prompt_composer.dart';
+import 'package:plana_app/l10n/l10n.dart';
 
 Directory _tempRoot() {
   final root = Directory.systemTemp.createTempSync('plana_rules');
@@ -243,6 +244,23 @@ sections:
         throwsFormatException,
       );
     });
+  });
+
+  test('副本名:原名加后缀,重名往后加数字', () {
+    final first = 'Nyako v5 ${l10nNow.copySuffix}';
+    expect(const RulesLibrary().copyNameOf('Nyako v5'), first);
+    final lib = RulesLibrary(
+      presets: [
+        RulesPreset(
+          id: 'r1',
+          name: first,
+          author: '',
+          models: {RulesFamily.nai5},
+          rules: const [],
+        ),
+      ],
+    );
+    expect(lib.copyNameOf('Nyako v5'), '$first 2');
   });
 
   test('一段都没有的预设也读得回来(新建的从空的开始)', () {

@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/store/app_stores.dart';
+import '../../../l10n/l10n.dart';
 import 'preset_rule.dart';
 
 const _key = 'assistant_rule_presets';
@@ -113,6 +114,17 @@ class RulesLibrary {
       if (p.id == id && p.models.contains(f)) return p;
     }
     return defaultPresetOf(f);
+  }
+
+  /// 副本的名字:「原名 (副本)」,重名再往后加数字。
+  String copyNameOf(String base) {
+    final taken = {for (final p in presets) p.name};
+    final first = '$base ${l10nNow.copySuffix}';
+    var name = first;
+    for (var n = 2; taken.contains(name); n++) {
+      name = '$first $n';
+    }
+    return name;
   }
 
   /// 这个模型自定义过的规则;用默认规则时是 null。
