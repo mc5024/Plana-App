@@ -5852,6 +5852,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contextTurnsDesc => 'How many recent turns to include each time';
 
   @override
+  String get failRetries => 'Retry on error';
+
+  @override
+  String get failRetriesDesc =>
+      'Resend on errors, dropping the image and lookups in turn';
+
+  @override
+  String get refusalRetries => 'Retry on refusal';
+
+  @override
+  String get refusalRetriesDesc =>
+      'Regenerate when the reply looks like a refusal';
+
+  @override
   String get settingLibrary => 'Library';
 
   @override

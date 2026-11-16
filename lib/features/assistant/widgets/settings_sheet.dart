@@ -137,6 +137,28 @@ class _SettingsSheet extends ConsumerWidget {
             onChanged: (v) =>
                 n.patch((o) => o.copyWith(historyTurns: v.round())),
           ),
+          SettingStepperRow(
+            icon: Icons.replay,
+            title: context.l10n.failRetries,
+            desc: context.l10n.failRetriesDesc,
+            value: s.retries.toDouble(),
+            min: 0,
+            max: AssistantSettings.retriesMax.toDouble(),
+            step: 1,
+            format: (v) => _countLabel(context, v),
+            onChanged: (v) => n.patch((o) => o.copyWith(retries: v.round())),
+          ),
+          SettingStepperRow(
+            icon: Icons.casino_outlined,
+            title: context.l10n.refusalRetries,
+            desc: context.l10n.refusalRetriesDesc,
+            value: s.rerolls.toDouble(),
+            min: 0,
+            max: AssistantSettings.retriesMax.toDouble(),
+            step: 1,
+            format: (v) => _countLabel(context, v),
+            onChanged: (v) => n.patch((o) => o.copyWith(rerolls: v.round())),
+          ),
           settingSection(context, context.l10n.settingLibrary),
           SettingNavRow(
             icon: Icons.handyman_outlined,
@@ -177,6 +199,9 @@ class _SettingsSheet extends ConsumerWidget {
     );
   }
 }
+
+String _countLabel(BuildContext context, double v) =>
+    v == 0 ? context.l10n.off : v.toStringAsFixed(0);
 
 /// 导出成一个文本文件,存到用户选的位置。内容见 `renderTraceExport`。
 Future<void> _exportTrace(BuildContext context, WidgetRef ref) async {

@@ -3,7 +3,7 @@ library;
 
 import 'dart:typed_data';
 
-import '../assistant_settings.dart' show ThinkLevel;
+import '../assistant_settings.dart' show AssistantSettings, ThinkLevel;
 import '../presets/preset_rule.dart' show PresetRule;
 import '../tools/tool_settings.dart' show ToolSettings;
 
@@ -37,6 +37,8 @@ class AgentTurnRequest {
     this.resources = const {},
     this.think = ThinkLevel.auto,
     this.stream = true,
+    this.retries = AssistantSettings.retriesDefault,
+    this.rerolls = AssistantSettings.rerollsDefault,
   });
 
   final String userText;
@@ -72,4 +74,8 @@ class AgentTurnRequest {
 
   final ThinkLevel think;
   final bool stream;
+
+  /// 出错后重发几次 / 回复像拒绝时重掷几次,见 [AssistantSettings]。
+  final int retries;
+  final int rerolls;
 }

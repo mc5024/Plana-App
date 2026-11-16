@@ -5384,6 +5384,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get contextTurnsDesc => '每次发送带上最近几轮对话';
 
   @override
+  String get failRetries => '失败重试';
+
+  @override
+  String get failRetriesDesc => '出错时自动重发，依次去掉附图和资料';
+
+  @override
+  String get refusalRetries => '拒绝重试';
+
+  @override
+  String get refusalRetriesDesc => '回复像拒绝时自动重新生成';
+
+  @override
   String get settingLibrary => '资料';
 
   @override

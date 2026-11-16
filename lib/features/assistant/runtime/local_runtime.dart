@@ -2,13 +2,12 @@
 /// 模型经 [LlmProvider]:自定义接口直连,后端模型经后端的模型通道。工具的联网来源
 /// (语义搜词、Wiki 摘要、角色候选筛选)请求后端的公开接口。
 ///
-/// 一轮最多尝试几次,每次都和上一次真的不一样:原样 → 剥图 → 再剥预取资料块(有什么剥什么,
-/// 至少重掷一次)。一次尝试里,工具结果和写坏的出图块回灌给模型接着跑;回复像拒绝就原地重掷。
+/// 出错后按设置重发几次:原样 → 剥图 → 再剥预取资料块(有什么剥什么,剥完了原样再发)。
+/// 一次尝试里,工具结果和写坏的出图块回灌给模型接着跑;回复像拒绝就原地重掷。
 library;
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 
 import 'package:http/http.dart' as http;
 
@@ -40,12 +39,6 @@ const _maxToolRounds = 3;
 
 /// 一次尝试里回灌让模型重写的次数上限(出图块写坏、工具轮数用完还在调)。
 const _maxFixes = 2;
-
-/// 一轮最多尝试几次。
-const _maxAttempts = 3;
-
-/// 回复像拒绝时原地重掷几次,整轮共用。
-const _maxRerolls = 2;
 
 /// 降级动作,按代价从小到大;第 n 次尝试叠加前 n-1 个。
 enum _Degrade { image, prefetch }
@@ -200,7 +193,7 @@ class LocalAgentRuntime implements AgentRuntime {
         if (img != null) _Degrade.image,
         if (block.isNotEmpty) _Degrade.prefetch,
       ];
-      final attempts = math.min(_maxAttempts, math.max(2, steps.length + 1));
+      final attempts = req.retries + 1;
       for (var attempt = 0; ; attempt++) {
         final msgs = messagesFor(steps.take(attempt).toSet());
         if (attempt == 0) {
@@ -222,7 +215,7 @@ class LocalAgentRuntime implements AgentRuntime {
         } on _Refused catch (e) {
           // 同一份上下文重掷过还在拒绝,降级也救不回来。报错收场,这一轮不进历史
           throw AgentFailure(
-            l10nNow.assistantRefused('$_maxRerolls', e.keyword),
+            l10nNow.assistantRefused('${req.rerolls}', e.keyword),
           );
         } catch (e) {
           if (attempt + 1 >= attempts || !_retryable(e)) rethrow;
@@ -377,10 +370,11 @@ class _Turn {
       if (parsed.reply.isEmpty && parsed.draw == null) {
         throw AgentFailure(l10nNow.modelEmptyReply);
       }
-      if (parsed.draw == null) {
+      // 重掷关着就不判拒绝,回复照常交出去
+      if (parsed.draw == null && req.rerolls > 0) {
         if (refusalHit(parsed.reply) case final hit?) {
           hop['refusal'] = hit;
-          if (rerolls >= _maxRerolls) throw _Refused(hit);
+          if (rerolls >= req.rerolls) throw _Refused(hit);
           rerolls++;
           // 原地重掷:什么都不回灌,同一份上下文再要一次。拒绝的话进了上下文,
           // 模型看着自己刚说过的更容易顺着说下去

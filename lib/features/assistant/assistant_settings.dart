@@ -65,7 +65,14 @@ class AssistantSettings {
     this.historyTurns = historyTurnsDefault,
     this.stream = true,
     this.importTo = SectionImport.main,
+    this.retries = retriesDefault,
+    this.rerolls = rerollsDefault,
   });
+
+  /// 失败重试 / 拒绝重试的默认次数与上限。0 = 关。
+  static const retriesDefault = 2;
+  static const rerollsDefault = 2;
+  static const retriesMax = 5;
 
   /// 上下文轮数的默认值、可调范围与步长。
   ///
@@ -146,6 +153,12 @@ class AssistantSettings {
   /// 导入 / 直接生成时提议写进主提示词的方式(见 [SectionImport])。
   final SectionImport importTo;
 
+  /// 出错后自动重发几次,依次剥掉附图、预取资料块。
+  final int retries;
+
+  /// 回复像拒绝时原地重掷几次。0 = 不判拒绝,回复照常显示。
+  final int rerolls;
+
   AssistantSettings copyWith({
     bool? autoGenerate,
     bool? inlineImage,
@@ -157,6 +170,8 @@ class AssistantSettings {
     int? historyTurns,
     bool? stream,
     SectionImport? importTo,
+    int? retries,
+    int? rerolls,
   }) => AssistantSettings(
     autoGenerate: autoGenerate ?? this.autoGenerate,
     inlineImage: inlineImage ?? this.inlineImage,
@@ -168,6 +183,8 @@ class AssistantSettings {
     historyTurns: historyTurns ?? this.historyTurns,
     stream: stream ?? this.stream,
     importTo: importTo ?? this.importTo,
+    retries: retries ?? this.retries,
+    rerolls: rerolls ?? this.rerolls,
   );
 
   Map<String, dynamic> toJson() => {
@@ -181,6 +198,8 @@ class AssistantSettings {
     'historyTurns': historyTurns,
     'stream': stream,
     'importTo': importTo.name,
+    'retries': retries,
+    'rerolls': rerolls,
   };
 
   factory AssistantSettings.fromJson(Map<String, dynamic> j) =>
@@ -217,7 +236,14 @@ class AssistantSettings {
             ),
           _ => historyTurnsDefault,
         },
+        retries: _count(j['retries'], retriesDefault),
+        rerolls: _count(j['rerolls'], rerollsDefault),
       );
+
+  static int _count(Object? v, int fallback) => switch (v) {
+    final num n when n.isFinite => n.round().clamp(0, retriesMax),
+    _ => fallback,
+  };
 }
 
 final assistantSettingsProvider =

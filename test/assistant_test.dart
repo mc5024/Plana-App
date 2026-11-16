@@ -1750,6 +1750,8 @@ void main() {
       OnlineTags? online,
       bool stream = true,
       bool backend = false,
+      int retries = AssistantSettings.retriesDefault,
+      int rerolls = AssistantSettings.rerollsDefault,
     }) => http.runWithClient(
       () =>
           agentRuntimeFor(
@@ -1784,6 +1786,8 @@ void main() {
                     'artist': {'A1': a1},
                   },
                   stream: stream,
+                  retries: retries,
+                  rerolls: rerolls,
                 ),
               )
               .toList(),
@@ -2065,10 +2069,26 @@ void main() {
           ),
         ),
       );
-      expect(model, hasLength(6), reason: '两次尝试,各回灌两次');
+      expect(model, hasLength(9), reason: '三次尝试,各回灌两次');
       expect(model[0], contains('D11 → __ARTIST_D11__'));
       expect(model[3], isNot(contains('D11 → __ARTIST_D11__')));
       expect(model[3], contains('已移除'));
+      expect(model[6], model[3], reason: '没得剥了就原样再发');
+    });
+
+    test('失败重试按设置的次数,关掉就不重试', () async {
+      for (final (retries, want) in [(0, 1), (1, 2), (4, 5)]) {
+        var n = 0;
+        final mock = MockClient((req) async {
+          n++;
+          return modelSays('');
+        });
+        await expectLater(
+          run(mock, retries: retries),
+          throwsA(isA<AgentFailure>()),
+        );
+        expect(n, want, reason: 'retries=$retries');
+      }
     });
 
     test('空回、只有思考没有正文:换下一次尝试', () async {
@@ -2124,6 +2144,21 @@ void main() {
         ),
       );
       expect(n, 3);
+    });
+
+    test('拒绝重试按设置的次数,关掉就不判拒绝、回复照常交出', () async {
+      var n = 0;
+      final mock = MockClient((req) async {
+        n++;
+        return modelSays('这个我画不了');
+      });
+      await expectLater(run(mock, rerolls: 4), throwsA(isA<AgentFailure>()));
+      expect(n, 5);
+
+      n = 0;
+      final events = await run(mock, rerolls: 0);
+      expect(n, 1);
+      expect(events.whereType<AgentDone>().single.result.replyText, '这个我画不了');
     });
 
     test('后端模型:经模型通道跑同一个循环,一跳一个请求,历史与本轮分开发', () async {
@@ -3509,6 +3544,20 @@ void main() {
         }).historyTurns,
         AssistantSettings.historyTurnsDefault,
       );
+    });
+
+    test('失败重试 / 拒绝重试:默认 2,0 存得下,越界夹回', () {
+      final d = AssistantSettings.fromJson(const {});
+      expect((d.retries, d.rerolls), (2, 2));
+      final back = AssistantSettings.fromJson(
+        const AssistantSettings(retries: 0, rerolls: 5).toJson(),
+      );
+      expect((back.retries, back.rerolls), (0, 5));
+      final wild = AssistantSettings.fromJson(const {
+        'retries': -1,
+        'rerolls': 99,
+      });
+      expect((wild.retries, wild.rerolls), (0, AssistantSettings.retriesMax));
     });
   });
 

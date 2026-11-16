@@ -9478,6 +9478,30 @@ abstract class AppLocalizations {
   /// **'每次发送带上最近几轮对话'**
   String get contextTurnsDesc;
 
+  /// No description provided for @failRetries.
+  ///
+  /// In zh, this message translates to:
+  /// **'失败重试'**
+  String get failRetries;
+
+  /// No description provided for @failRetriesDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'出错时自动重发，依次去掉附图和资料'**
+  String get failRetriesDesc;
+
+  /// No description provided for @refusalRetries.
+  ///
+  /// In zh, this message translates to:
+  /// **'拒绝重试'**
+  String get refusalRetries;
+
+  /// No description provided for @refusalRetriesDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'回复像拒绝时自动重新生成'**
+  String get refusalRetriesDesc;
+
   /// No description provided for @settingLibrary.
   ///
   /// In zh, this message translates to:

@@ -516,6 +516,8 @@ class AssistantController extends Notifier<AssistantState> {
       'tools': [for (final t in enabledTools(toolSettings)) t.name],
       'oc_placeholders': toolSettings.ocPlaceholders,
       'history_turns': settings.historyTurns,
+      'retries': settings.retries,
+      'rerolls': settings.rerolls,
       'history_entries': history.length,
       'with_canvas': canvas,
       if (image != null) 'image_bytes': image.length,
@@ -534,6 +536,8 @@ class AssistantController extends Notifier<AssistantState> {
       resources: latestResources(state.msgs),
       think: settings.thinkLevel,
       stream: settings.stream,
+      retries: settings.retries,
+      rerolls: settings.rerolls,
     );
     // 上面几处 await 期间可能已经点了停止,或者又发了一条:这一轮作废。
     // runtime 只有 listen 才发请求,在这儿拦住就不花钱。
