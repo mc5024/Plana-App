@@ -1,5 +1,5 @@
-/// 工具页:一个工具一张卡,卡头是工具开关,附带的选项排在卡里(工具关着时淡显)。
-/// 版式与「我的」里的设置页同源([SettingsCard])。
+/// 工具页:一个工具一张卡,卡头是工具开关,附带的选项收在卡头下一块浅底里
+/// (工具关着时淡显、点不动)。卡片与「我的」里的设置页同源([SettingsCard])。
 library;
 
 import 'package:flutter/material.dart';
@@ -51,23 +51,22 @@ class _ImageGenCard extends ConsumerWidget {
     final n = ref.read(toolSettingsProvider.notifier);
     final on = settings.toolOn(kImageGenTool);
     final model = ref.watch(activeImageModelProvider);
-    return SettingsCard(
-      children: [
-        _ToolRow(
-          icon: Icons.image_outlined,
-          title: context.l10n.toolGenerateImage,
-          value: on,
-          onChanged: (v) => n.setTool(kImageGenTool, v),
-        ),
+    return _CardShell(
+      header: _ToolRow(
+        icon: Icons.image_outlined,
+        title: context.l10n.toolGenerateImage,
+        value: on,
+        onChanged: (v) => n.setTool(kImageGenTool, v),
+      ),
+      enabled: on,
+      options: [
         _PickRow(
-          icon: Icons.auto_awesome_outlined,
           title: context.l10n.imageModelField,
           value: model?.name ?? context.l10n.notSet,
           enabled: on,
           onTap: () => showImageModelSheet(context),
         ),
         _SubRow(
-          icon: Icons.tune,
           title: context.l10n.imageGenConfirm,
           value: settings.optionOn(kImageGenTool, kImageGenConfirm),
           enabled: on,
@@ -89,23 +88,63 @@ class _ToolCard extends ConsumerWidget {
     final n = ref.read(toolSettingsProvider.notifier);
     final t = tool;
     final on = settings.toolOn(t.name);
-    return SettingsCard(
-      children: [
-        _ToolRow(
-          icon: t.icon,
-          title: t.label,
-          value: on,
-          onChanged: (v) => n.setTool(t.name, v),
-        ),
+    return _CardShell(
+      header: _ToolRow(
+        icon: t.icon,
+        title: t.label,
+        value: on,
+        onChanged: (v) => n.setTool(t.name, v),
+      ),
+      enabled: on,
+      options: [
         for (final o in t.options)
           _SubRow(
-            icon: Icons.tune,
             title: o.label,
             note: o.desc,
             value: settings.optionOn(t.name, o.id),
             enabled: on,
             onChanged: (v) => n.setOption(t.name, o.id, v),
           ),
+      ],
+    );
+  }
+}
+
+/// 一张工具卡:卡头 + 卡头下一块浅底装着的选项。没有选项就只有卡头。
+class _CardShell extends StatelessWidget {
+  const _CardShell({
+    required this.header,
+    required this.enabled,
+    this.options = const [],
+  });
+
+  final Widget header;
+  final bool enabled;
+  final List<Widget> options;
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsCard(
+      children: [
+        Column(
+          children: [
+            header,
+            if (options.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: AnimatedOpacity(
+                  duration: Motion.fast,
+                  opacity: enabled ? 1 : .42,
+                  child: Material(
+                    color: context.scheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(12),
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(children: options),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ],
     );
   }
@@ -161,17 +200,18 @@ class _ToolRow extends StatelessWidget {
   }
 }
 
-/// 卡里点开选一项的一行:右边是选着的值。
+/// 浅底里一行的最低高度:开关行、点开选的行一样高。
+const _optionMinHeight = 52.0;
+
+/// 浅底里点开选一项的一行:右边是选着的值。
 class _PickRow extends StatelessWidget {
   const _PickRow({
-    required this.icon,
     required this.title,
     required this.value,
     required this.enabled,
     required this.onTap,
   });
 
-  final IconData icon;
   final String title;
   final String value;
   final bool enabled;
@@ -182,15 +222,12 @@ class _PickRow extends StatelessWidget {
     final scheme = context.scheme;
     return InkWell(
       onTap: enabled ? onTap : null,
-      child: AnimatedOpacity(
-        duration: Motion.fast,
-        opacity: enabled ? 1 : .42,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: _optionMinHeight),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(48, 14, 16, 14),
+          padding: const EdgeInsets.fromLTRB(14, 0, 10, 0),
           child: Row(
             children: [
-              Icon(icon, size: 18, color: scheme.onSurfaceVariant),
-              const SizedBox(width: 10),
               Text(
                 title,
                 style: context.texts.bodyMedium!.copyWith(
@@ -219,10 +256,9 @@ class _PickRow extends StatelessWidget {
   }
 }
 
-/// 卡里的一行选项:和卡头的名字对齐,[note] 是标题下的一行小字。
+/// 浅底里的一行开关,[note] 是标题下的一行小字。
 class _SubRow extends StatelessWidget {
   const _SubRow({
-    required this.icon,
     required this.title,
     required this.value,
     required this.enabled,
@@ -230,7 +266,6 @@ class _SubRow extends StatelessWidget {
     this.note,
   });
 
-  final IconData icon;
   final String title;
   final String? note;
   final bool value;
@@ -247,22 +282,16 @@ class _SubRow extends StatelessWidget {
     final scheme = context.scheme;
     return InkWell(
       onTap: enabled ? () => _flip(!value) : null,
-      child: AnimatedOpacity(
-        duration: Motion.fast,
-        opacity: enabled ? 1 : .42,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: _optionMinHeight),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(48, 4, 10, 4),
+          padding: const EdgeInsets.fromLTRB(14, 2, 4, 2),
           child: Row(
             children: [
-              Icon(
-                icon,
-                size: 18,
-                color: value ? scheme.onSurfaceVariant : scheme.outline,
-              ),
-              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       title,
