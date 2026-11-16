@@ -2072,10 +2072,10 @@ void main() {
           ),
         ),
       );
-      expect(model, hasLength(9), reason: '三次尝试,各回灌两次');
+      expect(model, hasLength(12), reason: '四次尝试,各回灌两次');
       expect(model[0], contains('D11 → __ARTIST_D11__'));
       expect(model[3], model[0], reason: '没附图,原样再发');
-      expect(model[6], model[0]);
+      expect(model[9], model[0]);
     });
 
     test('失败重试按设置的次数,关掉就不重试', () async {
@@ -2145,7 +2145,7 @@ void main() {
           ),
         ),
       );
-      expect(n, 3);
+      expect(n, 4);
     });
 
     test('拒绝重试按设置的次数,关掉就不判拒绝、回复照常交出', () async {
@@ -3559,9 +3559,9 @@ void main() {
       );
     });
 
-    test('失败重试 / 拒绝重试:默认 2,0 存得下,越界夹回', () {
+    test('失败重试 / 拒绝重试:默认 3,0 存得下,越界夹回', () {
       final d = AssistantSettings.fromJson(const {});
-      expect((d.retries, d.rerolls), (2, 2));
+      expect((d.retries, d.rerolls), (3, 3));
       final back = AssistantSettings.fromJson(
         const AssistantSettings(retries: 0, rerolls: 5).toJson(),
       );

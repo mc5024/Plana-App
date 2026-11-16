@@ -72,8 +72,8 @@ class AssistantSettings {
   });
 
   /// 失败重试 / 拒绝重试的默认次数与上限。0 = 关。
-  static const retriesDefault = 2;
-  static const rerollsDefault = 2;
+  static const retriesDefault = 3;
+  static const rerollsDefault = 3;
   static const retriesMax = 5;
 
   /// 上下文轮数的默认值、可调范围与步长。
