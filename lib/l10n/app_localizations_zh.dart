@@ -5069,11 +5069,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String inUseBy(String names) {
-    return '$names 使用中';
-  }
-
-  @override
   String get listSep => '、';
 
   @override
@@ -5130,10 +5125,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get ruleSecModeNatural => '当前模式：仅自然语言';
 
   @override
-  String get rulesInUse => '在用';
-
-  @override
-  String get rulesAllPresets => '全部预设';
+  String inUseOn(String model) {
+    return '$model 在用';
+  }
 
   @override
   String get duplicatePreset => '创建副本';

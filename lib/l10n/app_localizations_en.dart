@@ -5499,11 +5499,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String inUseBy(String names) {
-    return 'In use by $names';
-  }
-
-  @override
   String get listSep => ', ';
 
   @override
@@ -5566,10 +5561,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ruleSecModeNatural => 'Mode: Natural Language Only';
 
   @override
-  String get rulesInUse => 'In Use';
-
-  @override
-  String get rulesAllPresets => 'All Presets';
+  String inUseOn(String model) {
+    return '$model · In Use';
+  }
 
   @override
   String get duplicatePreset => 'Duplicate';

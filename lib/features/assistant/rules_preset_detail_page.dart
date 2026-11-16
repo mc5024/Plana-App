@@ -1,4 +1,4 @@
-/// 预设页:上面是这份预设的名称、作者、支持的模型和在哪些模型上用着,下面是段落。
+/// 预设页:上面是这份预设的名称、作者、支持的模型,下面是段落。哪个模型用它在列表页的卡上点。
 ///
 /// 段落里内置段按用途归成几张卡(见 [ruleCardsOf]),认不出的段名各自一张。点卡进编辑页,
 /// 卡里几段上下排开一起改;点自己加的段名改名;⏻ 停用、🗑 删除、长按拖动排序都按整张卡来。
@@ -67,19 +67,13 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
       ),
       body: lib == null || rules == null
           ? const Center(child: CircularProgressIndicator())
-          : _body(lib, p, d, rules),
+          : _body(p, d, rules),
     );
   }
 
-  Widget _body(
-    RulesLibrary lib,
-    RulesPreset? p,
-    DefaultRules? d,
-    List<PresetRule> rules,
-  ) {
+  Widget _body(RulesPreset? p, DefaultRules? d, List<PresetRule> rules) {
     final l = context.l10n;
     final models = p?.models ?? {widget.family!};
-    final selfId = p?.id ?? 'default-${widget.family!.name}';
     final cards = ruleCardsOf(rules);
     final header = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -113,33 +107,6 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
               ].join(l.listSep),
               onTap: p == null ? null : () => _editModels(p),
             ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        SettingsLabel(l.rulesInUse),
-        SettingsCard(
-          children: [
-            for (final m in RulesFamily.values)
-              if (models.contains(m))
-                SwitchListTile(
-                  value: lib.activeFor(m).id == selfId,
-                  // 默认规则关不掉:要换别的,去列表页的「在用」里选
-                  onChanged: p == null && lib.activeFor(m).id == selfId
-                      ? null
-                      : (v) {
-                          Haptics.selection();
-                          ref
-                              .read(rulesLibraryProvider.notifier)
-                              .use(m, v ? selfId : 'default-${m.name}');
-                        },
-                  title: Text(
-                    rulesFamilyLabel(m),
-                    style: context.texts.bodyMedium!.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  contentPadding: const EdgeInsets.fromLTRB(16, 2, 10, 2),
-                ),
           ],
         ),
         const SizedBox(height: 16),

@@ -8902,12 +8902,6 @@ abstract class AppLocalizations {
   /// **'「{name}」将被删除,正在使用它的模型改用默认规则。'**
   String deleteRulePresetBody(String name);
 
-  /// No description provided for @inUseBy.
-  ///
-  /// In zh, this message translates to:
-  /// **'{names} 使用中'**
-  String inUseBy(String names);
-
   /// No description provided for @listSep.
   ///
   /// In zh, this message translates to:
@@ -9016,17 +9010,11 @@ abstract class AppLocalizations {
   /// **'当前模式：仅自然语言'**
   String get ruleSecModeNatural;
 
-  /// No description provided for @rulesInUse.
+  /// No description provided for @inUseOn.
   ///
   /// In zh, this message translates to:
-  /// **'在用'**
-  String get rulesInUse;
-
-  /// No description provided for @rulesAllPresets.
-  ///
-  /// In zh, this message translates to:
-  /// **'全部预设'**
-  String get rulesAllPresets;
+  /// **'{model} 在用'**
+  String inUseOn(String model);
 
   /// No description provided for @duplicatePreset.
   ///

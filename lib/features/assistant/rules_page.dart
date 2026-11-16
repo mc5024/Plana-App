@@ -1,8 +1,8 @@
-/// 规则预设页:最上面「在用」写着每个模型用的是哪一份(点开换),下面是全部预设。
+/// 规则预设页:一张卡一份预设。
 ///
-/// 一张卡一份预设。默认规则按模型分两张(v4.5 版、v5 版),名称、作者、版本读内置
-/// 那份的 meta。点卡进预设页([RulesPresetDetailPage]);卡上直接摆副本、导出、删除。
-/// 每个模型恰好有一份在用,默认规则兜底。
+/// 默认规则按模型分两张(v4.5 版、v5 版),名称、作者、版本读内置那份的 meta。
+/// 点卡进预设页([RulesPresetDetailPage]);卡上直接摆副本、导出、删除。
+/// 卡底下是它支持的模型,点哪个就是那个模型改用这份;每个模型恰好有一份在用,默认规则兜底。
 library;
 
 import 'dart:convert';
@@ -13,25 +13,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/ui/setting_row.dart' show SettingSheet;
 import '../../core/util/haptics.dart';
 import '../generate/widgets/common.dart' show confirmDialog, hintSnack;
-import '../profile/widgets/settings_ui.dart';
 import 'presets/default_rules.dart';
 import 'presets/preset_rule.dart';
 import 'presets/rules_file.dart';
 import 'presets/rules_library.dart';
 import 'rules_preset_detail_page.dart';
 import '../../l10n/l10n.dart';
-
-/// 预设的显示名:默认规则带上版本(「Nyako v5」),两份默认规则同名。
-String presetDisplayName(WidgetRef ref, RulesPreset p) {
-  if (!p.isDefault) return p.name;
-  final f = p.models.single;
-  final info = ref.watch(defaultRulesProvider(f)).value;
-  return '${info?.name ?? p.name} ${info?.version ?? defaultRulesVersionOf(f)}'
-      .trim();
-}
 
 class RulesPresetPage extends ConsumerWidget {
   const RulesPresetPage({super.key});
@@ -55,20 +44,6 @@ class RulesPresetPage extends ConsumerWidget {
           : ListView(
               padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
               children: [
-                SettingsLabel(context.l10n.rulesInUse),
-                SettingsCard(
-                  children: [
-                    for (final f in RulesFamily.values)
-                      SettingsRow(
-                        icon: Icons.rule_outlined,
-                        title: rulesFamilyLabel(f),
-                        value: presetDisplayName(ref, lib.activeFor(f)),
-                        onTap: () => _pickInUse(context, f),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                SettingsLabel(context.l10n.rulesAllPresets),
                 for (final p in lib.all)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
@@ -89,6 +64,18 @@ class RulesPresetPage extends ConsumerWidget {
       for (final f in RulesFamily.values)
         if (lib.activeFor(f).id == p.id) f,
     };
+    // 点没在用的模型 = 那个模型改用这份;点在用的 = 退回默认规则(默认规则本身退无可退)
+    void onUse(RulesFamily f) {
+      final n = ref.read(rulesLibraryProvider.notifier);
+      if (!inUse.contains(f)) {
+        Haptics.selection();
+        n.use(f, p.id);
+      } else if (!p.isDefault) {
+        Haptics.selection();
+        n.use(f, defaultPresetOf(f).id);
+      }
+    }
+
     void open() => Navigator.push<void>(
       context,
       MaterialPageRoute(
@@ -111,6 +98,7 @@ class RulesPresetPage extends ConsumerWidget {
         isDefault: true,
         models: p.models,
         inUse: inUse,
+        onUse: onUse,
         onOpen: open,
         onCopy: () => _duplicate(context, ref, p),
         onExport: () => _exportDefault(context, ref, f),
@@ -125,6 +113,7 @@ class RulesPresetPage extends ConsumerWidget {
       isDefault: false,
       models: p.models,
       inUse: inUse,
+      onUse: onUse,
       onOpen: open,
       onCopy: () => _duplicate(context, ref, p),
       onExport: () => _save(
@@ -136,17 +125,6 @@ class RulesPresetPage extends ConsumerWidget {
         fileName: 'plana-rules-${_safe(p.name)}.yaml',
       ),
       onDelete: () => _delete(context, ref, p),
-    );
-  }
-
-  Future<void> _pickInUse(BuildContext context, RulesFamily f) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: false,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: .18),
-      builder: (_) => _InUseSheet(family: f),
     );
   }
 
@@ -327,55 +305,6 @@ class RulesPresetPage extends ConsumerWidget {
   }
 }
 
-/// 选某个模型用哪份规则:列出支持它的预设,在用的那份打勾,点一份就换过去。
-class _InUseSheet extends ConsumerWidget {
-  const _InUseSheet({required this.family});
-
-  final RulesFamily family;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final lib = ref.watch(rulesLibraryProvider).value ?? const RulesLibrary();
-    final current = lib.activeFor(family).id;
-    final scheme = context.scheme;
-    return SettingSheet(
-      title: rulesFamilyLabel(family),
-      maxHeight: MediaQuery.sizeOf(context).height * .82,
-      children: [
-        for (final p in lib.all)
-          if (p.models.contains(family))
-            InkWell(
-              onTap: () {
-                Haptics.selection();
-                ref.read(rulesLibraryProvider.notifier).use(family, p.id);
-                Navigator.of(context).maybePop();
-              },
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 18, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        presetDisplayName(ref, p),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.texts.bodyLarge!.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: p.id == current ? scheme.primary : null,
-                        ),
-                      ),
-                    ),
-                    if (p.id == current)
-                      Icon(Icons.check, size: 20, color: scheme.primary),
-                  ],
-                ),
-              ),
-            ),
-      ],
-    );
-  }
-}
-
 class _PresetCard extends StatelessWidget {
   const _PresetCard({
     required this.title,
@@ -383,6 +312,7 @@ class _PresetCard extends StatelessWidget {
     required this.isDefault,
     required this.models,
     required this.inUse,
+    required this.onUse,
     required this.onOpen,
     required this.onCopy,
     required this.onExport,
@@ -398,6 +328,9 @@ class _PresetCard extends StatelessWidget {
 
   /// 正在用这份的模型。
   final Set<RulesFamily> inUse;
+
+  /// 点了卡底下的某个模型。
+  final ValueChanged<RulesFamily> onUse;
   final VoidCallback onOpen;
   final VoidCallback onCopy;
   final VoidCallback onExport;
@@ -408,13 +341,6 @@ class _PresetCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    final allInUse = models.every(inUse.contains);
-    // 支持两个模型、只在其中一个上用着的,角标说清是哪一个;其余只说「使用中」
-    final badge = inUse.isEmpty
-        ? null
-        : allInUse
-        ? l10nNow.inUse
-        : l10nNow.inUseBy(inUse.map(rulesFamilyLabel).join(l10nNow.listSep));
     Widget btn(IconData icon, String tip, VoidCallback onTap, Color color) =>
         IconButton(
           tooltip: tip,
@@ -426,22 +352,16 @@ class _PresetCard extends StatelessWidget {
       radius: BorderRadius.circular(16),
       child: Material(
         color: scheme.surfaceContainerLow,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: inUse.isNotEmpty
-              ? BorderSide(color: scheme.primary, width: 1.4)
-              : BorderSide.none,
-        ),
+        borderRadius: BorderRadius.circular(16),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onOpen,
-          child: Stack(
-            children: [
-              Padding(
-                // 上下对称,标题那两行在卡片里垂直居中。角标是叠在上面的
-                // (Positioned),不占高度;上边距留够了,它压不到标题和右边的按钮
-                padding: const EdgeInsets.fromLTRB(16, 16, 6, 16),
-                child: Row(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 6, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
                     Expanded(
                       child: Column(
@@ -461,9 +381,6 @@ class _PresetCard extends StatelessWidget {
                               ),
                               if (isDefault)
                                 _Tag(context.l10n.presetGroupDefault),
-                              for (final f in RulesFamily.values)
-                                if (models.contains(f))
-                                  _Tag(rulesFamilyLabel(f)),
                             ],
                           ),
                           const SizedBox(height: 3),
@@ -499,29 +416,69 @@ class _PresetCard extends StatelessWidget {
                       ),
                   ],
                 ),
-              ),
-              if (badge != null)
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(8, 1, 11, 2),
-                    decoration: BoxDecoration(
-                      color: scheme.primary,
-                      borderRadius: const BorderRadius.only(
-                        bottomLeft: Radius.circular(10),
-                      ),
-                    ),
-                    child: Text(
-                      badge,
-                      style: context.texts.labelSmall!.copyWith(
-                        color: scheme.onPrimary,
-                        height: 1.2,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    for (final f in RulesFamily.values)
+                      if (models.contains(f))
+                        _ModelChip(
+                          label: rulesFamilyLabel(f),
+                          on: inUse.contains(f),
+                          onTap: () => onUse(f),
+                        ),
+                  ],
                 ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 卡底下的一个模型:在用时实底 + 勾 +「在用」,没在用是描边,点了改用这份。
+class _ModelChip extends StatelessWidget {
+  const _ModelChip({
+    required this.label,
+    required this.on,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool on;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    final fg = on ? scheme.onPrimaryContainer : scheme.onSurfaceVariant;
+    return Material(
+      color: on ? scheme.primaryContainer : Colors.transparent,
+      shape: StadiumBorder(
+        side: on ? BorderSide.none : BorderSide(color: scheme.outlineVariant),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(on ? 8 : 12, 5, 12, 5),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (on) ...[
+                Icon(Icons.check, size: 15, color: fg),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                on ? context.l10n.inUseOn(label) : label,
+                style: context.texts.labelMedium!.copyWith(
+                  color: fg,
+                  fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
             ],
           ),
         ),
