@@ -9487,7 +9487,7 @@ abstract class AppLocalizations {
   /// No description provided for @failRetriesDesc.
   ///
   /// In zh, this message translates to:
-  /// **'出错时自动重发，依次去掉附图和资料'**
+  /// **'出错时自动重发，重发时不带附图'**
   String get failRetriesDesc;
 
   /// No description provided for @refusalRetries.

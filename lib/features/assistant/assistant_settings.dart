@@ -153,7 +153,7 @@ class AssistantSettings {
   /// 导入 / 直接生成时提议写进主提示词的方式(见 [SectionImport])。
   final SectionImport importTo;
 
-  /// 出错后自动重发几次,依次剥掉附图、预取资料块。
+  /// 出错后自动重发几次,重发时剥掉附图。
   final int retries;
 
   /// 回复像拒绝时原地重掷几次。0 = 不判拒绝,回复照常显示。

@@ -5387,7 +5387,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get failRetries => '失败重试';
 
   @override
-  String get failRetriesDesc => '出错时自动重发，依次去掉附图和资料';
+  String get failRetriesDesc => '出错时自动重发，重发时不带附图';
 
   @override
   String get refusalRetries => '拒绝重试';

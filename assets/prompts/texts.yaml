@@ -45,15 +45,12 @@ draw_characters_not_object: >-
 draw_character_no_positive: >-
   nai_draw 代码块里 characters 的第 {index} 个角色（name: {name}）没有 positive。分区必须带该角色自己的英文 tag，否则这个角色画不出来。补上，或者本来就是单角色就把 characters 留空数组 []。正文照常写给用户。
 
-# 降级重试时补在用户消息末尾
+# 重试剥图时补在用户消息末尾
 retry_no_image: |-
   [重试中]
   上次可能因上下文过大失败，已剥去图片，请基于剩余文本简洁回复。
 retry_image_only: >-
   （图片处理失败，请重新文字描述）
-retry_no_prefetch: |-
-  [重试中]
-  上次可能被预匹配的候选块带偏，已移除，请只按用户原话回复。
 
 # 预取资料块的块头说明
 artist_block_note: >-

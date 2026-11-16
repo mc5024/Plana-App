@@ -2053,7 +2053,7 @@ void main() {
       expect(done.replyText, '画好了');
     });
 
-    test('回灌两次还写不对:换下一次尝试并剥掉预取资料块,都不行就报错带原文', () async {
+    test('回灌两次还写不对:换下一次尝试,资料块照带,都不行就报错带原文', () async {
       final model = <String>[];
       final mock = MockClient((req) async {
         model.add(req.body);
@@ -2071,9 +2071,8 @@ void main() {
       );
       expect(model, hasLength(9), reason: '三次尝试,各回灌两次');
       expect(model[0], contains('D11 → __ARTIST_D11__'));
-      expect(model[3], isNot(contains('D11 → __ARTIST_D11__')));
-      expect(model[3], contains('已移除'));
-      expect(model[6], model[3], reason: '没得剥了就原样再发');
+      expect(model[3], model[0], reason: '没附图,原样再发');
+      expect(model[6], model[0]);
     });
 
     test('失败重试按设置的次数,关掉就不重试', () async {

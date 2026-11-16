@@ -5855,8 +5855,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get failRetries => 'Retry on error';
 
   @override
-  String get failRetriesDesc =>
-      'Resend on errors, dropping the image and lookups in turn';
+  String get failRetriesDesc => 'Resend on errors, without the attached image';
 
   @override
   String get refusalRetries => 'Retry on refusal';

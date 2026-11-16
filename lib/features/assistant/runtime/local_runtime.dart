@@ -2,7 +2,7 @@
 /// 模型经 [LlmProvider]:自定义接口直连,后端模型经后端的模型通道。工具的联网来源
 /// (语义搜词、Wiki 摘要、角色候选筛选)请求后端的公开接口。
 ///
-/// 出错后按设置重发几次:原样 → 剥图 → 再剥预取资料块(有什么剥什么,剥完了原样再发)。
+/// 出错后按设置重发几次,重发时剥掉附图。
 /// 一次尝试里,工具结果和写坏的出图块回灌给模型接着跑;回复像拒绝就原地重掷。
 library;
 
@@ -39,9 +39,6 @@ const _maxToolRounds = 3;
 
 /// 一次尝试里回灌让模型重写的次数上限(出图块写坏、工具轮数用完还在调)。
 const _maxFixes = 2;
-
-/// 降级动作,按代价从小到大;第 n 次尝试叠加前 n-1 个。
-enum _Degrade { image, prefetch }
 
 class LocalAgentRuntime implements AgentRuntime {
   LocalAgentRuntime({
@@ -152,16 +149,13 @@ class LocalAgentRuntime implements AgentRuntime {
         collapse(canvasBlock),
       ].where((s) => s.isNotEmpty);
 
-      // 本轮这条用户消息。降级时剥掉图 / 资料块,末尾补一句说明
-      List<LlmMessage> messagesFor(Set<_Degrade> degrade) {
-        final noImage = degrade.contains(_Degrade.image);
-        final noBlock = degrade.contains(_Degrade.prefetch);
-        final parts = [...asked, if (!noBlock && block.isNotEmpty) block];
+      // 本轮这条用户消息。重发时剥掉图,末尾补一句说明
+      List<LlmMessage> messagesFor({required bool noImage}) {
+        final parts = [...asked, if (block.isNotEmpty) block];
         if (noImage) {
           if (parts.isEmpty) parts.add(texts.get('retry_image_only'));
           parts.add(texts.get('retry_no_image'));
         }
-        if (noBlock) parts.add(texts.get('retry_no_prefetch'));
         return [
           ...history,
           (
@@ -189,13 +183,9 @@ class LocalAgentRuntime implements AgentRuntime {
         remembered: remembered,
         thisTurn: thisTurn,
       );
-      final steps = [
-        if (img != null) _Degrade.image,
-        if (block.isNotEmpty) _Degrade.prefetch,
-      ];
       final attempts = req.retries + 1;
       for (var attempt = 0; ; attempt++) {
-        final msgs = messagesFor(steps.take(attempt).toSet());
+        final msgs = messagesFor(noImage: attempt > 0 && img != null);
         if (attempt == 0) {
           trace?.messages = [
             for (final m in msgs)
@@ -219,10 +209,7 @@ class LocalAgentRuntime implements AgentRuntime {
           );
         } catch (e) {
           if (attempt + 1 >= attempts || !_retryable(e)) rethrow;
-          trace?.event('retry', {
-            'error': '$e',
-            'degrade': [for (final d in steps.take(attempt + 1)) d.name],
-          });
+          trace?.event('retry', {'error': '$e', 'no_image': img != null});
           if (live) yield const AgentDelta();
         }
       }

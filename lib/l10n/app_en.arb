@@ -1601,7 +1601,7 @@
   "contextTurns": "Context Turns",
   "contextTurnsDesc": "How many recent turns to include each time",
   "failRetries": "Retry on error",
-  "failRetriesDesc": "Resend on errors, dropping the image and lookups in turn",
+  "failRetriesDesc": "Resend on errors, without the attached image",
   "refusalRetries": "Retry on refusal",
   "refusalRetriesDesc": "Regenerate when the reply looks like a refusal",
   "settingLibrary": "Library",
