@@ -104,7 +104,7 @@ class _CodexViewState extends ConsumerState<CodexView>
 
   List<CodexEntry> _filtered(CodexData d, CodexBlock block) {
     final q = _search.trim().toLowerCase();
-    return [
+    return d.onePerArtist([
       for (final e in d.entries)
         if (_underCat(e) &&
             !block.hides(e.path) &&
@@ -113,7 +113,18 @@ class _CodexViewState extends ConsumerState<CodexView>
                 e.tags.toLowerCase().contains(q) ||
                 e.characters.any((c) => c.prompt.toLowerCase().contains(q))))
           e,
-    ];
+    ]);
+  }
+
+  /// 分类弹层数条数用的整部词条(一位画师算一条);按法典数据缓存。
+  CodexData? _browseFor;
+  List<CodexEntry> _browse = const [];
+  List<CodexEntry> _browseEntries(CodexData d) {
+    if (!identical(d, _browseFor)) {
+      _browseFor = d;
+      _browse = d.onePerArtist(d.entries);
+    }
+    return _browse;
   }
 
   bool _underCat(CodexEntry e) => codexPathUnder(e.path, _catPath);
@@ -387,7 +398,7 @@ class _CodexViewState extends ConsumerState<CodexView>
             meta.id,
             d.effectiveTree,
             _catPath,
-            d.entries,
+            _browseEntries(d),
           );
           if (picked != null && mounted) setState(() => _catPath = picked);
         },

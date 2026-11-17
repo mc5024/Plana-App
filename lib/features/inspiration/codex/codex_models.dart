@@ -362,6 +362,22 @@ class CodexEntry {
     );
   }
 
+  CodexEntry copyWith({String? title, List<String>? path}) => CodexEntry(
+    id: id,
+    title: title ?? this.title,
+    tags: tags,
+    path: path ?? this.path,
+    image: image,
+    original: original,
+    imageWidth: imageWidth,
+    imageHeight: imageHeight,
+    assetRev: assetRev,
+    assetCodexId: assetCodexId,
+    isNew: isNew,
+    images: images,
+    characters: characters,
+  );
+
   /// 回写(收藏夹存词条快照用)。只落非空字段:收藏文件里几百条,
   /// 每条多带一串 null 白占体积。
   Map<String, dynamic> toJson() => {
@@ -395,6 +411,7 @@ class CodexData {
     required this.meta,
     required this.entries,
     this.tree = const [],
+    this.specimens = const {},
   });
 
   final CodexMeta meta;
@@ -402,6 +419,34 @@ class CodexData {
 
   /// 分类树(顶层节点;app 侧 v1 只用顶层做筛选 chip)。
   final List<CodexNode> tree;
+
+  /// 按画风重排后的单画师词条:词条 id → 所属画师下标与例图优先级(小者优先)。
+  /// 只有挂上画风数据的 v5 画师词典非空,见 `codex_artist_styles.dart`。
+  final Map<String, ({int artist, int rank})> specimens;
+
+  /// 每位画师只留一张卡(取 [list] 里优先级最高的例图,占该画师首次出现的位置);
+  /// 其余词条原样保留。
+  List<CodexEntry> onePerArtist(List<CodexEntry> list) {
+    if (specimens.isEmpty) return list;
+    final best = <int, CodexEntry>{};
+    for (final e in list) {
+      final s = specimens[e.id];
+      if (s == null) continue;
+      final cur = best[s.artist];
+      if (cur == null || s.rank < specimens[cur.id]!.rank) best[s.artist] = e;
+    }
+    final seen = <int>{};
+    final out = <CodexEntry>[];
+    for (final e in list) {
+      final s = specimens[e.id];
+      if (s == null) {
+        out.add(e);
+      } else if (seen.add(s.artist)) {
+        out.add(best[s.artist]!);
+      }
+    }
+    return out;
+  }
 
   /// 分类树:有 tree 用 tree;没有则从词条 path 首级合成扁平树(带计数),
   /// 让每部法典都能走同一套层级筛选。

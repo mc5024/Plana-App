@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/store/atomic_file.dart';
+import 'codex_artist_styles.dart';
 import 'codex_models.dart';
 import 'codex_tag_zh.dart';
 import '../../../l10n/l10n.dart';
@@ -112,13 +113,23 @@ class CodexService {
   ///
   /// 盘上那份解析不了(早先非原子写留下的半截文件之类)就删掉回源 —— 否则重试
   /// 读的还是同一个坏文件,这部法典会一直卡在「加载失败」。
+  ///
+  /// v5 画师词典另拉画风数据([artistStylesFile]),在同一个 isolate 里重排;
+  /// 拉不到就按来源目录显示。
   Future<CodexData> fetchCodex(CodexMeta meta) async {
+    final styles = meta.id == artistStylesCodexId
+        ? _fetchArtistStyles()
+        : Future<String?>.value();
     final f = await _codexFile(meta);
     if (f != null && await f.exists()) {
       try {
         final s = await f.readAsString();
         if (s.isNotEmpty) {
-          return await compute(codexParsePayload, <Object?>[s, meta.raw]);
+          return await compute(codexParsePayload, <Object?>[
+            s,
+            meta.raw,
+            await styles,
+          ]);
         }
       } catch (_) {}
       try {
@@ -127,9 +138,27 @@ class CodexService {
     }
 
     final raw = await _download(meta);
-    final data = await compute(codexParsePayload, <Object?>[raw, meta.raw]);
+    final data = await compute(codexParsePayload, <Object?>[
+      raw,
+      meta.raw,
+      await styles,
+    ]);
     if (f != null) await _storeCodex(meta, f, raw);
     return data;
+  }
+
+  /// 画风数据原文(联网优先、拉不到读副本);都没有返回 null。
+  Future<String?> _fetchArtistStyles() async {
+    try {
+      return await _fetchWithCopy(artistStylesFile, (raw) {
+        if (parseArtistStyles(jsonDecode(raw)) == null) {
+          throw CodexException(l10nNow.codexBadData);
+        }
+        return raw;
+      });
+    } catch (_) {
+      return null;
+    }
   }
 
   /// 拉网:主 URL(`dataUrl` 或 `data/<id>.json`)→ 失败退兜底(本地快照)。
@@ -256,7 +285,12 @@ CodexData codexParsePayload(List<Object?> args) {
   final idx = (indexRaw != null && indexRaw.isNotEmpty)
       ? CodexMeta.fromJson(indexRaw)
       : null;
-  return CodexData.parse(j, indexMeta: idx);
+  final data = CodexData.parse(j, indexMeta: idx);
+  final stylesRaw = args.length > 2 ? args[2] as String? : null;
+  final styles = stylesRaw == null
+      ? null
+      : parseArtistStyles(jsonDecode(stylesRaw));
+  return styles == null ? data : applyArtistStyles(data, styles);
 }
 
 class CodexException implements Exception {
