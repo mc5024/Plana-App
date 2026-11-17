@@ -14,6 +14,16 @@ const kCodexTabKey = 'codex';
 /// 能删的内置类别(删了只是不出页签、条目一并清掉;同名新建即恢复)。
 const kRemovableBuiltins = {'scene', 'other'};
 
+/// 恢复时把云端预览(哈希)换成条目里存的预览串:本机路径(沿用 [localPaths] 里的同一张,
+/// 或下载落盘),取不到时返回补全了后端地址的网址。
+typedef PreviewResolver =
+    Future<String> Function(
+      String sha,
+      String entryId,
+      int index,
+      List<String> localPaths,
+    );
+
 /// 灵感页本地库状态:全部条目 + 每分类标签池 + 每分类最近使用 + 自定义类别
 /// 与页签的排列。标签池/最近使用对齐 web 的 `tag_pool:<id>` / `usage_order:<id>`
 /// (存 50 显 8)。
@@ -560,22 +570,42 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
 
   // ---- 云备份 ----
 
-  /// 打包四类条目(web /api/user-tag-backup 的 categories 形状)。
-  Map<String, List<Map<String, dynamic>>> encodeBackup() => {
-    for (final d in kTagCategoryDefs) d.webId: encodeCategory(d.key),
+  /// 打包四类条目(web /api/user-tag-backup 的 categories 形状)。[refs] 见 [portablePreviews]。
+  Map<String, List<Map<String, dynamic>>> encodeBackup({
+    Map<String, String> refs = const {},
+  }) => {
+    for (final d in kTagCategoryDefs)
+      d.webId: encodeCategory(d.key, refs: refs),
   };
 
   /// 自定义类别那一块(云备份的 `custom`):定义、页签排列 + 各类条目。
-  Map<String, dynamic> encodeCustom() => {
+  Map<String, dynamic> encodeCustom({Map<String, String> refs = const {}}) => {
     ..._s.layoutJson(),
-    'items': {for (final d in _s.customDefs) d.webId: encodeCategory(d.key)},
+    'items': {
+      for (final d in _s.customDefs) d.webId: encodeCategory(d.key, refs: refs),
+    },
   };
 
   /// 单分类条目打包(本地 JSON 导出用)。
-  List<Map<String, dynamic>> encodeCategory(TagCategory c) => [
+  List<Map<String, dynamic>> encodeCategory(
+    TagCategory c, {
+    Map<String, String> refs = const {},
+  }) => [
     for (final e in _s.entries)
-      if (e.category == c) encodeBackupEntry(e),
+      if (e.category == c) encodeBackupEntry(e, refs: refs),
   ];
+
+  /// 各分类的标签池(云备份的 `pools`:webId → 标签)。
+  Map<String, List<String>> encodePools() => {
+    for (final en in _s.pools.entries) tagCategoryDef(en.key).webId: en.value,
+  };
+
+  /// 用到的本机预览文件(备份前要上传的那些)。
+  Set<String> localPreviewFiles() => {
+    for (final e in _s.entries)
+      for (final p in e.previews)
+        if (!p.startsWith('http') && previewRefSha(p) == null) p,
+  };
 
   /// 四类 + 自定义类别的条目摊成一张 webId → 原始条目表。[categories] 里也可以
   /// 直接放自定义类别的键(单类 JSON 导入)。
@@ -596,6 +626,27 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
           e.key as String: e.value,
   };
 
+  /// 备份里的云端预览引用张数(恢复进度的分母)。
+  static int previewRefCount(
+    Map<String, dynamic> categories, {
+    Map<String, dynamic>? custom,
+  }) {
+    var n = 0;
+    for (final raw in _flat(categories, custom).values) {
+      for (final item in raw as List) {
+        if (item is! Map) continue;
+        n += {
+          for (final p in [
+            item['preview'],
+            if (item['previews'] case final List l) ...l,
+          ])
+            if (p is String) ?previewRefSha(p),
+        }.length;
+      }
+    }
+    return n;
+  }
+
   /// 恢复前预检:按 id 数出「覆盖 / 新增」(与 web 的冲突提示一致)。
   ({int overwrite, int add}) previewMerge(
     Map<String, dynamic> categories, {
@@ -613,12 +664,14 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
   }
 
   /// 恢复:按 id 合并(同 id 覆盖、新 id 追加,本地独有保留)。自定义类别的
-  /// 定义同 id 以云端为准、本地独有的保留;页签排列用云端的。
-  /// 预览见 [_restorePreviews]。
+  /// 定义同 id 以云端为准、本地独有的保留;页签排列用云端的;标签池本地在前、
+  /// 云端多出的接在后面。预览见 [_restorePreviews]。
   /// 返回每类的 (新增, 覆盖) 明细,供结果文案与日志使用。
   Future<Map<TagCategory, ({int added, int updated})>> mergeBackup(
     Map<String, dynamic> categories, {
     Map<String, dynamic>? custom,
+    Map<String, dynamic>? pools,
+    PreviewResolver? resolvePreview,
   }) async {
     final byId = {for (final e in _s.entries) e.id: e};
     final localIds = {...byId.keys};
@@ -636,7 +689,7 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
         final old = byId[e.id];
         if (old != null) replaced.addAll(old.previews);
         byId[e.id] = e.copyWith(
-          previews: await _restorePreviews(item, e.id, old),
+          previews: await _restorePreviews(item, e.id, old, resolvePreview),
         );
       }
       if (added + updated > 0) {
@@ -658,6 +711,20 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
         labels: _labelsOf(custom['defs']),
       );
     }
+    if (pools != null) {
+      final merged = {..._s.pools};
+      for (final en in pools.entries) {
+        final cat = tagCategoryByWebId(en.key);
+        if (cat == null) continue;
+        final mine = merged[cat] ?? const <String>[];
+        merged[cat] = [
+          ...mine,
+          for (final t in _strs(en.value))
+            if (!mine.contains(t)) t,
+        ];
+      }
+      next = next.copyWith(pools: merged);
+    }
     await _set(next);
     _gcPreviewFiles(
       replaced,
@@ -666,13 +733,14 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
     return stat;
   }
 
-  /// 备份条目的预览 → 本机可用的列表。base64 预览落成本机文件;一张都没带
-  /// 而本地同条目有本机预览时,保留本机预览(按本地顺序),并入备份里新增的
-  /// http 预览、去掉备份里已没有的。
+  /// 备份条目的预览 → 本机可用的列表。base64 预览落成本机文件,云端预览交给
+  /// [resolve];一张本机图都没落成、而本地同条目有本机预览时,保留本机预览
+  /// (按本地顺序),并入备份里新增的 http 预览、去掉备份里已没有的。
   static Future<List<String>> _restorePreviews(
     Map<String, dynamic> item,
     String id,
     TagEntry? local,
+    PreviewResolver? resolve,
   ) async {
     final out = <String>[];
     final seen = <String>{};
@@ -682,6 +750,18 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
       if (item['previews'] case final List l) ...l,
     ]) {
       if (p is! String || p.isEmpty || !seen.add(p)) continue;
+      if (previewRefSha(p) case final String sha when resolve != null) {
+        final r = await resolve(
+          sha,
+          id,
+          out.length,
+          local?.previews ?? const [],
+        );
+        if (out.contains(r)) continue;
+        out.add(r);
+        if (!r.startsWith('http')) embedded = true;
+        continue;
+      }
       if (!p.startsWith('data:')) {
         out.add(p);
         continue;

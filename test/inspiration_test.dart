@@ -111,6 +111,79 @@ void main() {
     expect(t.createdBy, '456');
   });
 
+  test('备份编码:角色 / 场景带全部预览,作者按 web 键名写', () {
+    TagEntry entry(TagCategory c) => TagEntry(
+      id: 'e',
+      category: c,
+      name: 'n',
+      previews: const [
+        'http://h/1.jpg',
+        '/data/local/tag_previews/a.jpg',
+        'http://h/2.jpg',
+      ],
+      createdAt: 1,
+      createdBy: 'u1',
+    );
+
+    final c = encodeBackupEntry(entry(TagCategory.character));
+    expect(c['preview'], 'http://h/1.jpg');
+    expect(c['previews'], ['http://h/1.jpg', 'http://h/2.jpg']);
+    expect(c['user'], 'u1');
+
+    final s = encodeBackupEntry(entry(TagCategory.scene));
+    expect(s['preview'], 'http://h/1.jpg');
+    expect(s['previews'], ['http://h/1.jpg', 'http://h/2.jpg']);
+    expect(s['createdBy'], 'u1');
+
+    expect(encodeBackupEntry(entry(TagCategory.artist))['addedBy'], 'u1');
+    expect(
+      encodeBackupEntry(entry(TagCategory.custom('c_1')))['createdBy'],
+      'u1',
+    );
+
+    // 往返:preview 与 previews 重复的首张只留一份,作者不进 extra
+    for (final cat in [
+      TagCategory.character,
+      TagCategory.scene,
+      TagCategory.artist,
+      TagCategory.custom('c_1'),
+    ]) {
+      final back = decodeBackupEntry(cat, encodeBackupEntry(entry(cat)))!;
+      expect(back.previews, ['http://h/1.jpg', 'http://h/2.jpg']);
+      expect(back.createdBy, 'u1');
+      expect(back.extra.keys, isNot(contains('user')));
+      expect(back.extra.keys, isNot(contains('addedBy')));
+      expect(back.extra.keys, isNot(contains('createdBy')));
+    }
+  });
+
+  test('备份编码:本机预览按 refs 换成云端引用,补全过地址的引用收回成相对的', () {
+    final sha = 'a' * 64;
+    final e = TagEntry(
+      id: 'e',
+      category: TagCategory.artist,
+      name: 'n',
+      previews: [
+        '/data/tag_previews/up.jpg',
+        '/data/tag_previews/not_up.jpg',
+        'https://host:8765/api/user-tag-previews/${'b' * 64}',
+        'http://h/pub.jpg',
+      ],
+      createdAt: 1,
+    );
+    final j = encodeBackupEntry(
+      e,
+      refs: {'/data/tag_previews/up.jpg': previewRef(sha)},
+    );
+    expect(j['previews'], [
+      '/api/user-tag-previews/$sha',
+      '/api/user-tag-previews/${'b' * 64}',
+      'http://h/pub.jpg',
+    ]);
+    expect(previewRefSha('/api/user-tag-previews/$sha'), sha);
+    expect(previewRefSha('http://h/pub.jpg'), isNull);
+  });
+
   test('条目 JSON 往返', () {
     final e = TagEntry(
       id: 'scene_a_b',

@@ -1,21 +1,28 @@
-import 'dart:convert';
+import 'dart:async' show unawaited;
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/auth/bot_session_store.dart';
 import '../../core/net/backend_client.dart';
+import '../../core/store/storage_stats.dart' show fmtBytes;
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/import_picker.dart';
+import '../../core/util/document_save.dart';
 import '../../core/util/file_read.dart';
 import '../generate/widgets/common.dart' show hintSnack;
+import '../inspiration/tag_cloud_backup.dart';
 import '../inspiration/tag_library.dart';
 import '../inspiration/tag_models.dart';
 import '../migrate/web_backup.dart';
 import '../migrate/web_backup_import.dart';
 import '../vibe_library/vibe_cloud_sync.dart';
 import '../vibe_library/vibe_library.dart';
+import 'cloud_backup_job.dart';
+import 'local_backup.dart';
 import 'widgets/settings_ui.dart';
 import '../../l10n/l10n.dart';
 
@@ -40,7 +47,7 @@ class BackupPage extends ConsumerStatefulWidget {
 }
 
 class _BackupPageState extends ConsumerState<BackupPage> {
-  /// backup | restore | import | `export:<webId>`
+  /// 本地文件的导入 / 导出在跑:import | export。云端备份 / 恢复见 [cloudJobProvider]。
   String? _busy;
 
   /// 云端状态;null 且不在读取中 = 读取失败。
@@ -60,6 +67,21 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     super.initState();
     _loadTagCloud();
     _loadVibeCloud();
+    // 离开页面时跑完的那次:回来时补一句结果
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _showJobResult(ref.read(cloudJobProvider));
+    });
+  }
+
+  void _showJobResult(CloudJobState job) {
+    final r = job.result;
+    if (r == null) return;
+    ref.read(cloudJobProvider.notifier).takeResult();
+    hintSnack(
+      context,
+      r.text,
+      icon: r.ok ? Icons.cloud_done_outlined : Icons.warning_amber_outlined,
+    );
   }
 
   Future<void> _loadTagCloud() async {
@@ -102,8 +124,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     }
   }
 
-  Future<void> _run(String tag, Future<void> Function(String sid) op) async {
-    if (_busy != null) return;
+  /// 已授权时返回会话 id;未授权提示一句返回 null。
+  String? _sessionOrHint() {
     final session = ref.read(botSessionProvider).value;
     if (session == null) {
       hintSnack(
@@ -111,84 +133,41 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         context.l10n.notAvailableYet,
         icon: Icons.cloud_off_outlined,
       );
-      return;
     }
-    setState(() {
-      _busy = tag;
-      _progress = '';
-    });
-    try {
-      await op(session.sessionId);
-    } on BackendException catch (e) {
-      if (mounted) hintSnack(context, e.message, icon: Icons.error_outline);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _busy = null;
-          _progress = '';
-        });
-      }
-    }
+    return session?.sessionId;
   }
+
+  bool get _idle => _busy == null && !ref.read(cloudJobProvider).busy;
 
   void _tick(String label, int done, int total) {
     if (mounted) setState(() => _progress = '$label $done/$total');
   }
 
-  /// 内置四类(含改名)+ 自定义类别。
-  List<TagCategoryDef> _defs(TagLibraryState? lib) => [
-    for (final d in kTagCategoryDefs) tagCategoryDef(d.key),
-    ...?lib?.customDefs,
-  ];
-
-  String _detailLine(Map<TagCategory, String> parts) => [
-    for (final d in _defs(ref.read(tagLibraryProvider).value))
-      if (parts[d.key] case final String s) '${d.label} $s',
-  ].join(' · ');
+  /// 灵感库的进度:total 为 0 的是没有计数的阶段(「上传灵感库…」)。
+  void _tickTag(String label, int done, int total) {
+    if (total > 0) return _tick(label, done, total);
+    if (mounted) setState(() => _progress = '$label…');
+  }
 
   // ---- 云端 ----
 
-  String _errText(Object e) => e is BackendException ? e.message : '$e';
-
-  void _report(String verb, List<String> done, List<String> failed) {
-    if (!mounted) return;
-    hintSnack(
-      context,
-      failed.isEmpty
-          ? '$verb完成:${done.join(' · ')}'
-          : [...done, ...failed].join(' · '),
-      icon: failed.isEmpty
-          ? Icons.cloud_done_outlined
-          : Icons.warning_amber_outlined,
-    );
-  }
-
-  Future<void> _vibeLog(String sid, String action, int count, String detail) =>
-      ref
-          .read(backendClientProvider)
-          .recordBackupLog(
-            sessionId: sid,
-            device: 'Plana App',
-            action: action,
-            count: count,
-            detail: detail,
-          );
-
-  Future<void> _cloudBackup() => _run('backup', (sid) async {
-    final lib = ref.read(tagLibraryProvider.notifier);
-    final categories = lib.encodeBackup();
-    final custom = lib.encodeCustom();
-    final tagN =
-        categories.values.fold(0, (a, l) => a + l.length) +
-        (custom['items'] as Map).values.fold<int>(
-          0,
-          (a, l) => a + (l as List).length,
-        );
-    final vibeN = ref.read(vibeLibraryProvider).value?.length ?? 0;
-    if (tagN == 0 && vibeN == 0) {
+  /// 选好内容交给 [cloudJobProvider] 跑:离开页面、切到后台照常进行。
+  Future<void> _cloudBackup() async {
+    if (!_idle) return;
+    final sid = _sessionOrHint();
+    if (sid == null) return;
+    final tagN = ref.read(tagLibraryProvider).value?.entries.length ?? 0;
+    final vibeList = ref.read(vibeLibraryProvider).value ?? const [];
+    if (tagN == 0 && vibeList.isEmpty) {
       hintSnack(context, '本地没有可备份的内容', icon: Icons.info_outline);
       return;
     }
+    final picBytes = await ref.read(tagCloudBackupProvider).localPreviewBytes();
+    if (!mounted) return;
+    final vibeBytes = vibeList
+        .where((e) => e.needsPush)
+        .fold(0, (a, e) => a + e.sizeBytes);
+    final over = picBytes > kPreviewQuotaBytes;
     final tagCloudN = _tagCloud?.count ?? 0;
     final picked = await showImportPicker(
       context,
@@ -200,82 +179,50 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           key: 'tag',
           label: '灵感库',
           detail: '$tagN 条',
-          enabled: tagN > 0,
-          note: tagCloudN > 0
-              ? '整体覆盖云端现有的 $tagCloudN 条 · 本机预览图不上传'
-              : '本机预览图不上传',
+          size: picBytes > 0 ? '预览 ${fmtBytes(picBytes)}' : null,
+          enabled: tagN > 0 && !over,
+          note: !over && tagCloudN > 0 ? '覆盖云端现有 $tagCloudN 条' : null,
+          warning: over ? '超过 ${fmtBytes(kPreviewQuotaBytes)} 上限' : null,
         ),
         ImportOption(
           key: 'vibe',
           label: 'Vibe',
-          detail: '$vibeN 条',
-          enabled: vibeN > 0,
-          note: '未改动的自动跳过',
+          detail: '${vibeList.length} 条',
+          size: vibeBytes > 0 ? '要上传 ${fmtBytes(vibeBytes)}' : '无改动',
+          enabled: vibeList.isNotEmpty,
         ),
       ],
     );
     if (picked == null || picked.isEmpty || !mounted) return;
+    unawaited(
+      ref
+          .read(cloudJobProvider.notifier)
+          .backup(
+            sid,
+            inspiration: picked.contains('tag'),
+            vibes: picked.contains('vibe'),
+          ),
+    );
+  }
+
+  Future<void> _cloudRestore() async {
+    if (!_idle) return;
+    final sid = _sessionOrHint();
+    if (sid == null) return;
+    setState(() {
+      _busy = 'restore-check';
+      _progress = '比对中…';
+    });
     final client = ref.read(backendClientProvider);
-    final done = <String>[], failed = <String>[];
-
-    if (picked.contains('tag')) {
-      setState(() => _progress = '上传灵感库…');
-      try {
-        await client.uploadTagBackup(
-          sessionId: sid,
-          categories: categories,
-          custom: custom,
-        );
-        final state = ref.read(tagLibraryProvider).value;
-        final detail = _detailLine({
-          for (final d in _defs(state))
-            d.key: '${state?.of(d.key).length ?? 0}',
-        });
-        await client.recordBackupLog(
-          sessionId: sid,
-          device: 'Plana App',
-          action: 'backup',
-          count: tagN,
-          detail: 'tag-manager 备份 $detail',
-        );
-        done.add('灵感库 $tagN 条');
-      } catch (e) {
-        failed.add('灵感库失败:${_errText(e)}');
-      }
-    }
-
-    if (picked.contains('vibe')) {
-      try {
-        final r = await ref
-            .read(vibeCloudSyncProvider)
-            .pushAll(onProgress: (cur, total) => _tick('推送 Vibe', cur, total));
-        final detail = [
-          if (r.pushed > 0) '上传 ${r.pushed}',
-          if (r.skipped > 0) '跳过 ${r.skipped}',
-          if (r.failed > 0) '失败 ${r.failed}',
-        ].join('、');
-        final text = detail.isEmpty ? '已是最新' : detail;
-        await _vibeLog(sid, 'backup', r.pushed, text);
-        (r.failed > 0 ? failed : done).add('Vibe $text');
-      } catch (e) {
-        failed.add('Vibe 失败:${_errText(e)}');
-      }
-    }
-
-    await Future.wait([_loadTagCloud(), _loadVibeCloud()]);
-    _report('备份', done, failed);
-  });
-
-  Future<void> _cloudRestore() => _run('restore', (sid) async {
-    setState(() => _progress = '比对中…');
-    final client = ref.read(backendClientProvider);
-    final sync = ref.read(vibeCloudSyncProvider);
     final (tag, vibe) = await (
       _orNull(client.getTagBackup(sid)),
-      _orNull(sync.previewRestore()),
+      _orNull(ref.read(vibeCloudSyncProvider).previewRestore()),
     ).wait;
     if (!mounted) return;
-    setState(() => _progress = '');
+    setState(() {
+      _busy = null;
+      _progress = '';
+    });
 
     var tagN = 0;
     for (final v in [
@@ -284,10 +231,12 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     ]) {
       if (v is List) tagN += v.length;
     }
-    final tagLib = ref.read(tagLibraryProvider.notifier);
     final tagOver = tag == null
         ? 0
-        : tagLib.previewMerge(tag.categories, custom: tag.custom).overwrite;
+        : ref
+              .read(tagLibraryProvider.notifier)
+              .previewMerge(tag.categories, custom: tag.custom)
+              .overwrite;
     final vibeN = vibe == null
         ? 0
         : vibe.willAdd.length + vibe.willOverwrite.length;
@@ -321,60 +270,29 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       ],
     );
     if (picked == null || picked.isEmpty || !mounted) return;
-    final done = <String>[], failed = <String>[];
-
-    if (picked.contains('tag') && tag != null) {
-      setState(() => _progress = '恢复灵感库…');
-      try {
-        final stat = await tagLib.mergeBackup(
-          tag.categories,
-          custom: tag.custom,
-        );
-        final detail = _detailLine({
-          for (final e in stat.entries)
-            e.key: '+${e.value.added}/✎${e.value.updated}',
-        });
-        await client.recordBackupLog(
-          sessionId: sid,
-          device: 'Plana App',
-          action: 'restore',
-          count: tagN,
-          detail: 'tag-manager 恢复 $detail',
-        );
-        final added = stat.values.fold(0, (a, s) => a + s.added);
-        final updated = stat.values.fold(0, (a, s) => a + s.updated);
-        done.add('灵感库 新增 $added、覆盖 $updated');
-      } catch (e) {
-        failed.add('灵感库失败:${_errText(e)}');
-      }
-    }
-
-    if (picked.contains('vibe')) {
-      try {
-        final r = await sync.restoreAll(
-          onProgress: (cur, total) => _tick('拉取 Vibe', cur, total),
-        );
-        final detail = [
-          if (r.added > 0) '新增 ${r.added}',
-          if (r.updated > 0) '覆盖 ${r.updated}',
-          if (r.skipped > 0) '跳过 ${r.skipped}',
-        ].join('、');
-        final text = detail.isEmpty ? '已是最新' : detail;
-        await _vibeLog(sid, 'restore', r.added + r.updated, text);
-        done.add('Vibe $text');
-      } catch (e) {
-        failed.add('Vibe 失败:${_errText(e)}');
-      }
-    }
-
-    await Future.wait([_loadTagCloud(), _loadVibeCloud()]);
-    _report('恢复', done, failed);
-  });
+    unawaited(
+      ref
+          .read(cloudJobProvider.notifier)
+          .restore(
+            sid,
+            inspiration: picked.contains('tag') && tag != null
+                ? (
+                    categories: tag.categories,
+                    custom: tag.custom,
+                    pools: tag.pools,
+                    codexFavorites: tag.codexFavorites,
+                  )
+                : null,
+            inspirationCount: tagN,
+            vibes: picked.contains('vibe'),
+          ),
+    );
+  }
 
   // ---- 文件导入 ----
 
   Future<void> _importFile() async {
-    if (_busy != null) return;
+    if (!_idle) return;
     // withData: false —— 全量备份可能上百 MB,拿路径流式解析,别整份读进内存
     final res = await FilePicker.platform.pickFiles(
       type: FileType.any, // 备份是 .json,但各家文件管理器的 mime 过滤不可靠
@@ -387,19 +305,25 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       _result = null;
     });
     try {
-      final j = await readPickedJson(file);
-      if (!mounted) return;
+      final path = file.path;
       final WebBackupImportOutcome? out;
-      if (j is Map<String, dynamic> &&
-          j['meta'] is Map &&
-          (j['meta'] as Map)['identifier'] == kWebBackupIdentifier) {
-        out = await _importWebBackup(WebBackup.fromDecoded(j));
-      } else if (j is Map<String, dynamic> &&
-          j['identifier'] == kBackupFileIdentifier) {
-        final f = parseBackupFile(j);
-        out = await _importTagFile(f.cat, f.items);
+      if (path != null && await LocalBackupFile.isZip(path)) {
+        if (!mounted) return;
+        out = await _importLocalBackup(path);
       } else {
-        throw FormatException(context.l10n.notBackupFile);
+        final j = await readPickedJson(file);
+        if (!mounted) return;
+        if (j is Map<String, dynamic> &&
+            j['meta'] is Map &&
+            (j['meta'] as Map)['identifier'] == kWebBackupIdentifier) {
+          out = await _importWebBackup(WebBackup.fromDecoded(j));
+        } else if (j is Map<String, dynamic> &&
+            j['identifier'] == kBackupFileIdentifier) {
+          final f = parseBackupFile(j);
+          out = await _importTagFile(f.cat, f.items);
+        } else {
+          throw FormatException(context.l10n.notBackupFile);
+        }
       }
       if (out == null || !mounted) return; // 自选面板里取消
       setState(() => _result = out);
@@ -433,6 +357,84 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           _progress = '';
         });
       }
+    }
+  }
+
+  /// 本 App 导出的备份包:灵感库 / Vibe 自选导入,按 id 合并。
+  Future<WebBackupImportOutcome?> _importLocalBackup(String path) async {
+    final file = LocalBackupFile.open(path);
+    try {
+      final l = context.l10n;
+      final tagN = file.inspirationCount, vibeN = file.vibeCount;
+      if (tagN == 0 && vibeN == 0) throw FormatException(l.fileNoEntries);
+      var conflict = 0;
+      if (tagN > 0) {
+        final j = file.inspiration();
+        if (j != null) {
+          conflict = ref
+              .read(tagLibraryProvider.notifier)
+              .previewMerge(
+                j['categories'] is Map<String, dynamic>
+                    ? j['categories'] as Map<String, dynamic>
+                    : const {},
+                custom: j['custom'] is Map<String, dynamic>
+                    ? j['custom'] as Map<String, dynamic>
+                    : null,
+              )
+              .overwrite;
+        }
+      }
+      final picked = await showImportPicker(
+        context,
+        title: l.chooseImportContent,
+        options: [
+          ImportOption(
+            key: 'tag',
+            label: l.inspirationLibrary,
+            detail: l.itemsN(tagN),
+            enabled: tagN > 0,
+            conflict: conflict,
+          ),
+          ImportOption(
+            key: 'vibe',
+            label: 'Vibe',
+            detail: l.itemsN(vibeN),
+            enabled: vibeN > 0,
+          ),
+        ],
+      );
+      if (picked == null || picked.isEmpty) return null;
+      final backup = ref.read(localBackupProvider);
+      final rows = <(String, String)>[];
+      final errors = <String>[];
+      if (picked.contains('tag')) {
+        try {
+          final r = await backup.importInspiration(file, onProgress: _tickTag);
+          rows.add((
+            l.inspirationLibrary,
+            l.addedUpdated(
+              r.stat.values.fold(0, (a, s) => a + s.added),
+              r.stat.values.fold(0, (a, s) => a + s.updated),
+            ),
+          ));
+          if (r.favoritesAdded > 0) {
+            rows.add(('法典收藏', '新增 ${r.favoritesAdded}'));
+          }
+        } catch (e) {
+          errors.add('灵感库导入失败:$e');
+        }
+      }
+      if (picked.contains('vibe')) {
+        try {
+          final n = await backup.importVibes(file, onProgress: _tick);
+          rows.add(('Vibe', l.itemsN(n)));
+        } catch (e) {
+          errors.add('Vibe 导入失败:$e');
+        }
+      }
+      return (rows: rows, errors: errors);
+    } finally {
+      await file.close();
     }
   }
 
@@ -477,7 +479,11 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       ],
     );
     if (picked == null || picked.isEmpty) return null;
-    final s = (await lib.mergeBackup(payload))[cat];
+    final s = (await ref
+        .read(tagCloudBackupProvider)
+        .withResolver(
+          (resolve) => lib.mergeBackup(payload, resolvePreview: resolve),
+        ))[cat];
     return (
       rows: [(label, l.addedUpdated(s?.added ?? 0, s?.updated ?? 0))],
       errors: const <String>[],
@@ -486,39 +492,86 @@ class _BackupPageState extends ConsumerState<BackupPage> {
 
   // ---- 文件导出 ----
 
-  Future<void> _exportFile(TagCategoryDef d) async {
-    if (_busy != null) return;
-    setState(() => _busy = 'export:${d.webId}');
+  /// 灵感库(含预览原图、标签池、法典收藏)与 Vibe 库(含编码)打成一个 zip。
+  Future<void> _exportBackup() async {
+    if (!_idle) return;
+    final tagN = ref.read(tagLibraryProvider).value?.entries.length ?? 0;
+    final vibeN = ref.read(vibeLibraryProvider).value?.length ?? 0;
+    final l = context.l10n;
+    if (tagN == 0 && vibeN == 0) {
+      hintSnack(context, '本地没有可导出的内容', icon: Icons.info_outline);
+      return;
+    }
+    final picked = await showImportPicker(
+      context,
+      title: '选择要导出的内容',
+      confirmLabel: l.export,
+      mergeHint: false,
+      options: [
+        ImportOption(
+          key: 'tag',
+          label: l.inspirationLibrary,
+          detail: l.itemsN(tagN),
+          enabled: tagN > 0,
+        ),
+        ImportOption(
+          key: 'vibe',
+          label: 'Vibe',
+          detail: l.itemsN(vibeN),
+          enabled: vibeN > 0,
+        ),
+      ],
+    );
+    if (picked == null || picked.isEmpty || !mounted) return;
+    setState(() {
+      _busy = 'export';
+      _progress = '';
+    });
+    File? zip;
     try {
-      final items = ref.read(tagLibraryProvider.notifier).encodeCategory(d.key);
+      zip = await ref
+          .read(localBackupProvider)
+          .export(
+            inspiration: picked.contains('tag'),
+            vibes: picked.contains('vibe'),
+            onProgress: _tick,
+          );
+      if (!mounted) return;
+      setState(() => _progress = '');
       final now = DateTime.now();
       final date =
-          '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+          '${now.year}${now.month.toString().padLeft(2, '0')}'
           '${now.day.toString().padLeft(2, '0')}';
-      final text = const JsonEncoder.withIndent('  ').convert(
-        buildBackupFile(d.key, items, exportedAt: now.toIso8601String()),
-      );
-      final path = await FilePicker.platform.saveFile(
-        fileName: 'tag-manager-${d.webId}-$date.json',
-        bytes: utf8.encode(text),
+      final path = await saveFileAs(
+        zip,
+        fileName: 'plana_backup_$date.zip',
+        mime: 'application/zip',
       );
       if (path != null && mounted) {
+        hintSnack(context, '已导出', icon: Icons.check_circle_outline);
+      }
+    } on PlatformException catch (e) {
+      if (mounted) {
         hintSnack(
           context,
-          context.l10n.exportedNOf(items.length, d.label),
-          icon: Icons.check_circle_outline,
+          l.exportFailed(e.message ?? e.code),
+          icon: Icons.error_outline,
         );
       }
     } catch (e) {
       if (mounted) {
-        hintSnack(
-          context,
-          context.l10n.exportFailed('$e'),
-          icon: Icons.error_outline,
-        );
+        hintSnack(context, l.exportFailed('$e'), icon: Icons.error_outline);
       }
     } finally {
-      if (mounted) setState(() => _busy = null);
+      try {
+        await zip?.delete();
+      } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _busy = null;
+          _progress = '';
+        });
+      }
     }
   }
 
@@ -547,11 +600,24 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       ? (_progress.isEmpty ? context.l10n.processing : _progress)
       : null;
 
+  /// 云端任务那两行的右侧值。
+  String? _jobValue(CloudJobState job, String kind) {
+    if (kind == 'restore' && _busy == 'restore-check') return _progress;
+    if (job.kind != kind) return null;
+    return job.progress.isEmpty ? context.l10n.processing : job.progress;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final lib = ref.watch(tagLibraryProvider).value;
     final authed = ref.watch(botSessionProvider).value != null;
-    final idle = _busy == null;
+    final job = ref.watch(cloudJobProvider);
+    ref.listen(cloudJobProvider, (prev, next) {
+      if (prev?.busy != true || next.busy) return;
+      _showJobResult(next);
+      _loadTagCloud();
+      _loadVibeCloud();
+    });
+    final idle = _busy == null && !job.busy;
     return Scaffold(
       appBar: AppBar(title: Text(context.l10n.backup)),
       body: ListView(
@@ -573,13 +639,13 @@ class _BackupPageState extends ConsumerState<BackupPage> {
               SettingsRow(
                 icon: Icons.cloud_upload_outlined,
                 title: context.l10n.backupToCloud,
-                value: _busyValue('backup'),
+                value: _jobValue(job, 'backup'),
                 onTap: idle ? _cloudBackup : null,
               ),
               SettingsRow(
                 icon: Icons.cloud_download_outlined,
                 title: context.l10n.restoreFromCloud,
-                value: _busyValue('restore'),
+                value: _jobValue(job, 'restore'),
                 onTap: idle ? _cloudRestore : null,
               ),
             ],
@@ -604,86 +670,13 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           SettingsLabel(context.l10n.export),
           SettingsCard(
             children: [
-              for (final d in _defs(lib))
-                _ExportRow(
-                  def: d,
-                  count: lib?.of(d.key).length ?? 0,
-                  busy: _busy == 'export:${d.webId}',
-                  enabled: idle,
-                  onExport: () => _exportFile(d),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Spinner extends StatelessWidget {
-  const _Spinner();
-
-  @override
-  Widget build(BuildContext context) => const SizedBox(
-    width: 16,
-    height: 16,
-    child: CircularProgressIndicator(strokeWidth: 2),
-  );
-}
-
-/// 导出行:分类 + 条数 + 「导出」(存储管理「可清理」行同款)。
-class _ExportRow extends StatelessWidget {
-  const _ExportRow({
-    required this.def,
-    required this.count,
-    required this.busy,
-    required this.enabled,
-    required this.onExport,
-  });
-
-  final TagCategoryDef def;
-  final int count;
-  final bool busy;
-  final bool enabled;
-  final VoidCallback onExport;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = context.scheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 12, 6),
-      child: Row(
-        children: [
-          Icon(def.icon, size: 20, color: scheme.onSurfaceVariant),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              def.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: context.texts.bodyMedium!.copyWith(
-                fontWeight: FontWeight.w600,
+              SettingsRow(
+                icon: Icons.save_alt_outlined,
+                title: '导出到文件',
+                value: _busyValue('export'),
+                onTap: idle ? _exportBackup : null,
               ),
-            ),
-          ),
-          Text(
-            context.l10n.itemsN(count),
-            style: mono(context, size: 12, color: scheme.onSurfaceVariant),
-          ),
-          const SizedBox(width: 4),
-          SizedBox(
-            height: 32,
-            width: 64,
-            child: busy
-                ? const Center(child: _Spinner())
-                : TextButton(
-                    onPressed: enabled && count > 0 ? onExport : null,
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    child: Text(context.l10n.export),
-                  ),
+            ],
           ),
         ],
       ),

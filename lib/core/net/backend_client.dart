@@ -1847,12 +1847,14 @@ class BackendClient {
 
   /// 拉取个人 Tag 云备份(登录:Bearer 头)。web 端备份可能内嵌 base64
   /// 预览,体积达数十 MB,超时放宽到 60s。
-  /// → (四类条目原始 JSON, 自定义类别块, 更新时间秒, 各类计数)。从未备份过时
-  /// 四类为空数组;没存过自定义类别时 custom 为 null。
+  /// → (四类条目原始 JSON, 自定义类别块, 标签池, 法典收藏, 更新时间秒, 各类计数)。
+  /// 从未备份过时四类为空数组;没存过的块为 null。
   Future<
     ({
       Map<String, dynamic> categories,
       Map<String, dynamic>? custom,
+      Map<String, dynamic>? pools,
+      List<dynamic>? codexFavorites,
       int updatedAt,
       Map<String, int> counts,
     })
@@ -1870,6 +1872,12 @@ class BackendClient {
           : const <String, dynamic>{},
       custom: j['custom'] is Map<String, dynamic>
           ? j['custom'] as Map<String, dynamic>
+          : null,
+      pools: j['pools'] is Map<String, dynamic>
+          ? j['pools'] as Map<String, dynamic>
+          : null,
+      codexFavorites: j['codex_favorites'] is List
+          ? j['codex_favorites'] as List
           : null,
       updatedAt: (j['updated_at'] as num?)?.toInt() ?? 0,
       counts: {
@@ -1900,19 +1908,90 @@ class BackendClient {
     } catch (_) {}
   }
 
-  /// 上传个人 Tag 云备份(四类与自定义类别整体覆盖;⚠️ 该端点鉴权走 body 里的
-  /// session_id)。
+  /// 上传个人 Tag 云备份(四类、自定义类别、标签池、法典收藏整体覆盖;⚠️ 该端点
+  /// 鉴权走 body 里的 session_id)。
   Future<void> uploadTagBackup({
     required String sessionId,
     required Map<String, List<Map<String, dynamic>>> categories,
     required Map<String, dynamic> custom,
+    required Map<String, List<String>> pools,
+    required List<Map<String, dynamic>> codexFavorites,
   }) async {
     await _postJson(
       '/user-tag-backup',
-      {'session_id': sessionId, 'categories': categories, 'custom': custom},
+      {
+        'session_id': sessionId,
+        'categories': categories,
+        'custom': custom,
+        'pools': pools,
+        'codex_favorites': codexFavorites,
+      },
       sessionId,
       const Duration(seconds: 30),
     );
+  }
+
+  /// 灵感库预览图上传前核对 → (要上传的哈希, 已用字节, 额度字节)。
+  /// 别人传过的同一张后端直接记到本人名下,不在 missing 里。
+  Future<({List<String> missing, int used, int quota})> checkTagPreviews(
+    String sessionId,
+    List<String> shas,
+  ) async {
+    final j = await _postJson('/user-tag-previews/check', {
+      'shas': shas,
+    }, sessionId);
+    return (
+      missing: [
+        for (final s
+            in (j['missing'] is List ? j['missing'] as List : const []))
+          if (s is String) s,
+      ],
+      used: (j['used'] as num?)?.toInt() ?? 0,
+      quota: (j['quota'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  /// 上传一张灵感库预览图(请求体是图片原样字节,[sha] 为其 sha256)。超额度时
+  /// 抛 status 413 的 [BackendException]。
+  Future<void> uploadTagPreview(
+    String sessionId,
+    String sha,
+    Uint8List bytes,
+  ) => _handle(
+    () => _http.put(
+      _u('/user-tag-previews/$sha'),
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Authorization': 'Bearer $sessionId',
+      },
+      body: bytes,
+    ),
+    timeout: _sendTimeout(bytes.length, null),
+  );
+
+  /// 云端预览图的完整地址(不鉴权,哈希即凭证)。
+  String tagPreviewUrl(String sha) => '$baseUrl/api/user-tag-previews/$sha';
+
+  /// 取一张云端预览图。
+  Future<Uint8List> fetchTagPreview(String sha) async {
+    if (baseUrl.isEmpty) throw BackendException('未配置后端地址');
+    final http.Response resp;
+    try {
+      resp = await _http
+          .get(Uri.parse(tagPreviewUrl(sha)))
+          .timeout(const Duration(seconds: 60));
+    } on TimeoutException {
+      throw BackendException('取预览图超时,请检查网络');
+    } catch (_) {
+      throw BackendException('取预览图失败,请检查网络');
+    }
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw BackendException(
+        '取预览图失败(${resp.statusCode})',
+        status: resp.statusCode,
+      );
+    }
+    return resp.bodyBytes;
   }
 
   // ── 个人云端 Vibe 库(与 web 桌面端共用一份,按 bot_user_id 存)────────

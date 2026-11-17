@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/ui/import_picker.dart';
 import '../char_library/char_library.dart';
 import '../generate/prompt_presets.dart';
+import '../inspiration/tag_cloud_backup.dart';
 import '../inspiration/tag_library.dart';
 import '../inspiration/tag_models.dart';
 import '../vibe_library/vibe_library.dart';
@@ -137,7 +138,12 @@ Future<WebBackupImportOutcome?> runWebBackupImport(
   };
   if (pickedCats.isNotEmpty) {
     try {
-      final stat = await tagLib.mergeBackup(pickedCats);
+      final stat = await ref
+          .read(tagCloudBackupProvider)
+          .withResolver(
+            (resolve) =>
+                tagLib.mergeBackup(pickedCats, resolvePreview: resolve),
+          );
       for (final d in kTagCategoryDefs) {
         if (stat[d.key] case final s?) {
           rows.add((

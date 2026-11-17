@@ -21,8 +21,10 @@ class LiveCaps {
 /// 且所有调用都吞异常——通知只是锦上添花,绝不能因它拖垮生成主流程。
 ///
 /// [start] / [update] / [finish] / [stop] 归出图用;AI 助手一轮走
-/// [beginAssistant] / [endAssistant] / [cancelAssistant],两边共用同一条服务与通知:
-/// 出图在跑时显示归出图,助手只记一笔;出图先收尾时常驻那条交还给助手,服务不停。
+/// [beginAssistant] / [endAssistant] / [cancelAssistant],云备份 / 恢复走
+/// [beginBackup] / [updateBackup] / [endBackup],三者共用同一条服务与通知:
+/// 显示按出图 > 助手 > 备份的先后归属,排在后面的只记一笔;前面的先收尾时常驻那条
+/// 交还给还在跑的,服务不停。
 class LiveProgress {
   LiveProgress._();
   static final LiveProgress instance = LiveProgress._();
@@ -40,6 +42,17 @@ class LiveProgress {
 
   /// AI 助手一轮在跑。
   bool _assistant = false;
+
+  /// 云备份 / 恢复在跑,[_backupTitle] 是它的主行。
+  bool _backup = false;
+  String _backupTitle = '';
+
+  /// 前面的收尾时把常驻那条交给谁(finish 的 next / nextShort)。
+  Map<String, String> get _handoff => _assistant
+      ? {'next': _assistantTitle, 'nextShort': _assistantShort}
+      : _backup
+      ? {'next': _backupTitle, 'nextShort': ''}
+      : const {};
 
   /// 出图是否已占着通知。循环、队列续张时据此就地 [update],而不是再 [start]
   /// ——重复 start 会 startForegroundService 重拉,让灵动岛胶囊消失再弹出。
@@ -72,9 +85,9 @@ class LiveProgress {
   /// 「Plana」等于白占一行。[text] 是副行,没有可留空(留空则不渲染那一行)。
   Future<void> start({String? title, String text = '', int total = 0}) {
     title ??= l10nNow.lpPreparing;
-    final running = _gen || _assistant;
+    final running = _gen || _assistant || _backup;
     _gen = true;
-    // 服务已被 AI 助手拉起:就地换成出图的样子
+    // 服务已被 AI 助手 / 备份拉起:就地换成出图的样子
     if (running) {
       return update(
         total: total,
@@ -102,8 +115,8 @@ class LiveProgress {
     String text = '',
     String short = '',
   }) {
-    // 出图已收尾、通知交还给了 AI 助手:迟到的进度帧不再覆盖
-    if (!_gen && _assistant) return Future.value();
+    // 出图已收尾、通知交还给了 AI 助手 / 备份:迟到的进度帧不再覆盖
+    if (!_gen && (_assistant || _backup)) return Future.value();
     return _quiet('update', {
       'cur': step,
       'total': total,
@@ -132,15 +145,15 @@ class LiveProgress {
       'text': text,
       'short': short ?? l10nNow.shortDone,
       'keep': keep,
-      if (_assistant) 'next': _assistantTitle,
-      if (_assistant) 'nextShort': _assistantShort,
+      ..._handoff,
     });
   }
 
-  /// 静默撤掉通知与服务(前台时用)。AI 助手还在跑时只换回助手的状态。
+  /// 静默撤掉通知与服务(前台时用)。AI 助手 / 备份还在跑时只换回它的状态。
   Future<void> stop() {
     _gen = false;
     if (_assistant) return _showAssistant();
+    if (_backup) return _showBackup();
     return _quiet('stop');
   }
 
@@ -151,6 +164,10 @@ class LiveProgress {
     if (_assistant) return;
     _assistant = true;
     if (_gen) return;
+    if (_backup) {
+      unawaited(_showAssistant()); // 服务已被备份拉起
+      return;
+    }
     unawaited(ensurePermission());
     unawaited(
       _quiet('start', {'title': _assistantTitle, 'text': '', 'total': 0}),
@@ -187,16 +204,77 @@ class LiveProgress {
         'text': keep ? (success ? l10nNow.tapToView : l10nNow.tapToReturn) : '',
         'short': success ? l10nNow.shortDone : l10nNow.shortFailed,
         'keep': keep,
+        ..._handoff,
       }),
     );
   }
 
-  /// AI 助手这轮被停下:静默撤掉。出图占着时不动通知。
+  /// AI 助手这轮被停下:静默撤掉。出图占着时不动通知,备份在跑时换回备份的状态。
   void cancelAssistant() {
     if (!_assistant) return;
     _assistant = false;
-    if (!_gen) unawaited(_quiet('stop'));
+    if (_gen) return;
+    unawaited(_backup ? _showBackup() : _quiet('stop'));
   }
+
+  /// 云备份 / 恢复开始:拉起前台服务保活(切到后台照常传)。出图或助手占着时只记一笔。
+  void beginBackup(String title) {
+    if (_backup) return;
+    _backup = true;
+    _backupTitle = title;
+    if (_gen || _assistant) return;
+    unawaited(ensurePermission());
+    unawaited(_quiet('start', {'title': title, 'text': '', 'total': 0}));
+  }
+
+  /// 备份进度。[total]<=0 走不确定态。出图或助手占着时不显示。
+  void updateBackup({
+    int cur = 0,
+    int total = 0,
+    String text = '',
+    String short = '',
+  }) {
+    if (!_backup || _gen || _assistant) return;
+    unawaited(
+      _quiet('update', {
+        'cur': cur,
+        'total': total,
+        'indeterminate': total <= 0,
+        'title': _backupTitle,
+        'text': text,
+        'short': short,
+      }),
+    );
+  }
+
+  /// 备份结束,落地同出图的 [finish]。出图或助手占着时不动通知。
+  void endBackup({
+    required String title,
+    String text = '',
+    required bool success,
+    required bool keep,
+  }) {
+    if (!_backup) return;
+    _backup = false;
+    if (_gen || _assistant) return;
+    unawaited(
+      _quiet('finish', {
+        'title': title,
+        'text': text,
+        'short': success ? l10nNow.shortDone : l10nNow.shortFailed,
+        'keep': keep,
+      }),
+    );
+  }
+
+  Future<void> _showBackup() => _quiet('update', {
+    'cur': 0,
+    'total': 0,
+    'indeterminate': true,
+    'title': _backupTitle,
+    'text': '',
+    'short': '',
+  });
 
   Future<void> _showAssistant() => _quiet('update', {
     'cur': 0,

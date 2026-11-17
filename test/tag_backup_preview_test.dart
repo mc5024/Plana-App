@@ -4,6 +4,10 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:plana_app/core/net/backend_client.dart';
+import 'package:plana_app/features/inspiration/tag_cloud_backup.dart';
 import 'package:plana_app/features/inspiration/tag_library.dart';
 import 'package:plana_app/features/inspiration/tag_models.dart';
 
@@ -71,6 +75,106 @@ void main() {
     final e = c.read(tagLibraryProvider).requireValue.entries.single;
     expect(e.previews, [local.path, 'http://p/1.jpg', 'http://p/2.jpg']);
     expect(local.existsSync(), isTrue);
+  });
+
+  test('云端预览交给解析器;标签池本地在前、云端多出的接在后面', () async {
+    final keep = File('${root.path}/keep.jpg')..writeAsBytesSync([1]);
+    final c = await containerWith([
+      TagEntry(
+        id: 'a1',
+        category: TagCategory.artist,
+        name: '水彩',
+        positive: 'artist:foo',
+        previews: [keep.path],
+      ),
+    ]);
+    final shaA = 'a' * 64, shaB = 'b' * 64;
+    final asked = <(String, String, List<String>)>[];
+    Future<String> resolve(
+      String sha,
+      String id,
+      int index,
+      List<String> local,
+    ) async {
+      asked.add((sha, id, local));
+      return sha == shaA
+          ? keep.path
+          : 'https://host/api/user-tag-previews/$sha';
+    }
+
+    final cats = {
+      'artist-style': [
+        {
+          'id': 'a1',
+          'name': '水彩',
+          'prompt': 'artist:foo',
+          'previews': [previewRef(shaA), previewRef(shaB), 'http://p/1.jpg'],
+        },
+      ],
+    };
+    expect(TagLibrary.previewRefCount(cats), 2);
+    await c
+        .read(tagLibraryProvider.notifier)
+        .mergeBackup(
+          cats,
+          pools: {
+            'artist-style': ['厚涂', '水彩'],
+            'c_none': ['x'],
+          },
+          resolvePreview: resolve,
+        );
+
+    final s = c.read(tagLibraryProvider).requireValue;
+    expect(s.entries.single.previews, [
+      keep.path,
+      'https://host/api/user-tag-previews/$shaB',
+      'http://p/1.jpg',
+    ]);
+    expect((asked.first.$1, asked.first.$2), (shaA, 'a1'));
+    expect(asked.first.$3, [keep.path]);
+    expect(keep.existsSync(), isTrue);
+    expect(s.poolOf(TagCategory.artist), ['厚涂', '水彩']);
+  });
+
+  test('云端剩余额度放不下要新传的预览:整次不传', () async {
+    final pic = File('${root.path}/big.jpg')..writeAsBytesSync([1, 2, 3, 4]);
+    final c = ProviderContainer(
+      overrides: [
+        tagLibraryProvider.overrideWith(
+          () => _Library([
+            TagEntry(
+              id: 'a1',
+              category: TagCategory.artist,
+              name: '水彩',
+              previews: [pic.path],
+            ),
+          ]),
+        ),
+        backendClientProvider.overrideWithValue(
+          BackendClient('https://plana.test'),
+        ),
+      ],
+    );
+    addTearDown(c.dispose);
+    final sent = <String>[];
+    final mock = MockClient((req) async {
+      sent.add('${req.method} ${req.url.path}');
+      final missing = (jsonDecode(req.body) as Map)['shas'];
+      return http.Response(
+        jsonEncode({'missing': missing, 'used': 10, 'quota': 12}),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+    expect(await c.read(tagCloudBackupProvider).localPreviewBytes(), 4);
+    await http.runWithClient(
+      () => expectLater(
+        c.read(tagCloudBackupProvider).upload('sid'),
+        throwsA(isA<BackendException>().having((e) => e.status, 'status', 413)),
+      ),
+      () => mock,
+    );
+    expect(sent, ['POST /api/user-tag-previews/check']);
   });
 
   test('备份带 base64 预览:落成本机文件,替换掉的旧本机图清理', () async {

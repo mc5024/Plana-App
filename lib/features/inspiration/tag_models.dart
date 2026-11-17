@@ -330,8 +330,8 @@ enum TagOrigin { local, favorited, created }
 
 /// 统一条目模型(web TagFile / ArtistData / OCData / CustomTagData 的归一)。
 /// [extra] 透传 web 备份里 app 不认识的字段(恢复时收下、上传时原样带回),
-/// 避免 app 恢复→再上传的整体覆盖冲掉 web 端数据;体积大的 base64 预览
-/// 除外(解码时即丢弃,上传确认时向用户说明)。
+/// 避免 app 恢复→再上传的整体覆盖冲掉 web 端数据;base64 预览不进 extra
+/// (恢复时由 [TagLibrary.mergeBackup] 落成本机文件)。
 class TagEntry {
   const TagEntry({
     required this.id,
@@ -595,10 +595,28 @@ Map<String, dynamic> buildBackupFile(
   );
 }
 
-/// 备份/发布只带可跨端使用的 http(s) 预览,本机文件路径不外发。
-List<String> portablePreviews(List<String> previews) => [
+/// 云备份里的预览图引用 `/api/user-tag-previews/<sha256>`:相对后端地址,web 同域可直接当图片地址。
+const kPreviewRefPrefix = '/api/user-tag-previews/';
+final _previewRefRe = RegExp(r'/api/user-tag-previews/([0-9a-f]{64})');
+
+/// 预览串里的云端预览哈希(相对引用、补全了后端地址的都认);不是返回 null。
+String? previewRefSha(String p) => _previewRefRe.firstMatch(p)?.group(1);
+
+String previewRef(String sha) => '$kPreviewRefPrefix$sha';
+
+/// 备份带的预览:云端预览一律写成相对引用,其余 http(s) 原样;本机文件按 [refs]
+/// (本机路径 → 引用)换成已上传的,没上传的本机路径不外发。
+List<String> portablePreviews(
+  List<String> previews, [
+  Map<String, String> refs = const {},
+]) => [
   for (final p in previews)
-    if (p.startsWith('http')) p,
+    if (previewRefSha(p) case final String sha)
+      previewRef(sha)
+    else if (p.startsWith('http'))
+      p
+    else if (refs[p] case final String r)
+      r,
 ];
 
 List<String> _strList(Object? v) => v is List
@@ -691,7 +709,11 @@ String letterOfName(String name) {
 
 /// 云备份条目编码:按 web 各分类的本地存储 shape 生成(画师串用 `prompt`,
 /// 角色/场景/其他用 `positive`),extra 打底、本字段覆盖,web 恢复可直读。
-Map<String, dynamic> encodeBackupEntry(TagEntry e) {
+/// [refs] 见 [portablePreviews]。
+Map<String, dynamic> encodeBackupEntry(
+  TagEntry e, {
+  Map<String, String> refs = const {},
+}) {
   final base = Map<String, dynamic>.from(e.extra);
   base['id'] = e.id;
   base['name'] = e.name;
@@ -701,10 +723,12 @@ Map<String, dynamic> encodeBackupEntry(TagEntry e) {
   base['origin'] = e.origin.name;
   if (e.publicId != null) base['publicId'] = e.publicId;
   if (e.tags.isNotEmpty) base['tags'] = e.tags;
+  final previews = portablePreviews(e.previews, refs);
   switch (e.category) {
     case TagCategory.artist:
       base['prompt'] = e.positive;
-      base['previews'] ??= portablePreviews(e.previews);
+      base['previews'] ??= previews;
+      if (e.createdBy != null) base['addedBy'] = e.createdBy;
       // 适用模型、推荐参数以字段为准:有就写,清空了就不带这个键(通用 / 没记)
       if (e.models.isNotEmpty) {
         base['models'] = e.models;
@@ -716,17 +740,24 @@ Map<String, dynamic> encodeBackupEntry(TagEntry e) {
       } else {
         base.remove('recipe');
       }
+    // web 角色 / 场景 / 其他只认单张 `preview`;全部预览另放 `previews`
     case TagCategory.character:
       base['positive'] = e.positive;
       base['aliases'] = e.aliases;
-      base['preview'] ??= portablePreviews(e.previews).firstOrNull ?? '';
+      base['preview'] ??= previews.firstOrNull ?? '';
+      base['previews'] ??= previews;
+      if (e.createdBy != null) base['user'] = e.createdBy;
     case TagCategory.scene || TagCategory.other:
       base['positive'] = e.positive;
       base['subtypeId'] = tagCategoryDef(e.category).webId;
+      if (previews.isNotEmpty) base['preview'] ??= previews.first;
+      base['previews'] ??= previews;
+      if (e.createdBy != null) base['createdBy'] = e.createdBy;
     default:
       base['positive'] = e.positive;
       base['subtypeId'] = e.category.name;
-      base['previews'] ??= portablePreviews(e.previews);
+      base['previews'] ??= previews;
+      if (e.createdBy != null) base['createdBy'] = e.createdBy;
   }
   return base;
 }
@@ -741,7 +772,10 @@ TagEntry? decodeBackupEntry(TagCategory cat, Map<String, dynamic> j) {
 
   final previews = <String>[];
   void addPreview(Object? v) {
-    if (v is String && v.isNotEmpty && !v.startsWith('data:')) {
+    if (v is String &&
+        v.isNotEmpty &&
+        !v.startsWith('data:') &&
+        !previews.contains(v)) {
       previews.add(v);
     }
   }
@@ -775,6 +809,9 @@ TagEntry? decodeBackupEntry(TagCategory cat, Map<String, dynamic> j) {
         'subtypeId',
         'preview',
         'previews',
+        'user',
+        'addedBy',
+        'createdBy',
       }.contains(en.key))
         en.key: en.value,
   };
@@ -799,7 +836,7 @@ TagEntry? decodeBackupEntry(TagCategory cat, Map<String, dynamic> j) {
     },
     previews: previews,
     createdAt: (j['createdAt'] as num?)?.toInt() ?? 0,
-    createdBy: switch (j['user'] ?? j['addedBy']) {
+    createdBy: switch (j['user'] ?? j['addedBy'] ?? j['createdBy']) {
       final String s => s,
       final num n => '$n',
       _ => null,

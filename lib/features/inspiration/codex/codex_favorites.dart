@@ -140,6 +140,28 @@ class CodexFavoritesNotifier extends AsyncNotifier<List<CodexFavorite>> {
   }
 
   Future<void> clearAll() => _save(const []);
+
+  /// 云备份的 `codex_favorites`。
+  List<Map<String, dynamic>> encodeBackup() => [
+    for (final f in _list) f.toJson(),
+  ];
+
+  /// 恢复:按收藏键合并,同一条留收藏时间新的那份;超出 [kMax] 时留最新的。返回新增条数。
+  Future<int> mergeBackup(List<dynamic> raw) async {
+    final byKey = {for (final f in _list) f.key: f};
+    var added = 0;
+    for (final it in raw) {
+      final f = CodexFavorite.fromJson(it);
+      if (f == null) continue;
+      final cur = byKey[f.key];
+      if (cur == null) added++;
+      if (cur == null || f.savedAt > cur.savedAt) byKey[f.key] = f;
+    }
+    final next = byKey.values.toList()
+      ..sort((a, b) => b.savedAt.compareTo(a.savedAt));
+    await _save(next.take(kMax).toList());
+    return added;
+  }
 }
 
 /// 收藏键集合。详情弹层每换一条词条都要问「这条收了没」,
