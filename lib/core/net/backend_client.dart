@@ -1434,6 +1434,9 @@ class BackendClient {
   Future<NaiUsage?> poolUsage() async =>
       parseNaiUsage((await _getJson('/usage'))['usage']);
 
+  /// NovelAI 官方服务状态(`GET /api/nai-status`,公开端点),解析见 `parseNaiStatus`。
+  Future<Map<String, dynamic>> getNaiStatus() => _getJson('/nai-status');
+
   /// 我的 NAI 5 出图额度(`GET /api/user/quota`)。按会话鉴权,**只能查自己**
   /// (user_id 取自会话,传不进去别人的)。
   ///

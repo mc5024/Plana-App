@@ -9687,6 +9687,54 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'并非所有模型都支持深度调整,请参考模型和提供商的文档。'**
   String get thinkDepthNote;
+
+  /// No description provided for @naiStatusLine.
+  ///
+  /// In zh, this message translates to:
+  /// **'NovelAI 官方:图像生成{state}'**
+  String naiStatusLine(String state);
+
+  /// No description provided for @naiStateDown.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务中断'**
+  String get naiStateDown;
+
+  /// No description provided for @naiStatePartial.
+  ///
+  /// In zh, this message translates to:
+  /// **'部分中断'**
+  String get naiStatePartial;
+
+  /// No description provided for @naiStateDegraded.
+  ///
+  /// In zh, this message translates to:
+  /// **'性能下降'**
+  String get naiStateDegraded;
+
+  /// No description provided for @naiStateMaintenance.
+  ///
+  /// In zh, this message translates to:
+  /// **'维护中'**
+  String get naiStateMaintenance;
+
+  /// No description provided for @naiStateSecurity.
+  ///
+  /// In zh, this message translates to:
+  /// **'安全事件'**
+  String get naiStateSecurity;
+
+  /// No description provided for @naiStateIssue.
+  ///
+  /// In zh, this message translates to:
+  /// **'异常'**
+  String get naiStateIssue;
+
+  /// No description provided for @naiStatusDetails.
+  ///
+  /// In zh, this message translates to:
+  /// **'详情'**
+  String get naiStatusDetails;
 }
 
 class _AppLocalizationsDelegate

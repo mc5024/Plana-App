@@ -5495,4 +5495,30 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get thinkDepthNote => '并非所有模型都支持深度调整,请参考模型和提供商的文档。';
+
+  @override
+  String naiStatusLine(String state) {
+    return 'NovelAI 官方:图像生成$state';
+  }
+
+  @override
+  String get naiStateDown => '服务中断';
+
+  @override
+  String get naiStatePartial => '部分中断';
+
+  @override
+  String get naiStateDegraded => '性能下降';
+
+  @override
+  String get naiStateMaintenance => '维护中';
+
+  @override
+  String get naiStateSecurity => '安全事件';
+
+  @override
+  String get naiStateIssue => '异常';
+
+  @override
+  String get naiStatusDetails => '详情';
 }

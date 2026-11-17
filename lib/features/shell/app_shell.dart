@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/auth/auth_mode.dart';
 import '../../core/auth/bot_session_store.dart';
@@ -10,6 +11,7 @@ import '../../core/auth/nai_credential_login.dart';
 import '../../core/auth/token_store.dart';
 import '../../core/net/backend_config.dart';
 import '../../core/net/bot_socket.dart';
+import '../../core/net/nai_status.dart';
 import '../../core/store/app_stores.dart';
 import '../../core/store/prefs_store.dart';
 import '../../core/theme/app_skin.dart';
@@ -22,7 +24,9 @@ import '../gallery/gallery_state.dart';
 import '../gallery/albums/album_models.dart';
 import '../gallery/albums/album_state.dart';
 import '../generate/generate_page.dart';
+import '../generate/generate_state.dart';
 import '../generate/generation_controller.dart';
+import '../generate/models.dart' as m;
 import '../generate/widgets/common.dart' show hintSnack;
 import '../inspiration/inspiration_page.dart';
 import '../inpaint/inpaint_overlay.dart' show inpaintSessionProvider;
@@ -76,14 +80,88 @@ class _AppShellState extends ConsumerState<AppShell> {
     ref.listenManual(authModeProvider, (_, _) => _syncBotSocket());
     ref.listenManual(botSessionProvider, (_, _) => _syncBotSocket());
     ref.listenManual(backendBaseProvider, (_, _) => _syncBotSocket());
+    final naiStatus = ref.read(naiStatusProvider.notifier)
+      ..setForeground(true);
     _life = AppLifecycleListener(
       onResume: () {
         BotSocket.instance.setForeground(true);
         unawaited(_syncBotSocket());
       },
-      onHide: () => BotSocket.instance.setForeground(false),
+      onShow: () => naiStatus.setForeground(true),
+      onHide: () {
+        BotSocket.instance.setForeground(false);
+        naiStatus.setForeground(false);
+      },
     );
     _schedulePrompts();
+  }
+
+  /// 出图失败提示正在等状态刷新,这期间不弹新事故提示。
+  bool _genErrorPending = false;
+
+  bool get _naiModel =>
+      !m.isModalModel(ref.read(generateProvider).params.model);
+
+  /// 新出现的图像生成异常弹一次顶部提示;当前是 Anima / Krea 时不弹。
+  void _remindNaiStatus() {
+    if (!mounted || _genErrorPending || !_naiModel) return;
+    final status = ref.read(naiStatusProvider.notifier);
+    final alert = status.unseenAlert();
+    if (alert == null) return;
+    status.markSeen(alert);
+    final line = naiStatusLine(context.l10n, alert);
+    hintSnack(
+      context,
+      alert.title == null ? line : '$line\n${alert.title}',
+      icon: Icons.warning_amber_rounded,
+      actionLabel: context.l10n.naiStatusDetails,
+      onAction: () => _openUrl(alert.url),
+    );
+  }
+
+  /// 出图失败提示;NovelAI 图像生成异常时附上状态和详情入口。
+  Future<void> _showGenError(String err) async {
+    final status = ref.read(naiStatusProvider.notifier);
+    final nai = _naiModel;
+    if (nai) {
+      _genErrorPending = true;
+      try {
+        await status
+            .refresh(maxAge: const Duration(minutes: 1))
+            .timeout(const Duration(seconds: 3));
+      } catch (_) {
+      } finally {
+        _genErrorPending = false;
+      }
+    }
+    if (!mounted) return;
+    final alert = nai ? naiStatusAlert(ref.read(naiStatusProvider)) : null;
+    if (alert == null) {
+      hintSnack(context, err, icon: Icons.error_outline);
+      return;
+    }
+    status.markSeen(alert);
+    hintSnack(
+      context,
+      '$err\n${naiStatusLine(context.l10n, alert)}',
+      icon: Icons.error_outline,
+      actionLabel: context.l10n.naiStatusDetails,
+      onAction: () => _openUrl(alert.url),
+    );
+  }
+
+  Future<void> _openUrl(String url) async {
+    final ok = await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!ok && mounted) {
+      hintSnack(
+        context,
+        context.l10n.cantOpenBrowserShort,
+        icon: Icons.link_off,
+      );
+    }
   }
 
   late final AppLifecycleListener _life;
@@ -212,10 +290,12 @@ class _AppShellState extends ConsumerState<AppShell> {
               ref.read(shellIndexProvider.notifier).select(kTabProfile),
         );
       } else {
-        hintSnack(context, err, icon: Icons.error_outline);
+        unawaited(_showGenError(err));
       }
       ref.read(generationProvider.notifier).clearError();
     });
+
+    ref.listen(naiStatusProvider, (_, _) => _remindNaiStatus());
 
     // 生成侧非致命提醒(LoRA 超上限被丢弃等):图照常出,但得说一声,
     // 否则用户对着一个根本没生效的 LoRA 查半天。

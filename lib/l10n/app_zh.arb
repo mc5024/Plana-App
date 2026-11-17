@@ -1964,5 +1964,14 @@
   "chatEmpty": "当前对话是空的",
   "chatLogExported": "已导出对话记录",
   "adjustThinkDepth": "调整模型思考深度",
-  "thinkDepthNote": "并非所有模型都支持深度调整,请参考模型和提供商的文档。"
+  "thinkDepthNote": "并非所有模型都支持深度调整,请参考模型和提供商的文档。",
+  "naiStatusLine": "NovelAI 官方:图像生成{state}",
+  "@naiStatusLine": {"placeholders": {"state": {"type": "String"}}},
+  "naiStateDown": "服务中断",
+  "naiStatePartial": "部分中断",
+  "naiStateDegraded": "性能下降",
+  "naiStateMaintenance": "维护中",
+  "naiStateSecurity": "安全事件",
+  "naiStateIssue": "异常",
+  "naiStatusDetails": "详情"
 }

@@ -1637,5 +1637,13 @@
   "chatEmpty": "This chat is empty",
   "chatLogExported": "Chat log exported",
   "adjustThinkDepth": "Thinking Depth",
-  "thinkDepthNote": "Not every model supports adjusting depth; check the model and provider docs."
+  "thinkDepthNote": "Not every model supports adjusting depth; check the model and provider docs.",
+  "naiStatusLine": "NovelAI image generation: {state}",
+  "naiStateDown": "service disruption",
+  "naiStatePartial": "partial disruption",
+  "naiStateDegraded": "degraded performance",
+  "naiStateMaintenance": "maintenance",
+  "naiStateSecurity": "security event",
+  "naiStateIssue": "issue",
+  "naiStatusDetails": "Details"
 }

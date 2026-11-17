@@ -5975,4 +5975,30 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get thinkDepthNote =>
       'Not every model supports adjusting depth; check the model and provider docs.';
+
+  @override
+  String naiStatusLine(String state) {
+    return 'NovelAI image generation: $state';
+  }
+
+  @override
+  String get naiStateDown => 'service disruption';
+
+  @override
+  String get naiStatePartial => 'partial disruption';
+
+  @override
+  String get naiStateDegraded => 'degraded performance';
+
+  @override
+  String get naiStateMaintenance => 'maintenance';
+
+  @override
+  String get naiStateSecurity => 'security event';
+
+  @override
+  String get naiStateIssue => 'issue';
+
+  @override
+  String get naiStatusDetails => 'Details';
 }
