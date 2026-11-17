@@ -12,7 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/store/app_stores.dart';
 import '../generate/prompt_sections.dart' show SectionImport;
 import '../../l10n/l10n.dart';
-import 'domain/image_gen.dart' show kImageAspects, kImageSizes;
+import 'domain/image_gen.dart' show kImageAspects, kImageSizes, kMaxImageCount;
 import 'runtime/refusal.dart' show kRefusalKeywords;
 import 'tools/tool_settings.dart' show migrateLegacyToolSettings;
 
@@ -72,6 +72,7 @@ class AssistantSettings {
     this.refusalKeywords = kRefusalKeywords,
     this.imageSize = '',
     this.imageAspect = '',
+    this.imageCount = 1,
   });
 
   /// 失败重试 / 拒绝重试的默认次数与上限。0 = 关。
@@ -172,6 +173,9 @@ class AssistantSettings {
   final String imageSize;
   final String imageAspect;
 
+  /// 图像模型一轮出几张。
+  final int imageCount;
+
   bool get defaultRefusalKeywords =>
       _sameList(refusalKeywords, kRefusalKeywords);
 
@@ -191,6 +195,7 @@ class AssistantSettings {
     List<String>? refusalKeywords,
     String? imageSize,
     String? imageAspect,
+    int? imageCount,
   }) => AssistantSettings(
     autoGenerate: autoGenerate ?? this.autoGenerate,
     inlineImage: inlineImage ?? this.inlineImage,
@@ -207,6 +212,7 @@ class AssistantSettings {
     refusalKeywords: refusalKeywords ?? this.refusalKeywords,
     imageSize: imageSize ?? this.imageSize,
     imageAspect: imageAspect ?? this.imageAspect,
+    imageCount: imageCount ?? this.imageCount,
   );
 
   Map<String, dynamic> toJson() => {
@@ -225,6 +231,7 @@ class AssistantSettings {
     if (!defaultRefusalKeywords) 'refusalKeywords': refusalKeywords,
     if (imageSize.isNotEmpty) 'imageSize': imageSize,
     if (imageAspect.isNotEmpty) 'imageAspect': imageAspect,
+    if (imageCount != 1) 'imageCount': imageCount,
   };
 
   factory AssistantSettings.fromJson(Map<String, dynamic> j) =>
@@ -277,6 +284,10 @@ class AssistantSettings {
         imageAspect: switch (j['imageAspect']) {
           final String s when kImageAspects.contains(s) => s,
           _ => '',
+        },
+        imageCount: switch (j['imageCount']) {
+          final int n when n >= 1 && n <= kMaxImageCount => n,
+          _ => 1,
         },
       );
 

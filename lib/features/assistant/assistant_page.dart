@@ -38,10 +38,11 @@ import 'application/assistant_controller.dart';
 import 'application/draft_images.dart';
 import 'application/proposal_service.dart' show canvasHasContent;
 import 'domain/image_model.dart';
-import 'domain/image_gen.dart' show kImageAspects, kImageSizes;
+import 'domain/image_gen.dart' show kImageAspects, kImageSizes, kMaxImageCount;
 import 'image_gen/image_models.dart'
     show ImageModelChoice, assistantImageModelProvider;
 import 'presets/preset_rule.dart' show RulesFamily, rulesFamilyOf;
+import 'widgets/attach_pick.dart';
 import 'widgets/history_sheet.dart';
 import 'widgets/image_option_sheet.dart';
 import 'widgets/inline_images.dart';
@@ -137,7 +138,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
     _toBottom();
   }
 
-  /// 附图:一次可以多选,最多 [kMaxAttach] 张,多出来的不收。
+  /// 附图:先选从系统相册还是图库挑,一次可以多选,最多 [kMaxAttach] 张,多出来的不收。
   Future<void> _pick() async {
     final drafts = ref.read(draftImagesProvider.notifier);
     void full() => hintSnack(
@@ -145,8 +146,13 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
       context.l10n.imagesMax(kMaxAttach),
       icon: Icons.image_outlined,
     );
-    if (ref.read(draftImagesProvider).length >= kMaxAttach) return full();
-    final picked = await pickImageFiles(context);
+    final room = kMaxAttach - ref.read(draftImagesProvider).length;
+    if (room <= 0) return full();
+    final source = await showAttachSourceSheet(context);
+    if (source == null || !mounted) return;
+    final picked = source == AttachSource.gallery
+        ? await pickGalleryImages(context, ref, max: room)
+        : await pickImageFiles(context);
     if (picked.isEmpty || !mounted) return;
     if (drafts.add(picked) < picked.length) full();
   }
@@ -709,9 +715,9 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
     );
   }
 
-  /// 选着图像模型时那排换成出图的快捷设置:分辨率、比例。
+  /// 选着图像模型时那排换成出图的快捷设置:分辨率、比例、张数。
   ///
-  /// 分辨率和比例跟着设置走、不是一次性的;这个模型出不了的置灰、显示生效的「自动」,
+  /// 这几项跟着设置走、不是一次性的;这个模型出不了的置灰、显示生效的「自动」,
   /// 点了说一句为什么(和「思考」那颗一样)。
   Widget _imageOptionRow(ImageModelChoice m) {
     final s =
@@ -760,6 +766,28 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
                   current: aspect,
                 );
                 if (v != null) await n.patch((x) => x.copyWith(imageAspect: v));
+              },
+            ),
+            const SizedBox(width: 8),
+            _imageOptionChip(
+              icon: Icons.burst_mode_outlined,
+              label: context.l10n.imagesN(s.imageCount),
+              on: s.imageCount > 1,
+              enabled: true,
+              onTap: () async {
+                final all = [for (var i = 1; i <= kMaxImageCount; i++) '$i'];
+                final v = await showImageOptionSheet(
+                  context,
+                  title: context.l10n.imageCount,
+                  options: all,
+                  available: all,
+                  current: '${s.imageCount}',
+                  auto: false,
+                  labelOf: (v) => context.l10n.imagesN(int.parse(v)),
+                );
+                if (v != null) {
+                  await n.patch((x) => x.copyWith(imageCount: int.parse(v)));
+                }
               },
             ),
           ],
@@ -910,7 +938,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
             children: [
               if (pending.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(left: 53, bottom: 9),
+                  padding: const EdgeInsets.only(left: 4, bottom: 8),
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -1843,20 +1871,29 @@ class _Thumb extends StatelessWidget {
   final Uint8List bytes;
   final VoidCallback onRemove;
 
+  // ✕ 压在右上角、上沿多出 6:都留在这个框里,外面的横向滚动会裁掉框外的部分
   @override
   Widget build(BuildContext context) => SizedBox(
     width: 76,
-    height: 76,
+    height: 70,
     child: Stack(
-      clipBehavior: Clip.none,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.memory(bytes, width: 64, height: 64, fit: BoxFit.cover),
+        Positioned(
+          left: 0,
+          top: 6,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.memory(
+              bytes,
+              width: 64,
+              height: 64,
+              fit: BoxFit.cover,
+            ),
+          ),
         ),
         Positioned(
-          right: 0,
-          top: -4,
+          right: 1,
+          top: 0,
           child: Material(
             color: context.scheme.inverseSurface,
             shape: const CircleBorder(),

@@ -1758,6 +1758,7 @@
   "thinkChip": "思考 {level}",
   "@thinkChip": {"placeholders": {"level": {"type": "String"}}},
   "attachImage": "带图",
+  "systemAlbum": "系统相册",
   "inputHint": "想画什么、想改哪里…",
   "stop": "停止",
   "send": "发送",

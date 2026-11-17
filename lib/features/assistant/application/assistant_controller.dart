@@ -764,9 +764,9 @@ class AssistantController extends Notifier<AssistantState> {
 
   // ---- 图像模型 ----
 
-  /// 选着图像模型时发一轮:原话交给图像模型出一张,不走对话模型,附的图当参考图
-  /// (要改对话里的图就点图上的「引用」附上)。分辨率 / 比例按输入框上方那排,这个模型
-  /// 出不了的按自动。
+  /// 选着图像模型时发一轮:原话交给图像模型出图,不走对话模型,附的图当参考图
+  /// (要改对话里的图就点图上的「引用」附上)。分辨率 / 比例 / 张数按输入框上方那排,
+  /// 这个模型出不了的档按自动。
   Future<void> _sendImage(
     String text, {
     List<Uint8List> images = const [],
@@ -817,33 +817,39 @@ class AssistantController extends Notifier<AssistantState> {
         aspect: choice.aspects.contains(settings.imageAspect)
             ? settings.imageAspect
             : '',
+        count: settings.imageCount,
       );
-      final png = await _drawImage(
+      final (ids, partial) = await _drawImages(
         choice,
         spec,
         attached: images,
         client: client,
+        keep: () => seq == _seq,
       );
       if (seq != _seq) return;
-      final id = await _saveImage(png);
-      if (seq != _seq) return;
       LiveProgress.instance.endAssistant(success: true, keep: !_appForeground);
+      final id = _newId();
       _set(
         state.copyWith(
           msgs: [
             ...state.msgs,
             AssistantMsg(
-              id: _newId(),
+              id: id,
               role: MsgRole.ai,
               text: '',
               at: _now,
-              imageIds: [id],
+              imageIds: ids,
+              imageBatch: ids.length,
               imageGen: spec,
               imageModel: modelKey,
             ),
           ],
           running: false,
           stage: '',
+          // 没出齐:出成的照挂,原因写在图下面
+          imageErrors: partial == null
+              ? null
+              : {...state.imageErrors, id: partial},
         ),
       );
       unawaited(_drain());
@@ -856,7 +862,7 @@ class AssistantController extends Notifier<AssistantState> {
     }
   }
 
-  /// 图上的「重新生成」:照这条消息的请求再出一张,在原框里换。
+  /// 图上的「重新生成」:照这条消息的请求再出一批,在原框里换。
   Future<void> generateImage(String msgId) async {
     final msg = _msg(msgId);
     final spec = msg?.imageGen;
@@ -870,7 +876,7 @@ class AssistantController extends Notifier<AssistantState> {
       persist: false,
     );
     String? error;
-    String? imageId;
+    var ids = const <String>[];
     final client = http.Client();
     try {
       final choice = imageModelOf(await _imageChoices(), key);
@@ -880,8 +886,11 @@ class AssistantController extends Notifier<AssistantState> {
           for (final h in askOf(msgId)?.imageHashes ?? const <String>[])
             ?await _repo.image(h),
       ];
-      imageId = await _saveImage(
-        await _drawImage(choice, spec, attached: attached, client: client),
+      (ids, error) = await _drawImages(
+        choice,
+        spec,
+        attached: attached,
+        client: client,
       );
     } catch (e) {
       error = '$e';
@@ -893,10 +902,13 @@ class AssistantController extends Notifier<AssistantState> {
     var msgs = state.msgs;
     final i = msgs.indexWhere((m) => m.id == msgId);
     // 出图这段时间里被截断/归档了就不挂
-    final attach = imageId != null && i >= 0;
+    final attach = ids.isNotEmpty && i >= 0;
     if (attach) {
       msgs = [...msgs];
-      msgs[i] = msgs[i].copyWith(imageIds: [...msgs[i].imageIds, imageId]);
+      msgs[i] = msgs[i].copyWith(
+        imageIds: [...msgs[i].imageIds, ...ids],
+        imageBatch: ids.length,
+      );
     }
     _set(
       state.copyWith(
@@ -908,27 +920,36 @@ class AssistantController extends Notifier<AssistantState> {
     );
   }
 
-  /// 按 [spec] 让 [choice] 出一张,返回 PNG。[attached] 是这轮提问附的图。
-  Future<Uint8List> _drawImage(
+  /// 按 [spec] 让 [choice] 出 [ImageGenSpec.count] 张、存进图库,同时最多出两张。
+  /// 按次序返回条目 id 和第一张没出成的原因;一张都没出成就抛这个原因。
+  /// [attached] 是这轮提问附的图;[keep] 返回 false 之后出好的不存。
+  Future<(List<String>, String?)> _drawImages(
     ImageModelChoice choice,
     ImageGenSpec spec, {
     List<Uint8List> attached = const [],
     required http.Client client,
+    bool Function()? keep,
   }) async {
     final images = [for (final b in attached) await prepareLlmImage(b)];
     final sid = (await ref.read(botSessionProvider.future))?.sessionId ?? '';
-    final bytes =
-        await imageGenClientFor(
-          choice,
-          backendBase: ref.read(backendBaseProvider).value ?? '',
-          sessionId: sid,
-        ).generate((
-          prompt: spec.prompt,
-          images: images,
-          size: spec.size,
-          aspect: spec.aspect,
-        ), client: client);
-    return ensurePng(bytes);
+    final gen = imageGenClientFor(
+      choice,
+      backendBase: ref.read(backendBaseProvider).value ?? '',
+      sessionId: sid,
+    );
+    final ImageGenInput input = (
+      prompt: spec.prompt,
+      images: images,
+      size: spec.size,
+      aspect: spec.aspect,
+    );
+    final (ids, error) = await drawBatch(spec.count, () async {
+      final png = await ensurePng(await gen.generate(input, client: client));
+      if (keep != null && !keep()) return null;
+      return _saveImage(png);
+    });
+    if (ids.isEmpty) throw error ?? AgentFailure(l10nNow.imageGenNoImage);
+    return (ids, error == null ? null : '$error');
   }
 
   /// 出好的图进图库,返回条目 id。

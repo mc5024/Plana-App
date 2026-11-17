@@ -1,5 +1,5 @@
-/// 图像模型的分辨率 / 比例怎么选:和「对话模式」同一种弹层、同一种行,第一行是「自动」。
-/// 这个模型出不了的档照列、压淡、点不动。
+/// 图像模型的分辨率 / 比例 / 张数怎么选:和「对话模式」同一种弹层、同一种行,
+/// 分辨率 / 比例第一行是「自动」。这个模型出不了的档照列、压淡、点不动。
 library;
 
 import 'package:flutter/material.dart';
@@ -10,13 +10,15 @@ import '../../../core/ui/setting_row.dart';
 import '../../generate/widgets/common.dart' show dropFocusSoon;
 import '../../../l10n/l10n.dart';
 
-/// 选中的值,空串 = 自动;没选就关掉的是 null。
+/// 选中的值,空串 = 自动;没选就关掉的是 null。[labelOf] 是行上的字,默认写值本身。
 Future<String?> showImageOptionSheet(
   BuildContext context, {
   required String title,
   required List<String> options,
   required List<String> available,
   required String current,
+  bool auto = true,
+  String Function(String)? labelOf,
 }) async {
   final picked = await showModalBottomSheet<String>(
     context: context,
@@ -29,6 +31,8 @@ Future<String?> showImageOptionSheet(
       options: options,
       available: available,
       current: current,
+      auto: auto,
+      labelOf: labelOf,
     ),
   );
   dropFocusSoon();
@@ -41,12 +45,16 @@ class _OptionSheet extends StatelessWidget {
     required this.options,
     required this.available,
     required this.current,
+    required this.auto,
+    this.labelOf,
   });
 
   final String title;
   final List<String> options;
   final List<String> available;
   final String current;
+  final bool auto;
+  final String Function(String)? labelOf;
 
   @override
   Widget build(BuildContext context) {
@@ -82,8 +90,8 @@ class _OptionSheet extends StatelessWidget {
     return SettingSheet(
       title: title,
       children: [
-        row('', context.l10n.settingAuto),
-        for (final o in options) row(o, o),
+        if (auto) row('', context.l10n.settingAuto),
+        for (final o in options) row(o, labelOf?.call(o) ?? o),
       ],
     );
   }

@@ -104,6 +104,35 @@ void main() {
       });
       expect(old.imageHashes, ['h0']);
     });
+
+    test('张数随请求存,一批几张随消息存', () {
+      final spec = ImageGenSpec.fromJson(
+        const ImageGenSpec(prompt: '画猫', count: 3).toJson(),
+      )!;
+      expect(spec.count, 3);
+      expect(ImageGenSpec.fromJson(const {'prompt': '画猫'})!.count, 1);
+      expect(
+        ImageGenSpec.fromJson(const {'prompt': '画猫', 'count': 9})!.count,
+        kMaxImageCount,
+      );
+      const m = AssistantMsg(
+        id: '1',
+        role: MsgRole.ai,
+        text: '',
+        at: 0,
+        imageIds: ['a', 'b', 'c'],
+        imageBatch: 2,
+      );
+      final back = AssistantMsg.fromJson(
+        jsonDecode(jsonEncode(m.toJson())) as Map<String, dynamic>,
+      );
+      expect(back.imageBatch, 2);
+      expect(back.copyWith(imageIds: ['a']).imageBatch, 2);
+      expect(
+        AssistantMsg.fromJson(const {'id': '1', 'role': 'ai'}).imageBatch,
+        1,
+      );
+    });
   });
 
   group('图像模型的快捷设置', () {
@@ -116,6 +145,43 @@ void main() {
         'imageAspect': '7:5',
       });
       expect((def.imageSize, def.imageAspect), ('', ''));
+    });
+
+    test('张数随助手设置存,超出范围的回到 1', () {
+      final back = AssistantSettings.fromJson(
+        const AssistantSettings(imageCount: 4).toJson(),
+      );
+      expect(back.imageCount, 4);
+      expect(
+        const AssistantSettings().toJson().containsKey('imageCount'),
+        isFalse,
+      );
+      expect(AssistantSettings.fromJson(const {'imageCount': 0}).imageCount, 1);
+      expect(AssistantSettings.fromJson(const {'imageCount': 5}).imageCount, 1);
+    });
+
+    test('一批:同时最多两张,按次序排,没出成的跳过并带回第一个错', () async {
+      var running = 0;
+      var peak = 0;
+      var n = 0;
+      final (ok, error) = await drawBatch<String>(4, () async {
+        final i = n++;
+        running++;
+        peak = peak < running ? running : peak;
+        // 先发的慢,看结果是不是还按次序
+        await Future<void>.delayed(Duration(milliseconds: 20 - i * 4));
+        running--;
+        if (i == 1) throw AgentFailure('额度用完');
+        if (i == 3) return null;
+        return 'img$i';
+      });
+      expect(peak, 2);
+      expect(ok, ['img0', 'img2']);
+      expect((error as AgentFailure).message, '额度用完');
+
+      final (one, none) = await drawBatch<String>(1, () async => 'x');
+      expect(one, ['x']);
+      expect(none, isNull);
     });
 
     test('待发的图:按顺序加,满了的不收,能删能整份换', () {

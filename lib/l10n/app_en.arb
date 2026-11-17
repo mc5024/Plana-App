@@ -1458,6 +1458,7 @@
   "rulesNoMode": "The current rule preset doesn't support “{mode}”",
   "thinkChip": "Think {level}",
   "attachImage": "Attach Images",
+  "systemAlbum": "Photos",
   "inputHint": "What to draw or edit…",
   "stop": "Stop",
   "send": "Send",

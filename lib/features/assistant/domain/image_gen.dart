@@ -1,4 +1,4 @@
-/// 选着图像模型时一轮的出图请求:交给图像模型的话、带不带附图、分辨率和比例。
+/// 选着图像模型时一轮的出图请求:交给图像模型的话、带不带附图、分辨率、比例和张数。
 /// 「重新生成」照它再出一次。
 library;
 
@@ -8,12 +8,16 @@ const kImageAspects = ['1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9'];
 /// 能选的分辨率档。
 const kImageSizes = ['1K', '2K', '4K'];
 
+/// 一轮最多出几张。
+const kMaxImageCount = 4;
+
 class ImageGenSpec {
   const ImageGenSpec({
     required this.prompt,
     this.attached = false,
     this.size = '',
     this.aspect = '',
+    this.count = 1,
   });
 
   /// 用户的原话。
@@ -26,11 +30,15 @@ class ImageGenSpec {
   final String size;
   final String aspect;
 
+  /// 出几张,1–[kMaxImageCount]。
+  final int count;
+
   Map<String, dynamic> toJson() => {
     'prompt': prompt,
     if (attached) 'attached': true,
     if (size.isNotEmpty) 'size': size,
     if (aspect.isNotEmpty) 'aspect': aspect,
+    if (count > 1) 'count': count,
   };
 
   static ImageGenSpec? fromJson(Object? j) {
@@ -42,6 +50,7 @@ class ImageGenSpec {
       attached: j['attached'] == true,
       size: j['size'] as String? ?? '',
       aspect: j['aspect'] as String? ?? '',
+      count: ((j['count'] as num?)?.toInt() ?? 1).clamp(1, kMaxImageCount),
     );
   }
 }

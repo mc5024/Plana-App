@@ -431,6 +431,7 @@ class AssistantMsg {
     this.mode = AssistantMode.normal,
     this.noDraw = false,
     this.imageIds = const [],
+    this.imageBatch = 1,
     this.resources = const {},
     this.tools = const [],
     this.draw,
@@ -457,6 +458,9 @@ class AssistantMsg {
   /// 对话里再挂一份是重复;图像模型出的始终攒。图本身**始终**入库,这里存的只是个引用;库里删了
   /// 就查不到,界面按「没有」处理,不留破图。
   final List<String> imageIds;
+
+  /// 最近一批出了几张,即 [imageIds] 末尾这几张一起画。图像模型一轮出多张时大于 1。
+  final int imageBatch;
 
   /// 这一轮结束时的**沿用资源账本**(画师串 / OC)。仅 [MsgRole.ai]。
   ///
@@ -516,6 +520,7 @@ class AssistantMsg {
     List<ToolTrace>? tools,
     AssistantChange? change,
     List<String>? imageIds,
+    int? imageBatch,
   }) => AssistantMsg(
     id: id,
     role: role,
@@ -526,6 +531,7 @@ class AssistantMsg {
     mode: mode,
     noDraw: noDraw,
     imageIds: imageIds ?? this.imageIds,
+    imageBatch: imageBatch ?? this.imageBatch,
     resources: resources,
     tools: tools ?? this.tools,
     draw: draw,
@@ -544,6 +550,7 @@ class AssistantMsg {
     if (mode != AssistantMode.normal) 'mode': mode.name,
     if (noDraw) 'noDraw': true,
     if (imageIds.isNotEmpty) 'imageIds': imageIds,
+    if (imageBatch > 1) 'imageBatch': imageBatch,
     if (resources.isNotEmpty) 'resources': resources,
     if (tools.isNotEmpty) 'tools': [for (final t in tools) t.toJson()],
     if (draw != null) 'draw': draw!.toJson(),
@@ -566,6 +573,10 @@ class AssistantMsg {
     mode: AssistantMode.values.asNameMap()[j['mode']] ?? AssistantMode.normal,
     noDraw: j['noDraw'] == true,
     imageIds: [for (final e in (j['imageIds'] as List? ?? const [])) '$e'],
+    imageBatch: ((j['imageBatch'] as num?)?.toInt() ?? 1).clamp(
+      1,
+      kMaxImageCount,
+    ),
     resources: decodeResources(j['resources']),
     tools: [
       for (final e in (j['tools'] as List? ?? const []))

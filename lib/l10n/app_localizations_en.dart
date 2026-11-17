@@ -5322,6 +5322,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get attachImage => 'Attach Images';
 
   @override
+  String get systemAlbum => 'Photos';
+
+  @override
   String get inputHint => 'What to draw or edit…';
 
   @override

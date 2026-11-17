@@ -4902,6 +4902,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get attachImage => '带图';
 
   @override
+  String get systemAlbum => '系统相册';
+
+  @override
   String get inputHint => '想画什么、想改哪里…';
 
   @override

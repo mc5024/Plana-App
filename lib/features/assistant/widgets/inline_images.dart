@@ -13,7 +13,8 @@
 /// 图**始终在图库里**,库里删掉的直接不画,不留一格破图 —— 最新那张删了就往前找一张。
 ///
 /// 选着图像模型时出的图也画在这个框里;重新生成时没有逐帧预览和进度,只走一条细条,
-/// 没出成的原因写在框下面,带「重试」。
+/// 没出成的原因写在框下面,带「重试」。一轮出了几张的,框里左右滑着看这一批
+/// ([AssistantMsg.imageBatch]),右上角标第几张。
 library;
 
 import 'dart:math' as math;
@@ -64,15 +65,20 @@ class InlineImages extends ConsumerWidget {
         if (j.id == jobId) job = j;
       }
     }
-    // 这条消息出过的图里,还在库里的最新那张
-    ResultImage? latest;
+    // 最近一批里还在库里的;一张都不在了就往前找还在的最新那张
+    var shown = const <ResultImage>[];
     if (msg.imageIds.isNotEmpty) {
       final all = ref.watch(galleryProvider).results;
-      for (final id in msg.imageIds.reversed) {
-        latest = all.where((r) => r.id == id).firstOrNull;
-        if (latest != null) break;
+      ResultImage? find(String id) => all.where((r) => r.id == id).firstOrNull;
+      final ids = msg.imageIds;
+      final tail = ids.length - msg.imageBatch.clamp(0, ids.length);
+      shown = [for (final id in ids.skip(tail)) ?find(id)];
+      for (final id in ids.take(tail).toList().reversed) {
+        if (shown.isNotEmpty) break;
+        if (find(id) case final r?) shown = [r];
       }
     }
+    final latest = shown.firstOrNull;
     final running = job;
     final hasFrame = running != null || drawing || latest != null;
 
@@ -114,9 +120,9 @@ class InlineImages extends ConsumerWidget {
                                 maxW: box.maxWidth,
                               )
                             : _Done(
-                                key: ValueKey(latest!.id),
+                                key: ValueKey(shown.map((r) => r.id).join(',')),
                                 msgId: msg.id,
-                                result: latest,
+                                results: shown,
                                 maxW: box.maxWidth,
                                 imageGen: msg.imageGen != null,
                               ),
@@ -164,52 +170,102 @@ Uint8List? _bytesOf(WidgetRef ref, ResultImage r) =>
     ref.watch(galleryImageProvider(r.id)).value ??
     ref.watch(galleryThumbProvider(r.id)).value;
 
-class _Done extends ConsumerWidget {
+/// 出好的图。一批几张的左右滑,框按第一张的尺寸;「引用」引的是正看着的那张。
+class _Done extends StatefulWidget {
   const _Done({
     super.key,
     required this.msgId,
-    required this.result,
+    required this.results,
     required this.maxW,
     this.imageGen = false,
   });
 
   final String msgId;
-  final ResultImage result;
+  final List<ResultImage> results;
   final double maxW;
 
   /// 这张是图像模型出的:「重新生成」再调一次图像模型。
   final bool imageGen;
 
   @override
+  State<_Done> createState() => _DoneState();
+}
+
+class _DoneState extends State<_Done> {
+  var _page = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final results = widget.results;
+    final page = math.min(_page, results.length - 1);
+    final first = results.first;
+    final size = _box(first.width, first.height, widget.maxW);
+    final many = results.length > 1;
+    return _frame(context, size, [
+      if (many)
+        PageView(
+          onPageChanged: (i) => setState(() => _page = i),
+          children: [for (final r in results) _Shot(result: r, size: size)],
+        )
+      else
+        _Shot(result: first, size: size),
+      if (many)
+        Positioned(
+          top: 10,
+          right: 10,
+          child: IgnorePointer(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: .55),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${page + 1}/${results.length}',
+                style: context.texts.labelSmall!.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ),
+      // 跑着的时候框里换成了进度,这颗跟着一起不在 —— 同一条消息连投两单,
+      // 进度条只跟得住一单。
+      Positioned(
+        right: 10,
+        bottom: 10,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _QuoteButton(result: results[page]),
+            const SizedBox(width: 8),
+            _AgainButton(msgId: widget.msgId, imageGen: widget.imageGen),
+          ],
+        ),
+      ),
+    ]);
+  }
+}
+
+/// 框里的一张,点开切去图库看大图 —— 放大、超分、存盘那些都在那边。
+class _Shot extends ConsumerWidget {
+  const _Shot({required this.result, required this.size});
+
+  final ResultImage result;
+  final Size size;
+
+  @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size = _box(result.width, result.height, maxW);
     final bytes = _bytesOf(ref, result);
     return GestureDetector(
-      // 点开切去图库看大图 —— 放大、超分、存盘那些都在那边。
       onTap: () {
         ref.read(galleryProvider.notifier).select(result.id);
         ref.read(shellIndexProvider.notifier).select(kTabGallery);
       },
-      child: _frame(context, size, [
-        if (bytes != null)
-          _Bitmap(bytes: bytes, size: size)
-        else
-          StripeThumb(width: size.width, height: size.height, radius: 0),
-        // 跑着的时候框里换成了进度,这颗跟着一起不在 —— 同一条消息连投两单,
-        // 进度条只跟得住一单。
-        Positioned(
-          right: 10,
-          bottom: 10,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _QuoteButton(result: result),
-              const SizedBox(width: 8),
-              _AgainButton(msgId: msgId, imageGen: imageGen),
-            ],
-          ),
-        ),
-      ]),
+      child: bytes != null
+          ? _Bitmap(bytes: bytes, size: size)
+          : StripeThumb(width: size.width, height: size.height, radius: 0),
     );
   }
 }

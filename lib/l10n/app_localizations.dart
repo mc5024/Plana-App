@@ -8626,6 +8626,12 @@ abstract class AppLocalizations {
   /// **'带图'**
   String get attachImage;
 
+  /// No description provided for @systemAlbum.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统相册'**
+  String get systemAlbum;
+
   /// No description provided for @inputHint.
   ///
   /// In zh, this message translates to:
