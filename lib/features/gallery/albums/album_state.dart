@@ -173,6 +173,8 @@ class AlbumsNotifier extends Notifier<AlbumsData> {
     _lastSelected.remove(id);
   }
 
+  Future<void> reorder(List<String> order) => _edit((d) => d.reorder(order));
+
   void browse(
     String? id, {
     bool alsoSave = false,

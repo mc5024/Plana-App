@@ -6184,6 +6184,12 @@ abstract class AppLocalizations {
   /// **'删除相册'**
   String get deleteAlbum;
 
+  /// No description provided for @reorderAlbums.
+  ///
+  /// In zh, this message translates to:
+  /// **'排序'**
+  String get reorderAlbums;
+
   /// No description provided for @restoredN.
   ///
   /// In zh, this message translates to:

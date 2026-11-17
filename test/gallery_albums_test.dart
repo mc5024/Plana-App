@@ -130,6 +130,29 @@ void main() {
     expect(removed.cover('a'), isNull);
     expect(removed.ofImage('two'), {'c'});
   });
+  test('排序:收藏、回收站也能排,新建的插在第一本用户相册前,顺序能往返;没变不写', () {
+    final data = fixture();
+    expect(data.order, [favoritesId, 'a', 'b', 'c', trashId]);
+    expect(identical(data.reorder([...data.order]), data), isTrue);
+    final moved = data.reorder([trashId, 'c', favoritesId, 'a', 'b']);
+    expect([for (final a in moved.albums) a.id], ['c', 'a', 'b']);
+    expect(moved.memberships, data.memberships);
+    final back = AlbumsData.fromJson(jsonDecode(jsonEncode(moved.toJson())));
+    expect(back.order, [trashId, 'c', favoritesId, 'a', 'b']);
+    final added = back.copyWith(
+      albums: [
+        const GalleryAlbum(id: 'd', name: 'D', createdAt: 4),
+        ...back.albums,
+      ],
+    );
+    expect(added.order, [trashId, 'd', 'c', favoritesId, 'a', 'b']);
+    expect(added.deleteAlbum('c').order, [trashId, 'd', favoritesId, 'a', 'b']);
+    final none = AlbumsData().copyWith(
+      albums: [const GalleryAlbum(id: 'e', name: 'E', createdAt: 5)],
+    );
+    expect(none.order, [favoritesId, 'e', trashId]);
+  });
+
   test('图库数据往返，拒绝路径形式的封面 ID', () {
     final back = AlbumsData.fromJson(
       jsonDecode(jsonEncode(fixture().toJson())),

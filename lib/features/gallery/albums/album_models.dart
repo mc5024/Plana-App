@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show setEquals;
+import 'package:flutter/foundation.dart' show listEquals, setEquals;
 import '../../../l10n/l10n.dart';
 
 String get allPhotosName => l10nNow.allAlbumsName;
@@ -69,18 +69,68 @@ class GalleryAlbum {
 }
 
 class AlbumsData {
-  AlbumsData({
+  factory AlbumsData({
     Iterable<GalleryAlbum> albums = const [],
     Map<String, Set<String>> memberships = const {},
+    AlbumCover? allPhotosCover,
+    Iterable<String> order = const [],
+  }) {
+    final list = albums.toList();
+    final seq = _sequence(list, order);
+    final byId = {for (final a in list) a.id: a};
+    return AlbumsData._(
+      [for (final id in seq) ?byId[id]],
+      memberships,
+      allPhotosCover,
+      seq,
+    );
+  }
+
+  AlbumsData._(
+    List<GalleryAlbum> albums,
+    Map<String, Set<String>> memberships,
     this.allPhotosCover,
-  }) : albums = List.unmodifiable(albums),
-       memberships = Map.unmodifiable({
-         for (final e in memberships.entries)
-           e.key: Set<String>.unmodifiable(e.value),
-       });
+    List<String> order,
+  ) : albums = List.unmodifiable(albums),
+      order = List.unmodifiable(order),
+      memberships = Map.unmodifiable({
+        for (final e in memberships.entries)
+          e.key: Set<String>.unmodifiable(e.value),
+      });
+
+  /// 用户相册,按 [order] 里的先后。
   final List<GalleryAlbum> albums;
+
+  /// 相册墙上「全部相册」之后的顺序:收藏、回收站和每本用户相册各一次。
+  final List<String> order;
   final Map<String, Set<String>> memberships;
   final AlbumCover? allPhotosCover;
+
+  /// [raw] 里认不得的、重复的丢掉;收藏缺了放最前,回收站缺了放最后;
+  /// 没排过的用户相册(新建的)插在第一本用户相册前,一本都没有就跟在收藏后。
+  static List<String> _sequence(
+    List<GalleryAlbum> albums,
+    Iterable<String> raw,
+  ) {
+    final own = {for (final a in albums) a.id};
+    final seen = <String>{};
+    final seq = [
+      for (final id in raw)
+        if ((id == favoritesId || id == trashId || own.contains(id)) &&
+            seen.add(id))
+          id,
+    ];
+    if (!seen.contains(favoritesId)) seq.insert(0, favoritesId);
+    if (!seen.contains(trashId)) seq.add(trashId);
+    final fresh = [
+      for (final a in albums)
+        if (!seen.contains(a.id)) a.id,
+    ];
+    final first = seq.indexWhere(own.contains);
+    seq.insertAll(first < 0 ? seq.indexOf(favoritesId) + 1 : first, fresh);
+    return seq;
+  }
+
   GalleryAlbum? album(String? id) =>
       albums.where((a) => a.id == id).firstOrNull;
   bool exists(String? id) =>
@@ -100,12 +150,14 @@ class AlbumsData {
     Map<String, Set<String>>? memberships,
     AlbumCover? allPhotosCover,
     bool clearAllCover = false,
+    Iterable<String>? order,
   }) => AlbumsData(
     albums: albums ?? this.albums,
     memberships: memberships ?? this.memberships,
     allPhotosCover: clearAllCover
         ? null
         : allPhotosCover ?? this.allPhotosCover,
+    order: order ?? this.order,
   );
 
   AlbumsData withCover(String? id, AlbumCover? cover) => id == null
@@ -143,6 +195,12 @@ class AlbumsData {
           e.key: e.value.where((v) => v != id).toSet(),
     },
   );
+
+  /// 相册墙改按 [order] 排;顺序没变返回自身。
+  AlbumsData reorder(List<String> order) {
+    final next = copyWith(order: order);
+    return listEquals(next.order, this.order) ? this : next;
+  }
 
   /// 收藏 / 取消收藏。
   AlbumsData favorite(Set<String> imageIds, bool on) => on
@@ -186,6 +244,7 @@ class AlbumsData {
       for (final e in memberships.entries) e.key: e.value.toList(),
     },
     'allPhotosCover': allPhotosCover?.toJson(),
+    'order': order,
   };
 
   factory AlbumsData.fromJson(Object? raw) {
@@ -219,6 +278,9 @@ class AlbumsData {
     }
     return AlbumsData(
       albums: albums,
+      order: raw['order'] is List
+          ? (raw['order'] as List).whereType<String>()
+          : const [],
       allPhotosCover: AlbumCover.parse(raw['allPhotosCover']),
       memberships: {
         for (final e in (raw['memberships'] as Map).entries)

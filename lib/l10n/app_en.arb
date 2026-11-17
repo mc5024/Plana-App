@@ -1041,6 +1041,7 @@
   "restoreAll": "Restore All",
   "emptyTrash": "Empty Trash",
   "deleteAlbum": "Delete Album",
+  "reorderAlbums": "Reorder",
   "restoredN": "Restored {n, plural, =1{1 image} other{{n} images}}",
   "emptyTrashQ": "Empty the Trash?",
   "deletedForeverN": "Permanently deleted {n, plural, =1{1 image} other{{n} images}}",

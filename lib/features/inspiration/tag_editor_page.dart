@@ -15,7 +15,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/util/nai_tokenizer.dart';
 import '../../core/util/image_pick.dart';
 import '../gallery/gallery_state.dart';
-import '../gallery/widgets/gallery_pick_sheet.dart';
+import '../gallery/widgets/gallery_grid_sheet.dart' show showGalleryPicker;
 import '../generate/generate_state.dart';
 import '../generate/style_recipes.dart';
 import '../generate/widgets/common.dart'
@@ -758,10 +758,7 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
       );
       return;
     }
-    final picked = (await showGalleryPickSheet(
-      context,
-      title: context.l10n.pickFromGallery,
-    )).firstOrNull;
+    final picked = (await showGalleryPicker(context)).firstOrNull;
     if (picked == null || !mounted) return;
     final bytes =
         ref

@@ -1235,6 +1235,7 @@
   "restoreAll": "全部恢复",
   "emptyTrash": "清空回收站",
   "deleteAlbum": "删除相册",
+  "reorderAlbums": "排序",
   "restoredN": "已恢复 {n} 张",
   "@restoredN": {"placeholders": {"n": {"type": "int"}}},
   "emptyTrashQ": "清空回收站?",

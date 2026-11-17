@@ -149,11 +149,14 @@ class _AlbumChoiceSheet extends ConsumerWidget {
     final albums = ref.watch(albumsProvider);
     final photos = ref.watch(galleryProvider).results;
     final cols = ref.watch(uiPrefsProvider).galleryColumns;
+    // 照相册墙的顺序,回收站不在其列
     final ids = <String?>[
       if (includeAll) null,
-      if (includeFavorites && exclude != favoritesId) favoritesId,
-      for (final album in albums.albums)
-        if (album.id != exclude) album.id,
+      for (final id in albums.order)
+        if (id != trashId &&
+            id != exclude &&
+            (includeFavorites || id != favoritesId))
+          id,
     ];
     final checked = this.checked;
     // 标题行、按钮、网格照相册首页(gallery_grid_sheet)那一页来,当前那本另外

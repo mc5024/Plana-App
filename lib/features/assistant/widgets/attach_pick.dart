@@ -1,4 +1,4 @@
-/// 输入框左下角「带图」:先选从系统相册还是图库挑;图库那支见 [showGalleryPickSheet]。
+/// 输入框左下角「带图」:先选从系统相册还是图库挑;图库那支见 [showGalleryPicker]。
 library;
 
 import 'package:flutter/material.dart';
@@ -8,7 +8,7 @@ import '../../../core/store/app_stores.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/util/image_pick.dart';
 import '../../gallery/gallery_state.dart' show galleryProvider;
-import '../../gallery/widgets/gallery_pick_sheet.dart';
+import '../../gallery/widgets/gallery_grid_sheet.dart' show showGalleryPicker;
 import '../../generate/widgets/common.dart' show dropFocusSoon, hintSnack;
 import '../../../l10n/l10n.dart';
 
@@ -72,11 +72,7 @@ Future<List<PickedImage>> pickGalleryImages(
     );
     return const [];
   }
-  final ids = await showGalleryPickSheet(
-    context,
-    title: context.l10n.gallery,
-    max: max,
-  );
+  final ids = await showGalleryPicker(context, max: max);
   dropFocusSoon();
   final out = <PickedImage>[];
   for (final id in ids) {

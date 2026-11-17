@@ -3755,6 +3755,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deleteAlbum => 'Delete Album';
 
   @override
+  String get reorderAlbums => 'Reorder';
+
+  @override
   String restoredN(int n) {
     String _temp0 = intl.Intl.pluralLogic(
       n,

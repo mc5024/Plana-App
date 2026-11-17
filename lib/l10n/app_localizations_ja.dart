@@ -3460,6 +3460,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get deleteAlbum => '删除相册';
 
   @override
+  String get reorderAlbums => '排序';
+
+  @override
   String restoredN(int n) {
     return '已恢复 $n 张';
   }
