@@ -22,16 +22,20 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/store/app_stores.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/util/haptics.dart';
+import '../../../core/util/image_pick.dart' show PickedImage;
 import '../../gallery/gallery_state.dart'
     show galleryImageProvider, galleryProvider, galleryThumbProvider;
 import '../../gallery/models.dart' show ResultImage;
 import '../../generate/gen_jobs.dart' show GenJob;
 import '../../generate/generation_controller.dart' show generationProvider;
-import '../../generate/widgets/common.dart' show StripeThumb;
+import '../../generate/widgets/common.dart' show StripeThumb, hintSnack;
 import '../../shell/shell_state.dart';
 import '../domain/conversation.dart';
 import '../application/assistant_controller.dart';
+import '../application/draft_images.dart';
 import '../../../l10n/l10n.dart';
 
 /// 单张最高多少。宽度撑满对话区,超过这个高度的竖图按高度回算宽度 ——
@@ -196,7 +200,14 @@ class _Done extends ConsumerWidget {
         Positioned(
           right: 10,
           bottom: 10,
-          child: _AgainButton(msgId: msgId, imageGen: imageGen),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _QuoteButton(result: result),
+              const SizedBox(width: 8),
+              _AgainButton(msgId: msgId, imageGen: imageGen),
+            ],
+          ),
         ),
       ]),
     );
@@ -376,11 +387,78 @@ class _GenError extends ConsumerWidget {
   }
 }
 
-/// 浮在图右下角的「重新生成」。
+/// 浮在图右下角的一颗圆按钮。
 ///
-/// 摆图里而不是图下面:一颗按钮单独占一行,而它跟这张图是绑死的 —— 浮进去
-/// 既省一行,也说清楚了「重出的是这张」。底色带半透明,压在深色浅色图上都看得见。
+/// 摆图里而不是图下面:单独占一行太费地方,而它跟这张图是绑死的 —— 浮进去
+/// 既省一行,也说清楚了「对的是这张」。底色带半透明,压在深色浅色图上都看得见。
 /// 48 见方:它压在一整张可点的图上,点偏了就被带去图库。
+class _ImageAction extends StatelessWidget {
+  const _ImageAction({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    return Material(
+      color: scheme.surface.withValues(alpha: .88),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        // 图本体点了是去图库,这颗要吃掉自己的点击,别顺着漏下去
+        onTap: onTap,
+        child: Tooltip(
+          message: tooltip,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Icon(icon, size: 24, color: scheme.primary),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 「引用」:把这张图加进输入框的附图,接着改或者拿去问。满了说一句。
+class _QuoteButton extends ConsumerWidget {
+  const _QuoteButton({required this.result});
+
+  final ResultImage result;
+
+  Future<void> _quote(BuildContext context, WidgetRef ref) async {
+    final bytes =
+        result.bytes ??
+        await ref.read(appStoresProvider).gallery.readImage(result.id);
+    if (bytes == null || !context.mounted) return;
+    final added = ref.read(draftImagesProvider.notifier).add([
+      PickedImage('image', bytes),
+    ]);
+    if (added > 0) {
+      Haptics.selection();
+    } else {
+      hintSnack(
+        context,
+        context.l10n.imagesMax(kMaxAttach),
+        icon: Icons.image_outlined,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => _ImageAction(
+    icon: Icons.format_quote,
+    tooltip: context.l10n.quoteImage,
+    onTap: () => _quote(context, ref),
+  );
+}
+
+/// 「重新生成」:图像模型出的再调一次图像模型,NAI 的照这条提议再出一张。
 class _AgainButton extends ConsumerWidget {
   const _AgainButton({required this.msgId, this.imageGen = false});
 
@@ -389,23 +467,11 @@ class _AgainButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = context.scheme;
     final n = ref.read(assistantProvider.notifier);
-    return Material(
-      color: scheme.surface.withValues(alpha: .88),
-      shape: const CircleBorder(),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        // 图本体点了是去图库,这颗要吃掉自己的点击,别顺着漏下去
-        onTap: () => imageGen ? n.generateImage(msgId) : n.generateFrom(msgId),
-        child: Tooltip(
-          message: context.l10n.regenerate,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Icon(Icons.refresh, size: 24, color: scheme.primary),
-          ),
-        ),
-      ),
+    return _ImageAction(
+      icon: Icons.refresh,
+      tooltip: context.l10n.regenerate,
+      onTap: () => imageGen ? n.generateImage(msgId) : n.generateFrom(msgId),
     );
   }
 }

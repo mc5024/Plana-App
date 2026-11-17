@@ -1,11 +1,15 @@
 // AI 助手选图像模型直接出图:存档、可选的图像模型、三种出图接口。
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:plana_app/core/util/image_pick.dart' show PickedImage;
 import 'package:plana_app/features/assistant/agent_model.dart';
+import 'package:plana_app/features/assistant/application/draft_images.dart';
 import 'package:plana_app/features/assistant/assistant_settings.dart';
 import 'package:plana_app/features/assistant/custom_endpoint.dart';
 import 'package:plana_app/features/assistant/domain/agent_event.dart';
@@ -58,7 +62,7 @@ void main() {
         text: '',
         at: 0,
         imageIds: ['img1'],
-        imageGen: ImageGenSpec(prompt: '把头发改成红色', refId: 'img0'),
+        imageGen: ImageGenSpec(prompt: '把头发改成红色'),
         imageModel: 'plana:big_gpt',
       );
       final back = AssistantMsg.fromJson(
@@ -66,7 +70,6 @@ void main() {
       );
       expect(back.imageGen!.prompt, '把头发改成红色');
       expect(back.imageGen!.attached, isFalse);
-      expect(back.imageGen!.refId, 'img0');
       expect(back.imageModel, 'plana:big_gpt');
       final spec = ImageGenSpec.fromJson(
         const ImageGenSpec(
@@ -104,21 +107,38 @@ void main() {
   });
 
   group('图像模型的快捷设置', () {
-    test('分辨率 / 比例 / 接着改随助手设置存,认不出的档丢掉', () {
-      const s = AssistantSettings(
-        imageSize: '4K',
-        imageAspect: '9:16',
-        imageContinue: false,
-      );
+    test('分辨率 / 比例随助手设置存,认不出的档丢掉', () {
+      const s = AssistantSettings(imageSize: '4K', imageAspect: '9:16');
       final back = AssistantSettings.fromJson(s.toJson());
       expect((back.imageSize, back.imageAspect), ('4K', '9:16'));
-      expect(back.imageContinue, isFalse);
       final def = AssistantSettings.fromJson(const {
         'imageSize': '8K',
         'imageAspect': '7:5',
       });
       expect((def.imageSize, def.imageAspect), ('', ''));
-      expect(def.imageContinue, isTrue);
+    });
+
+    test('待发的图:按顺序加,满了的不收,能删能整份换', () {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      final n = c.read(draftImagesProvider.notifier);
+      PickedImage img(int i) => PickedImage('$i', Uint8List.fromList([i]));
+      expect(n.add([img(1), img(2), img(3)]), 3);
+      // 图上点「引用」:还差一张满,多给的不收
+      expect(n.add([img(4), img(5)]), 1);
+      expect(n.add([img(6)]), 0);
+      expect(c.read(draftImagesProvider).map((p) => p.name), [
+        '1',
+        '2',
+        '3',
+        '4',
+      ]);
+      n.removeAt(1);
+      expect(c.read(draftImagesProvider).map((p) => p.name), ['1', '3', '4']);
+      n.set([for (var i = 0; i < 6; i++) img(i)]);
+      expect(c.read(draftImagesProvider).length, kMaxAttach);
+      n.clear();
+      expect(c.read(draftImagesProvider), isEmpty);
     });
 
     test('各模型能选的档:后端按下发的分辨率,OpenAI 只有三种比例,Gemini 全开', () {

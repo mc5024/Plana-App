@@ -72,7 +72,6 @@ class AssistantSettings {
     this.refusalKeywords = kRefusalKeywords,
     this.imageSize = '',
     this.imageAspect = '',
-    this.imageContinue = true,
   });
 
   /// 失败重试 / 拒绝重试的默认次数与上限。0 = 关。
@@ -173,9 +172,6 @@ class AssistantSettings {
   final String imageSize;
   final String imageAspect;
 
-  /// 图像模型「接着改」:带上上一轮出的图。
-  final bool imageContinue;
-
   bool get defaultRefusalKeywords =>
       _sameList(refusalKeywords, kRefusalKeywords);
 
@@ -195,7 +191,6 @@ class AssistantSettings {
     List<String>? refusalKeywords,
     String? imageSize,
     String? imageAspect,
-    bool? imageContinue,
   }) => AssistantSettings(
     autoGenerate: autoGenerate ?? this.autoGenerate,
     inlineImage: inlineImage ?? this.inlineImage,
@@ -212,7 +207,6 @@ class AssistantSettings {
     refusalKeywords: refusalKeywords ?? this.refusalKeywords,
     imageSize: imageSize ?? this.imageSize,
     imageAspect: imageAspect ?? this.imageAspect,
-    imageContinue: imageContinue ?? this.imageContinue,
   );
 
   Map<String, dynamic> toJson() => {
@@ -231,7 +225,6 @@ class AssistantSettings {
     if (!defaultRefusalKeywords) 'refusalKeywords': refusalKeywords,
     if (imageSize.isNotEmpty) 'imageSize': imageSize,
     if (imageAspect.isNotEmpty) 'imageAspect': imageAspect,
-    if (!imageContinue) 'imageContinue': false,
   };
 
   factory AssistantSettings.fromJson(Map<String, dynamic> j) =>
@@ -285,7 +278,6 @@ class AssistantSettings {
           final String s when kImageAspects.contains(s) => s,
           _ => '',
         },
-        imageContinue: j['imageContinue'] != false,
       );
 
   static int _count(Object? v, int fallback) => switch (v) {

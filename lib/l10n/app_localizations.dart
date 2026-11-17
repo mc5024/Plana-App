@@ -8248,11 +8248,11 @@ abstract class AppLocalizations {
   /// **'比例 {v}'**
   String aspectChip(String v);
 
-  /// No description provided for @continueEdit.
+  /// No description provided for @quoteImage.
   ///
   /// In zh, this message translates to:
-  /// **'接着改'**
-  String get continueEdit;
+  /// **'引用'**
+  String get quoteImage;
 
   /// No description provided for @imagesMax.
   ///

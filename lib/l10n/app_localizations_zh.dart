@@ -4695,7 +4695,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get continueEdit => '接着改';
+  String get quoteImage => '引用';
 
   @override
   String imagesMax(int n) {

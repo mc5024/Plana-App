@@ -1394,7 +1394,7 @@
   "@resolutionChip": {"placeholders": {"v": {"type": "String"}}},
   "aspectChip": "Ratio {v}",
   "@aspectChip": {"placeholders": {"v": {"type": "String"}}},
-  "continueEdit": "Keep Editing",
+  "quoteImage": "Quote",
   "imagesMax": "Up to {n} images",
   "@imagesMax": {"placeholders": {"n": {"type": "int"}}},
   "imageGenNoModel": "This image model isn't available right now",

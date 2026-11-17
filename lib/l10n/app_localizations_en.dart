@@ -5097,7 +5097,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get continueEdit => 'Keep Editing';
+  String get quoteImage => 'Quote';
 
   @override
   String imagesMax(int n) {

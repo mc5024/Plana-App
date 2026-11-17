@@ -764,8 +764,9 @@ class AssistantController extends Notifier<AssistantState> {
 
   // ---- 图像模型 ----
 
-  /// 选着图像模型时发一轮:原话交给图像模型出一张,不走对话模型。带上附的图;开着
-  /// 「接着改」再带上上一轮出的图。分辨率 / 比例按输入框上方那排,这个模型出不了的按自动。
+  /// 选着图像模型时发一轮:原话交给图像模型出一张,不走对话模型,附的图当参考图
+  /// (要改对话里的图就点图上的「引用」附上)。分辨率 / 比例按输入框上方那排,这个模型
+  /// 出不了的按自动。
   Future<void> _sendImage(
     String text, {
     List<Uint8List> images = const [],
@@ -774,7 +775,6 @@ class AssistantController extends Notifier<AssistantState> {
   }) async {
     final hashes = [for (final i in images) ?await _repo.putImage(i)];
     final settings = assistantSettingsOf(ref);
-    final last = settings.imageContinue ? _lastImageId() : null;
     final seq = ++_seq;
     _set(
       state.copyWith(
@@ -811,7 +811,6 @@ class AssistantController extends Notifier<AssistantState> {
       final spec = ImageGenSpec(
         prompt: text,
         attached: images.isNotEmpty,
-        refId: last,
         size: choice.sizes.contains(settings.imageSize)
             ? settings.imageSize
             : '',
@@ -909,19 +908,14 @@ class AssistantController extends Notifier<AssistantState> {
     );
   }
 
-  /// 按 [spec] 让 [choice] 出一张,返回 PNG。[attached] 是这轮提问附的图,参考图最多
-  /// [kMaxImageRefs] 张,附图在前、上一张在后。
+  /// 按 [spec] 让 [choice] 出一张,返回 PNG。[attached] 是这轮提问附的图。
   Future<Uint8List> _drawImage(
     ImageModelChoice choice,
     ImageGenSpec spec, {
     List<Uint8List> attached = const [],
     required http.Client client,
   }) async {
-    final last = spec.refId == null ? null : await _galleryBytes(spec.refId!);
-    final images = [
-      for (final b in [...attached, ?last].take(kMaxImageRefs))
-        await prepareLlmImage(b),
-    ];
+    final images = [for (final b in attached) await prepareLlmImage(b)];
     final sid = (await ref.read(botSessionProvider.future))?.sessionId ?? '';
     final bytes =
         await imageGenClientFor(
@@ -967,24 +961,6 @@ class AssistantController extends Notifier<AssistantState> {
       endpoints = const [];
     }
     return imageModelChoices(plana, endpoints);
-  }
-
-  /// 上一轮(最近那条 AI 消息)出的、还在图库里的最新一张;没有为 null。
-  String? _lastImageId() {
-    final last = state.msgs.where((m) => m.role == MsgRole.ai).lastOrNull;
-    if (last == null) return null;
-    final results = ref.read(galleryProvider).results;
-    for (final id in last.imageIds.reversed) {
-      if (results.any((r) => r.id == id)) return id;
-    }
-    return null;
-  }
-
-  Future<Uint8List?> _galleryBytes(String id) async {
-    final r = ref.read(galleryProvider).results.where((r) => r.id == id);
-    if (r.isEmpty) return null;
-    return r.first.bytes ??
-        await ref.read(appStoresProvider).gallery.readImage(id);
   }
 
   /// 「自动写入创作页」/「出词后自动生成」两个开关的落点:先导入再出图。

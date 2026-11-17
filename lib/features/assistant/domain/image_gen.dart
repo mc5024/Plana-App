@@ -1,4 +1,4 @@
-/// 选着图像模型时一轮的出图请求:交给图像模型的话、带哪些参考图、分辨率和比例。
+/// 选着图像模型时一轮的出图请求:交给图像模型的话、带不带附图、分辨率和比例。
 /// 「重新生成」照它再出一次。
 library;
 
@@ -8,14 +8,10 @@ const kImageAspects = ['1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9'];
 /// 能选的分辨率档。
 const kImageSizes = ['1K', '2K', '4K'];
 
-/// 一次最多带几张参考图(附图 + 上一张)。
-const kMaxImageRefs = 4;
-
 class ImageGenSpec {
   const ImageGenSpec({
     required this.prompt,
     this.attached = false,
-    this.refId,
     this.size = '',
     this.aspect = '',
   });
@@ -26,9 +22,6 @@ class ImageGenSpec {
   /// 带上这轮提问附的图。
   final bool attached;
 
-  /// 带上的上一轮出的图(图库条目 id)。
-  final String? refId;
-
   /// 分辨率档 / 比例;空 = 交给图像模型。
   final String size;
   final String aspect;
@@ -36,7 +29,6 @@ class ImageGenSpec {
   Map<String, dynamic> toJson() => {
     'prompt': prompt,
     if (attached) 'attached': true,
-    'refId': ?refId,
     if (size.isNotEmpty) 'size': size,
     if (aspect.isNotEmpty) 'aspect': aspect,
   };
@@ -48,7 +40,6 @@ class ImageGenSpec {
     return ImageGenSpec(
       prompt: prompt,
       attached: j['attached'] == true,
-      refId: j['refId'] as String?,
       size: j['size'] as String? ?? '',
       aspect: j['aspect'] as String? ?? '',
     );

@@ -35,6 +35,7 @@ import 'assistant_mode.dart';
 import 'domain/conversation.dart';
 import 'assistant_settings.dart';
 import 'application/assistant_controller.dart';
+import 'application/draft_images.dart';
 import 'application/proposal_service.dart' show canvasHasContent;
 import 'domain/image_model.dart';
 import 'domain/image_gen.dart' show kImageAspects, kImageSizes;
@@ -67,9 +68,6 @@ List<({String text, bool canvas})> _suggests(AppLocalizations l) => [
   (text: l.suggest4, canvas: true),
 ];
 
-/// 一条最多附几张图。
-const _maxAttach = 4;
-
 class AssistantPage extends ConsumerStatefulWidget {
   const AssistantPage({super.key});
 
@@ -82,9 +80,6 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
   final _scroll = ScrollController();
-
-  /// 待发的图,按附上的顺序。
-  List<PickedImage> _pending = const [];
 
   /// 这一条要不要把创作页的提示词带上。**纯一次性:每发一次回到关**,和带图一样。
   ///
@@ -120,19 +115,17 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
   Future<void> _send({String? preset, bool? canvas}) async {
     final n = ref.read(assistantProvider.notifier);
     final text = preset ?? _input.text;
-    if (text.trim().isEmpty && _pending.isEmpty) {
+    final imgs = ref.read(draftImagesProvider);
+    if (text.trim().isEmpty && imgs.isEmpty) {
       _toBottom();
       await n.resumeQueue();
       return;
     }
-    final imgs = _pending;
     final withCanvas = canvas ?? _withCanvas;
     final queued = ref.read(assistantProvider).running;
     _input.clear();
-    setState(() {
-      _pending = const [];
-      _withCanvas = false; // 一次性:发完就回到关
-    });
+    ref.read(draftImagesProvider.notifier).clear();
+    setState(() => _withCanvas = false); // 一次性:发完就回到关
     // 排队时留着键盘,接着写下一句
     if (!queued) _inputFocus.unfocus();
     _toBottom();
@@ -144,19 +137,18 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
     _toBottom();
   }
 
-  /// 附图:一次可以多选,最多 [_maxAttach] 张,多出来的不收。
+  /// 附图:一次可以多选,最多 [kMaxAttach] 张,多出来的不收。
   Future<void> _pick() async {
-    final room = _maxAttach - _pending.length;
+    final drafts = ref.read(draftImagesProvider.notifier);
     void full() => hintSnack(
       context,
-      context.l10n.imagesMax(_maxAttach),
+      context.l10n.imagesMax(kMaxAttach),
       icon: Icons.image_outlined,
     );
-    if (room <= 0) return full();
+    if (ref.read(draftImagesProvider).length >= kMaxAttach) return full();
     final picked = await pickImageFiles(context);
     if (picked.isEmpty || !mounted) return;
-    if (picked.length > room) full();
-    setState(() => _pending = [..._pending, ...picked.take(room)]);
+    if (drafts.add(picked) < picked.length) full();
   }
 
   /// 「新对话」。**不弹回执** —— 这个动作本来就没有后果:上一段原样躺在
@@ -597,12 +589,12 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
         final t = draft.trim().isEmpty ? q.text : '${q.text}\n$draft';
         _input.text = t;
         _input.selection = TextSelection.collapsed(offset: t.length);
-        setState(() {
-          if (_pending.isEmpty && q.images.isNotEmpty) {
-            _pending = [for (final b in q.images) PickedImage('image', b)];
-          }
-          if (q.withCanvas) _withCanvas = true;
-        });
+        if (ref.read(draftImagesProvider).isEmpty && q.images.isNotEmpty) {
+          ref.read(draftImagesProvider.notifier).set([
+            for (final b in q.images) PickedImage('image', b),
+          ]);
+        }
+        if (q.withCanvas) setState(() => _withCanvas = true);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _inputFocus.requestFocus();
         });
@@ -717,7 +709,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
     );
   }
 
-  /// 选着图像模型时那排换成出图的快捷设置:分辨率、比例、接着改。
+  /// 选着图像模型时那排换成出图的快捷设置:分辨率、比例。
   ///
   /// 分辨率和比例跟着设置走、不是一次性的;这个模型出不了的置灰、显示生效的「自动」,
   /// 点了说一句为什么(和「思考」那颗一样)。
@@ -768,24 +760,6 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
                   current: aspect,
                 );
                 if (v != null) await n.patch((x) => x.copyWith(imageAspect: v));
-              },
-            ),
-            const SizedBox(width: 8),
-            // 开着就带上上一轮出的图,画新东西时关掉
-            FilterChip(
-              selected: s.imageContinue,
-              showCheckmark: false,
-              visualDensity: VisualDensity.compact,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              avatar: Icon(
-                Icons.auto_fix_high_outlined,
-                size: 16,
-                color: context.chipIcon(s.imageContinue),
-              ),
-              label: Text(context.l10n.continueEdit),
-              onSelected: (v) {
-                Haptics.selection();
-                n.patch((x) => x.copyWith(imageContinue: v));
               },
             ),
           ],
@@ -912,7 +886,8 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
 
   Widget _inputBar(ColorScheme scheme, AssistantState st) {
     final running = st.running;
-    final hasDraft = _input.text.trim().isNotEmpty || _pending.isNotEmpty;
+    final pending = ref.watch(draftImagesProvider);
+    final hasDraft = _input.text.trim().isNotEmpty || pending.isNotEmpty;
     final canSend = hasDraft || (!running && st.queue.isNotEmpty);
     final g = ref.watch(generateProvider);
     final hasCanvas = canvasHasContent(g);
@@ -933,20 +908,20 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (_pending.isNotEmpty)
+              if (pending.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(left: 53, bottom: 9),
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
-                        for (final (i, p) in _pending.indexed)
+                        for (final (i, p) in pending.indexed)
                           _Thumb(
                             key: ObjectKey(p),
                             bytes: p.bytes,
-                            onRemove: () => setState(
-                              () => _pending = [..._pending]..removeAt(i),
-                            ),
+                            onRemove: () => ref
+                                .read(draftImagesProvider.notifier)
+                                .removeAt(i),
                           ),
                       ],
                     ),
@@ -961,7 +936,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
                     onPressed: _pick,
                     icon: Icon(
                       Icons.image_outlined,
-                      color: _pending.isNotEmpty ? scheme.primary : null,
+                      color: pending.isNotEmpty ? scheme.primary : null,
                     ),
                   ),
                   const SizedBox(width: 1),

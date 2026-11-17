@@ -1686,7 +1686,7 @@
   "@resolutionChip": {"placeholders": {"v": {"type": "String"}}},
   "aspectChip": "比例 {v}",
   "@aspectChip": {"placeholders": {"v": {"type": "String"}}},
-  "continueEdit": "接着改",
+  "quoteImage": "引用",
   "imagesMax": "最多带 {n} 张图",
   "@imagesMax": {"placeholders": {"n": {"type": "int"}}},
   "imageGenNoModel": "这个图像模型现在用不了",
