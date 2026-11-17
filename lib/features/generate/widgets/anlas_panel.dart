@@ -367,7 +367,11 @@ class _AnlasSheetState extends ConsumerState<_AnlasSheet> {
             ),
             _divider(context),
             if (relay)
-              _row(context, '点数', points == null ? '—' : _fmtPct(points / 10))
+              _row(
+                context,
+                context.l10n.anlasPoints,
+                points == null ? '—' : _fmtPct(points / 10),
+              )
             else
               _row(
                 context,
