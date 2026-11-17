@@ -409,7 +409,7 @@ void main() {
     );
     final strip = tester.getRect(find.byType(FilmStrip));
     expect(chip.left, moreOrLessEquals(12));
-    expect(chip.bottom, moreOrLessEquals(strip.top - 16));
+    expect(chip.bottom, moreOrLessEquals(strip.top - 4));
     expect(find.byIcon(Icons.grain), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -863,8 +863,14 @@ void main() {
       find.descendant(of: card('收藏'), matching: find.text('0 张')),
       findsOneWidget,
     );
-    // 固定相册没有长按菜单。
-    expect(tester.widget<GalleryStackCard>(card('收藏')).onLongPress, isNull);
+    // 固定相册的长按菜单只有「排序」,没有改名和删除。
+    await tester.longPress(card('收藏'));
+    await tester.pumpAndSettle();
+    expect(find.text('排序'), findsOneWidget);
+    expect(find.text('重命名'), findsNothing);
+    expect(find.text('删除相册'), findsNothing);
+    await tester.tapAt(const Offset(8, 8)); // 点遮罩收起菜单
+    await tester.pumpAndSettle();
 
     Future<void> longPressImage(String id) async {
       await tester.longPress(
@@ -958,12 +964,18 @@ void main() {
     );
     Finder image(String id) =>
         find.byWidgetPredicate((w) => w is MetaData && w.metaData == id);
-    // 回收站排在最后,空的时候也在,没有长按菜单。
+    // 回收站排在最后,空的时候也在;空着时长按只有「排序」。
     expect(
       find.descendant(of: card('回收站'), matching: find.text('0 张')),
       findsOneWidget,
     );
-    expect(tester.widget<GalleryStackCard>(card('回收站')).onLongPress, isNull);
+    await tester.longPress(card('回收站'));
+    await tester.pumpAndSettle();
+    expect(find.text('排序'), findsOneWidget);
+    expect(find.text('全部恢复'), findsNothing);
+    expect(find.text('清空回收站'), findsNothing);
+    await tester.tapAt(const Offset(8, 8)); // 点遮罩收起菜单
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('全部相册'));
     await tester.pumpAndSettle();

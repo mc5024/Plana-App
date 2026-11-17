@@ -37,8 +37,8 @@ void main() {
       'artist-style',
       'character',
       'scene',
-      'other',
       'c_1',
+      'other',
     ]);
   });
 

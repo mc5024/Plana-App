@@ -74,7 +74,6 @@ void main() {
             child: TagCard(
               entry: e,
               selected: false,
-              isPublic: true,
               mosaic: mosaic,
               onTap: () {},
               onLongPress: () {},
