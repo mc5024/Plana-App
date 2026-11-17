@@ -38,7 +38,7 @@ import 'application/assistant_controller.dart';
 import 'application/draft_images.dart';
 import 'application/proposal_service.dart' show canvasHasContent;
 import 'domain/image_model.dart';
-import 'domain/image_gen.dart' show kImageAspects, kImageSizes, kMaxImageCount;
+import 'domain/image_gen.dart' show kMaxImageCount;
 import 'image_gen/image_models.dart'
     show ImageModelChoice, assistantImageModelProvider;
 import 'presets/preset_rule.dart' show RulesFamily, rulesFamilyOf;
@@ -742,8 +742,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
                 final v = await showImageOptionSheet(
                   context,
                   title: context.l10n.resolution,
-                  options: kImageSizes,
-                  available: m.sizes,
+                  options: m.sizes,
                   current: size,
                 );
                 if (v != null) await n.patch((x) => x.copyWith(imageSize: v));
@@ -761,8 +760,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
                 final v = await showImageOptionSheet(
                   context,
                   title: context.l10n.aspectLabel,
-                  options: kImageAspects,
-                  available: m.aspects,
+                  options: m.aspects,
                   current: aspect,
                 );
                 if (v != null) await n.patch((x) => x.copyWith(imageAspect: v));
@@ -775,12 +773,10 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
               on: s.imageCount > 1,
               enabled: true,
               onTap: () async {
-                final all = [for (var i = 1; i <= kMaxImageCount; i++) '$i'];
                 final v = await showImageOptionSheet(
                   context,
                   title: context.l10n.imageCount,
-                  options: all,
-                  available: all,
+                  options: [for (var i = 1; i <= kMaxImageCount; i++) '$i'],
                   current: '${s.imageCount}',
                   auto: false,
                   labelOf: (v) => context.l10n.imagesN(int.parse(v)),
