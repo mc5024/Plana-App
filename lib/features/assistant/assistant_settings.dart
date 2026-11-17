@@ -12,7 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/store/app_stores.dart';
 import '../generate/prompt_sections.dart' show SectionImport;
 import '../../l10n/l10n.dart';
-import 'domain/image_gen.dart' show kImageAspects, kImageSizes, kMaxImageCount;
+import 'domain/image_gen.dart' show isImageAspect, kImageSizes, kMaxImageCount;
 import 'runtime/refusal.dart' show kRefusalKeywords;
 import 'tools/tool_settings.dart' show migrateLegacyToolSettings;
 
@@ -282,7 +282,7 @@ class AssistantSettings {
           _ => '',
         },
         imageAspect: switch (j['imageAspect']) {
-          final String s when kImageAspects.contains(s) => s,
+          final String s when isImageAspect(s) => s,
           _ => '',
         },
         imageCount: switch (j['imageCount']) {

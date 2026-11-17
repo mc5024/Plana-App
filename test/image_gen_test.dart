@@ -136,15 +136,20 @@ void main() {
   });
 
   group('图像模型的快捷设置', () {
-    test('分辨率 / 比例随助手设置存,认不出的档丢掉', () {
+    test('分辨率 / 比例随助手设置存,认不出的丢掉', () {
       const s = AssistantSettings(imageSize: '4K', imageAspect: '9:16');
       final back = AssistantSettings.fromJson(s.toJson());
       expect((back.imageSize, back.imageAspect), ('4K', '9:16'));
       final def = AssistantSettings.fromJson(const {
         'imageSize': '8K',
-        'imageAspect': '7:5',
+        'imageAspect': 'wide',
       });
       expect((def.imageSize, def.imageAspect), ('', ''));
+      // 后端下发的比例不止那七种
+      expect(
+        AssistantSettings.fromJson(const {'imageAspect': '21:9'}).imageAspect,
+        '21:9',
+      );
     });
 
     test('张数随助手设置存,超出范围的回到 1', () {
@@ -207,23 +212,25 @@ void main() {
       expect(c.read(draftImagesProvider), isEmpty);
     });
 
-    test('各模型能选的档:后端按下发的分辨率,OpenAI 只有三种比例,Gemini 全开', () {
+    test('各模型能选的档:后端按下发的,OpenAI 只有三种比例,Gemini 全开', () {
       final plana = parsePlanaImageChannels({
         'channels': [
           {
             'key': 'big_gpt',
             'name': 'GPT Image 2.6',
             'sizes': ['2K', '4K', '8K'],
+            'aspects': ['21:9', '1:1', 'wide'],
           },
-          // 老后端不报分辨率
+          // 老后端不报分辨率和比例
           {'key': 'doubao', 'name': 'Seedream 5.5'},
         ],
         'authorized': true,
       });
       final all = imageModelChoices(plana, const [_openai, _gemini]);
       expect(all[0].sizes, ['2K', '4K']);
-      expect(all[0].aspects, kImageAspects);
+      expect(all[0].aspects, ['21:9', '1:1']);
       expect(all[1].sizes, isEmpty);
+      expect(all[1].aspects, kImageAspects);
       expect(all[2].sizes, isEmpty);
       expect(all[2].aspects, ['1:1', '2:3', '3:2']);
       expect(all[3].sizes, kImageSizes);

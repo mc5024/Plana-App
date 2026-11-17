@@ -2,8 +2,13 @@
 /// 「重新生成」照它再出一次。
 library;
 
-/// 能选的比例。
+/// 自定义接口能选的比例;后端的按它下发的。
 const kImageAspects = ['1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9'];
+
+final _aspect = RegExp(r'^[1-9]\d?:[1-9]\d?$');
+
+/// 「宽:高」这种比例。
+bool isImageAspect(String s) => _aspect.hasMatch(s);
 
 /// 能选的分辨率档。
 const kImageSizes = ['1K', '2K', '4K'];

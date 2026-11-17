@@ -43,7 +43,12 @@ class ImageModelChoice {
   final List<String> aspects;
 }
 
-typedef PlanaImageChannel = ({String key, String name, List<String> sizes});
+typedef PlanaImageChannel = ({
+  String key,
+  String name,
+  List<String> sizes,
+  List<String> aspects,
+});
 
 /// `GET /api/agent/image/channels` 的响应。
 typedef PlanaImageChannels = ({
@@ -58,11 +63,18 @@ PlanaImageChannels parsePlanaImageChannels(Map<String, dynamic> j) => (
         (
           key: '${c['key']}',
           name: '${c['name'] ?? c['key']}',
-          // 老后端不报能出哪几档:分辨率按「自动」
+          // 老后端不报能出哪几档:分辨率按「自动」,比例全给
           sizes: [
             for (final s in (c['sizes'] as List? ?? const []))
               if (kImageSizes.contains('$s')) '$s',
           ],
+          aspects: switch (c['aspects']) {
+            final List l => [
+              for (final a in l)
+                if (isImageAspect('$a')) '$a',
+            ],
+            _ => kImageAspects,
+          },
         ),
   ],
   authorized: j['authorized'] == true,
@@ -93,7 +105,7 @@ List<ImageModelChoice> imageModelChoices(
       model: c.key,
       available: plana!.authorized,
       sizes: c.sizes,
-      aspects: kImageAspects,
+      aspects: c.aspects,
     ),
   for (final e in endpoints)
     if (e.canDraw)
