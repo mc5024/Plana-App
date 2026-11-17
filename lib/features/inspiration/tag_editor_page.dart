@@ -15,6 +15,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/util/nai_tokenizer.dart';
 import '../../core/util/image_pick.dart';
 import '../gallery/gallery_state.dart';
+import '../gallery/widgets/gallery_pick_sheet.dart';
 import '../generate/generate_state.dart';
 import '../generate/style_recipes.dart';
 import '../generate/widgets/common.dart'
@@ -749,8 +750,7 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
   }
 
   Future<void> _pickFromHistory() async {
-    final results = ref.read(galleryProvider).results;
-    if (results.isEmpty) {
+    if (ref.read(galleryProvider).results.isEmpty) {
       hintSnack(
         context,
         context.l10n.galleryNoImages,
@@ -758,56 +758,10 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
       );
       return;
     }
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (context) => SizedBox(
-        height: 460,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
-              child: Row(
-                children: [
-                  Icon(Icons.history, size: 20, color: context.scheme.primary),
-                  const SizedBox(width: 8),
-                  Text(
-                    context.l10n.pickFromGallery,
-                    style: context.texts.titleMedium!.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    context.l10n.totalImagesN(results.length),
-                    style: context.texts.labelSmall!.copyWith(
-                      color: context.scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: GridView.builder(
-                padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                ),
-                itemCount: results.length,
-                itemBuilder: (context, i) => _HistoryThumb(
-                  id: results[i].id,
-                  onTap: () => Navigator.pop(context, results[i].id),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    final picked = (await showGalleryPickSheet(
+      context,
+      title: context.l10n.pickFromGallery,
+    )).firstOrNull;
     if (picked == null || !mounted) return;
     final bytes =
         ref
@@ -2194,29 +2148,6 @@ class _ChipPickerState extends State<_ChipPicker> {
 }
 
 /// 图库缩略图(异步懒读)。
-class _HistoryThumb extends ConsumerWidget {
-  const _HistoryThumb({required this.id, required this.onTap});
-
-  final String id;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final thumb = ref.watch(galleryThumbProvider(id)).value;
-    return Material(
-      color: context.scheme.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(10),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: thumb == null
-            ? const SizedBox.expand()
-            : Image.memory(thumb, fit: BoxFit.cover, gaplessPlayback: true),
-      ),
-    );
-  }
-}
-
 /// 新建页换类别的面板:每类一行(图标 + 名字),当前那类打勾。
 class _CategoryPickSheet extends StatelessWidget {
   const _CategoryPickSheet({required this.cats, required this.current});
