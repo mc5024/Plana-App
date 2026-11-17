@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -255,12 +256,13 @@ class TagCloudBackup {
   }
 
   /// 给 [TagLibrary.mergeBackup] 用的云端预览解析:本地同条目里内容相同的那张直接沿用,
-  /// [source](如本地备份包)里有的、本机别处有的拷一份,都没有才下载;下载失败退成网址。
+  /// [source](本地备份包、云端硬盘)里有的、本机别处有的拷一份,都没有才从 Plana 云端
+  /// 下载;下载失败退成网址。
   /// [onEach] 每解析一张调一次。
   Future<T> withResolver<T>(
     Future<T> Function(PreviewResolver resolve) body, {
     void Function()? onEach,
-    Uint8List? Function(String sha)? source,
+    FutureOr<Uint8List?> Function(String sha)? source,
   }) async {
     final hashes = await PreviewHashes.open();
     Future<String> resolve(
@@ -276,7 +278,10 @@ class TagCloudBackup {
           if (await hashes.shaOf(p) == sha) return p;
         } catch (_) {}
       }
-      Uint8List? bytes = source?.call(sha);
+      Uint8List? bytes;
+      try {
+        bytes = await source?.call(sha);
+      } catch (_) {} // 取不到:往下找
       if (bytes == null) {
         if (hashes.pathOf(sha) case final String known) {
           try {

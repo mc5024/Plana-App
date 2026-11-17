@@ -3135,13 +3135,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'One alert when an image, queue, or loop finishes';
 
   @override
-  String get cloudBackup => 'Cloud Backup';
+  String get cloudBackup => 'Plana Cloud';
 
   @override
-  String get backupToCloud => 'Back Up to Cloud';
+  String get backupToCloud => 'Back Up to Plana Cloud';
 
   @override
-  String get restoreFromCloud => 'Restore from Cloud';
+  String get restoreFromCloud => 'Restore from Plana Cloud';
 
   @override
   String get selectBackupFile => 'Choose Backup File';

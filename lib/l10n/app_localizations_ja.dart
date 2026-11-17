@@ -2892,13 +2892,13 @@ class AppLocalizationsJa extends AppLocalizations {
   String get channelDoneDesc => '出图 / 队列 / 循环结束时提醒一次';
 
   @override
-  String get cloudBackup => '云端备份';
+  String get cloudBackup => 'Plana 云端';
 
   @override
-  String get backupToCloud => '备份到云端';
+  String get backupToCloud => '备份到 Plana 云端';
 
   @override
-  String get restoreFromCloud => '从云端恢复';
+  String get restoreFromCloud => '从 Plana 云端恢复';
 
   @override
   String get selectBackupFile => '选择备份文件';

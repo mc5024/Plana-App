@@ -600,6 +600,32 @@ class VibeLibrary extends AsyncNotifier<List<VibeEntry>> {
   /// 与导出同源,保证云端拿到的和用户手动导出的是同一份东西。
   Future<Map<String, dynamic>> rawForUpload(VibeEntry e) => _readRawMerged(e);
 
+  /// [rawForUpload] 那份内容的版本键:文件、元数据或缓存里的编码有变就变。不读文件内容。
+  Future<String> backupKey(VibeEntry e) async {
+    final st = await fileOf(e).stat();
+    final enc = <String>[];
+    if (e.imageHash case final h?) {
+      final cache = await ref.read(vibeCacheProvider.future);
+      for (final it in cache.entriesForImage(h)) {
+        enc.add('${it.modelKey}:${it.ie}');
+      }
+    }
+    enc.sort();
+    return sha256
+        .convert(
+          utf8.encode(
+            [
+              e.id,
+              e.metaFp,
+              st.size,
+              st.modified.millisecondsSinceEpoch,
+              ...enc,
+            ].join('\n'),
+          ),
+        )
+        .toString();
+  }
+
   /// 回写云端同步状态(推送成功 / 从云端恢复后调用)。
   Future<void> markCloudState(
     String id, {

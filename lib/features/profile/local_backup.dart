@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -219,9 +220,27 @@ class LocalBackup {
   importInspiration(
     LocalBackupFile file, {
     void Function(String label, int done, int total)? onProgress,
-  }) async {
+  }) {
     final j = file.inspiration();
     if (j == null) throw const FormatException('备份里没有灵感库');
+    return mergeInspiration(
+      j,
+      source: file.preview,
+      label: '导入预览',
+      onProgress: onProgress,
+    );
+  }
+
+  /// 把 `inspiration.json` 那份内容并入本机,预览先从 [source] 取。
+  Future<
+    ({Map<TagCategory, ({int added, int updated})> stat, int favoritesAdded})
+  >
+  mergeInspiration(
+    Map<String, dynamic> j, {
+    FutureOr<Uint8List?> Function(String sha)? source,
+    required String label,
+    void Function(String label, int done, int total)? onProgress,
+  }) async {
     final categories = j['categories'] is Map<String, dynamic>
         ? j['categories'] as Map<String, dynamic>
         : const <String, dynamic>{};
@@ -244,8 +263,8 @@ class LocalBackup {
                     : null,
                 resolvePreview: resolve,
               ),
-          source: file.preview,
-          onEach: () => onProgress?.call('导入预览', ++done, total),
+          source: source,
+          onEach: () => onProgress?.call(label, ++done, total),
         );
     final favs = j['codex_favorites'];
     final added = favs is List
@@ -254,28 +273,42 @@ class LocalBackup {
     return (stat: stat, favoritesAdded: added);
   }
 
-  /// Vibe 并入本机(同 id 覆盖)。分批落库,别把整包 vibe 同时摊在内存里。→ 条数
+  /// Vibe 并入本机(同 id 覆盖)。→ 条数
   Future<int> importVibes(
     LocalBackupFile file, {
     void Function(String label, int done, int total)? onProgress,
-  }) async {
+  }) {
     final files = file.vibeFiles();
+    return importVibeBlobs(
+      files.length,
+      (i) async => files[i].content,
+      label: '导入 Vibe',
+      onProgress: onProgress,
+    );
+  }
+
+  /// Vibe 并入本机(同 id 覆盖),[read] 取第 i 条的 .naiv4vibe 内容(null = 没有)。
+  /// 分批落库,别把整包 vibe 同时摊在内存里。→ 条数
+  Future<int> importVibeBlobs(
+    int count,
+    Future<Uint8List?> Function(int i) read, {
+    required String label,
+    void Function(String label, int done, int total)? onProgress,
+  }) async {
     final lib = ref.read(vibeLibraryProvider.notifier);
     var n = 0;
-    for (var i = 0; i < files.length; i += 20) {
+    for (var i = 0; i < count; i += 20) {
       final raws = <Map<String, dynamic>>[];
-      for (final f in files.skip(i).take(20)) {
+      for (var k = i; k < count && k < i + 20; k++) {
+        final bytes = await read(k);
+        onProgress?.call(label, k + 1, count);
+        if (bytes == null) continue;
         try {
-          final j = jsonDecode(utf8.decode(f.content));
+          final j = jsonDecode(utf8.decode(bytes));
           if (j is Map<String, dynamic>) raws.add(j);
         } catch (_) {} // 坏的那条跳过
       }
       n += (await lib.importVibeRaws(raws)).length;
-      onProgress?.call(
-        '导入 Vibe',
-        i + 20 < files.length ? i + 20 : files.length,
-        files.length,
-      );
     }
     return n;
   }

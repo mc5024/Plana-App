@@ -8,12 +8,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/auth/bot_session_store.dart';
 import '../../core/net/backend_client.dart';
+import '../../core/net/google_drive.dart';
 import '../../core/store/storage_stats.dart' show fmtBytes;
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/import_picker.dart';
 import '../../core/util/document_save.dart';
 import '../../core/util/file_read.dart';
-import '../generate/widgets/common.dart' show hintSnack;
+import '../generate/widgets/common.dart' show confirmDialog, hintSnack;
 import '../inspiration/tag_cloud_backup.dart';
 import '../inspiration/tag_library.dart';
 import '../inspiration/tag_models.dart';
@@ -22,6 +23,7 @@ import '../migrate/web_backup_import.dart';
 import '../vibe_library/vibe_cloud_sync.dart';
 import '../vibe_library/vibe_library.dart';
 import 'cloud_backup_job.dart';
+import 'drive_backup.dart';
 import 'local_backup.dart';
 import 'widgets/settings_ui.dart';
 import '../../l10n/l10n.dart';
@@ -56,6 +58,11 @@ class _BackupPageState extends ConsumerState<BackupPage> {
   bool _tagLoading = true;
   bool _vibeLoading = true;
 
+  /// 云端硬盘最新那份备份的两块;[_driveRead] = 读过且成功。
+  ({DriveSection? tags, DriveSection? vibes})? _drive;
+  bool _driveLoading = false;
+  bool _driveRead = false;
+
   /// 进行中的进度(「Vibe 42/300」「推送 Vibe 3/48」),空 = 还没开始报数。
   String _progress = '';
 
@@ -67,6 +74,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     super.initState();
     _loadTagCloud();
     _loadVibeCloud();
+    _loadDrive();
     // 离开页面时跑完的那次:回来时补一句结果
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _showJobResult(ref.read(cloudJobProvider));
@@ -284,6 +292,258 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                   )
                 : null,
             inspirationCount: tagN,
+            vibes: picked.contains('vibe'),
+            vibeCount: vibeN,
+          ),
+    );
+  }
+
+  // ---- Google 云端硬盘 ----
+
+  Future<void> _loadDrive() async {
+    if (ref.read(googleDriveAuthProvider) == null) return;
+    setState(() => _driveLoading = true);
+    ({DriveSection? tags, DriveSection? vibes})? st;
+    var ok = false;
+    try {
+      st = await ref.read(driveBackupProvider).status();
+      ok = true;
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _drive = st;
+        _driveRead = ok;
+        _driveLoading = false;
+      });
+    }
+  }
+
+  /// 没连就先连;连上(或本来就连着)返回 true。
+  Future<bool> _ensureDrive() async {
+    if (ref.read(googleDriveAuthProvider) != null) return true;
+    setState(() => _busy = 'drive-connect');
+    var ok = false;
+    try {
+      ok = await ref.read(googleDriveAuthProvider.notifier).connect();
+      if (!ok && mounted) {
+        hintSnack(context, '已取消', icon: Icons.info_outline);
+      }
+    } on DriveException catch (e) {
+      if (mounted) hintSnack(context, e.message, icon: Icons.error_outline);
+    } catch (e) {
+      if (mounted) {
+        hintSnack(context, 'Google 登录失败:$e', icon: Icons.error_outline);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = null);
+    }
+    if (ok && mounted) unawaited(_loadDrive());
+    return ok && mounted;
+  }
+
+  Future<void> _driveAccount() async {
+    if (!_idle) return;
+    if (ref.read(googleDriveAuthProvider) == null) {
+      await _ensureDrive();
+      return;
+    }
+    final ok = await confirmDialog(
+      context,
+      title: '断开 Google 账号',
+      message: '云端硬盘里的备份会保留,重新连接同一账号即可恢复。',
+      confirmLabel: '断开',
+    );
+    if (!ok || !mounted) return;
+    await ref.read(googleDriveAuthProvider.notifier).disconnect();
+    if (mounted) {
+      setState(() {
+        _drive = null;
+        _driveRead = false;
+      });
+    }
+  }
+
+  /// 比对阶段的进度:整体百分比。
+  void _tickDrive(String label, int done, int total) {
+    if (mounted) {
+      setState(
+        () => _progress = total > 0
+            ? '比对中 ${(done * 100 / total).floor()}%'
+            : '比对中…',
+      );
+    }
+  }
+
+  Future<void> _driveBackup() async {
+    if (!_idle) return;
+    final tagN = ref.read(tagLibraryProvider).value?.entries.length ?? 0;
+    final vibeN = ref.read(vibeLibraryProvider).value?.length ?? 0;
+    if (tagN == 0 && vibeN == 0) {
+      hintSnack(context, '本地没有可备份的内容', icon: Icons.info_outline);
+      return;
+    }
+    if (!await _ensureDrive()) return;
+    setState(() {
+      _busy = 'drive-backup-check';
+      _progress = '比对中…';
+    });
+    DriveBackupPlan? plan;
+    try {
+      plan = await ref.read(driveBackupProvider).plan(onProgress: _tickDrive);
+    } catch (e) {
+      if (mounted) {
+        hintSnack(
+          context,
+          e is DriveException ? e.message : '读取云端硬盘失败:$e',
+          icon: Icons.cloud_off_outlined,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = null;
+          _progress = '';
+        });
+      }
+    }
+    if (plan == null) return;
+    if (!mounted) return plan.drive.close();
+    final free = plan.free;
+    final pic = plan.previewBytes, vb = plan.vibeBytes;
+    bool fits(int n) => free == null || n <= free;
+    final full = free == null ? null : '云端硬盘剩余 ${fmtBytes(free)},放不下';
+    final picked = await showImportPicker(
+      context,
+      title: '选择要备份的内容',
+      confirmLabel: '备份',
+      mergeHint: false,
+      options: [
+        ImportOption(
+          key: 'tag',
+          label: '灵感库',
+          detail: '${plan.tagCount} 条',
+          size: pic > 0 ? '要上传预览 ${fmtBytes(pic)}' : null,
+          enabled: plan.tagCount > 0 && fits(pic),
+          warning: fits(pic) ? null : full,
+        ),
+        ImportOption(
+          key: 'vibe',
+          label: 'Vibe',
+          detail: '${plan.vibes.length} 条',
+          size: vb > 0 ? '要上传 ${fmtBytes(vb)}' : '无改动',
+          enabled: plan.vibes.isNotEmpty && fits(vb),
+          warning: fits(vb) ? null : full,
+        ),
+      ],
+    );
+    if (picked == null || picked.isEmpty || !mounted) {
+      return plan.drive.close();
+    }
+    final need =
+        (picked.contains('tag') ? pic : 0) + (picked.contains('vibe') ? vb : 0);
+    if (!fits(need)) {
+      hintSnack(
+        context,
+        '云端硬盘剩余 ${fmtBytes(free!)},这次要传 ${fmtBytes(need)}',
+        icon: Icons.cloud_off_outlined,
+      );
+      return plan.drive.close();
+    }
+    unawaited(
+      ref
+          .read(cloudJobProvider.notifier)
+          .driveBackup(
+            plan,
+            inspiration: picked.contains('tag'),
+            vibes: picked.contains('vibe'),
+          ),
+    );
+  }
+
+  Future<void> _driveRestore() async {
+    if (!_idle) return;
+    if (!await _ensureDrive()) return;
+    setState(() {
+      _busy = 'drive-restore-check';
+      _progress = '读取中…';
+    });
+    DriveSnapshot? snap;
+    var failed = false;
+    try {
+      snap = await ref.read(driveBackupProvider).snapshot();
+    } catch (e) {
+      failed = true;
+      if (mounted) {
+        hintSnack(context, switch (e) {
+          DriveException(:final message) ||
+          FormatException(:final message) => message,
+          _ => '读取云端硬盘失败:$e',
+        }, icon: Icons.cloud_off_outlined);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = null;
+          _progress = '';
+        });
+      }
+    }
+    if (snap == null) {
+      if (!failed && mounted) {
+        hintSnack(context, '云端硬盘里还没有备份', icon: Icons.info_outline);
+      }
+      return;
+    }
+    if (!mounted) return snap.drive.close();
+    final tagN = DriveBackup.entryCount(snap);
+    final insp = snap.inspiration;
+    final tagOver = insp == null
+        ? 0
+        : ref
+              .read(tagLibraryProvider.notifier)
+              .previewMerge(
+                insp['categories'] is Map<String, dynamic>
+                    ? insp['categories'] as Map<String, dynamic>
+                    : const {},
+                custom: insp['custom'] is Map<String, dynamic>
+                    ? insp['custom'] as Map<String, dynamic>
+                    : null,
+              )
+              .overwrite;
+    final localIds = {
+      for (final e in ref.read(vibeLibraryProvider).value ?? const []) e.id,
+    };
+    final vibes = snap.vibes;
+    final picked = await showImportPicker(
+      context,
+      title: '选择要恢复的内容',
+      confirmLabel: '恢复',
+      options: [
+        ImportOption(
+          key: 'tag',
+          label: '灵感库',
+          detail: tagN > 0 ? '$tagN 条' : '暂无备份',
+          enabled: tagN > 0,
+          conflict: tagOver,
+        ),
+        ImportOption(
+          key: 'vibe',
+          label: 'Vibe',
+          detail: vibes.isNotEmpty ? '${vibes.length} 条' : '暂无备份',
+          enabled: vibes.isNotEmpty,
+          conflict: vibes.where((v) => localIds.contains(v['id'])).length,
+        ),
+      ],
+    );
+    if (picked == null || picked.isEmpty || !mounted) {
+      return snap.drive.close();
+    }
+    unawaited(
+      ref
+          .read(cloudJobProvider.notifier)
+          .driveRestore(
+            snap,
+            inspiration: picked.contains('tag'),
             vibes: picked.contains('vibe'),
           ),
     );
@@ -581,8 +841,19 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     if (c == null) return '读取失败';
     if (c.updatedAt <= 0) return '暂无备份';
     final t = DateTime.fromMillisecondsSinceEpoch(c.updatedAt * 1000);
+    return '${c.count} 条 · ${_when(t)}';
+  }
+
+  /// 云端硬盘里某一块的条数与时间。
+  String _driveStatus(DriveSection? s) {
+    if (_driveLoading) return '读取中…';
+    if (!_driveRead) return '读取失败';
+    return s == null ? '暂无备份' : '${s.count} 条 · ${_when(s.at)}';
+  }
+
+  static String _when(DateTime t) {
     final d = DateTime.now().difference(t);
-    final when = d.inMinutes < 1
+    return d.inMinutes < 1
         ? '刚刚'
         : d.inHours < 1
         ? '${d.inMinutes} 分钟前'
@@ -592,7 +863,6 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         ? '${d.inDays} 天前'
         : '${t.year}-${t.month.toString().padLeft(2, '0')}-'
               '${t.day.toString().padLeft(2, '0')}';
-    return '${c.count} 条 · $when';
   }
 
   /// 动作行在跑时的右侧值:进度或「处理中…」。
@@ -602,7 +872,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
 
   /// 云端任务那两行的右侧值。
   String? _jobValue(CloudJobState job, String kind) {
-    if (kind == 'restore' && _busy == 'restore-check') return _progress;
+    if (_busy == '$kind-check') return _progress;
     if (job.kind != kind) return null;
     return job.progress.isEmpty ? context.l10n.processing : job.progress;
   }
@@ -611,11 +881,16 @@ class _BackupPageState extends ConsumerState<BackupPage> {
   Widget build(BuildContext context) {
     final authed = ref.watch(botSessionProvider).value != null;
     final job = ref.watch(cloudJobProvider);
+    final driveEmail = ref.watch(googleDriveAuthProvider);
     ref.listen(cloudJobProvider, (prev, next) {
       if (prev?.busy != true || next.busy) return;
       _showJobResult(next);
-      _loadTagCloud();
-      _loadVibeCloud();
+      if (prev!.kind!.startsWith('drive')) {
+        _loadDrive();
+      } else {
+        _loadTagCloud();
+        _loadVibeCloud();
+      }
     });
     final idle = _busy == null && !job.busy;
     return Scaffold(
@@ -623,30 +898,70 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
         children: [
-          SettingsLabel(context.l10n.cloudBackup),
+          if (authed) ...[
+            SettingsLabel(context.l10n.cloudBackup),
+            SettingsCard(
+              children: [
+                SettingsRow(
+                  icon: Icons.lightbulb_outline,
+                  title: context.l10n.inspirationLibrary,
+                  value: _cloudStatus(authed, _tagLoading, _tagCloud),
+                ),
+                SettingsRow(
+                  icon: Icons.palette_outlined,
+                  title: 'Vibe',
+                  value: _cloudStatus(authed, _vibeLoading, _vibeCloud),
+                ),
+                SettingsRow(
+                  icon: Icons.cloud_upload_outlined,
+                  title: context.l10n.backupToCloud,
+                  value: _jobValue(job, 'backup'),
+                  onTap: idle ? _cloudBackup : null,
+                ),
+                SettingsRow(
+                  icon: Icons.cloud_download_outlined,
+                  title: context.l10n.restoreFromCloud,
+                  value: _jobValue(job, 'restore'),
+                  onTap: idle ? _cloudRestore : null,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+          const SettingsLabel('Google 云端硬盘'),
           SettingsCard(
             children: [
               SettingsRow(
-                icon: Icons.lightbulb_outline,
-                title: context.l10n.inspirationLibrary,
-                value: _cloudStatus(authed, _tagLoading, _tagCloud),
+                icon: Icons.account_circle_outlined,
+                title: '账号',
+                value: _busy == 'drive-connect'
+                    ? '连接中…'
+                    : (driveEmail ?? '未连接'),
+                onTap: idle ? _driveAccount : null,
               ),
-              SettingsRow(
-                icon: Icons.palette_outlined,
-                title: 'Vibe',
-                value: _cloudStatus(authed, _vibeLoading, _vibeCloud),
-              ),
+              if (driveEmail != null) ...[
+                SettingsRow(
+                  icon: Icons.lightbulb_outline,
+                  title: context.l10n.inspirationLibrary,
+                  value: _driveStatus(_drive?.tags),
+                ),
+                SettingsRow(
+                  icon: Icons.palette_outlined,
+                  title: 'Vibe',
+                  value: _driveStatus(_drive?.vibes),
+                ),
+              ],
               SettingsRow(
                 icon: Icons.cloud_upload_outlined,
-                title: context.l10n.backupToCloud,
-                value: _jobValue(job, 'backup'),
-                onTap: idle ? _cloudBackup : null,
+                title: '备份到 Google 云端硬盘',
+                value: _jobValue(job, 'drive-backup'),
+                onTap: idle ? _driveBackup : null,
               ),
               SettingsRow(
                 icon: Icons.cloud_download_outlined,
-                title: context.l10n.restoreFromCloud,
-                value: _jobValue(job, 'restore'),
-                onTap: idle ? _cloudRestore : null,
+                title: '从 Google 云端硬盘恢复',
+                value: _jobValue(job, 'drive-restore'),
+                onTap: idle ? _driveRestore : null,
               ),
             ],
           ),

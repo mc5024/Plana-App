@@ -5203,19 +5203,19 @@ abstract class AppLocalizations {
   /// No description provided for @cloudBackup.
   ///
   /// In zh, this message translates to:
-  /// **'云端备份'**
+  /// **'Plana 云端'**
   String get cloudBackup;
 
   /// No description provided for @backupToCloud.
   ///
   /// In zh, this message translates to:
-  /// **'备份到云端'**
+  /// **'备份到 Plana 云端'**
   String get backupToCloud;
 
   /// No description provided for @restoreFromCloud.
   ///
   /// In zh, this message translates to:
-  /// **'从云端恢复'**
+  /// **'从 Plana 云端恢复'**
   String get restoreFromCloud;
 
   /// No description provided for @selectBackupFile.

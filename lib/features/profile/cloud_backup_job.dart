@@ -3,20 +3,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/live_progress/live_progress.dart';
 import '../../core/net/backend_client.dart';
+import '../../core/net/google_drive.dart';
 import '../../core/store/storage_stats.dart' show fmtBytes;
 import '../inspiration/tag_cloud_backup.dart';
 import '../inspiration/tag_library.dart';
 import '../inspiration/tag_models.dart';
 import '../vibe_library/vibe_cloud_sync.dart';
+import '../vibe_library/vibe_library.dart';
+import 'drive_backup.dart';
 
 /// 云端备份 / 恢复的进行状态。
 class CloudJobState {
   const CloudJobState({this.kind, this.progress = '', this.result});
 
-  /// backup | restore;null = 空闲。
+  /// backup | restore | drive-backup | drive-restore;null = 空闲。
   final String? kind;
 
-  /// 「上传预览 12/40 · 120.5/450.0 MB」;空 = 还没开始报数。
+  /// 整体百分比(「42%」);空 = 还算不出来。
   final String progress;
 
   /// 最近一次结束的结果,备份页取走后清掉。
@@ -47,6 +50,11 @@ class CloudJob extends Notifier<CloudJobState> {
 
   DateTime _notifiedAt = DateTime(0);
 
+  /// 各阶段在整体进度里的分量(字节或件数,按阶段名),每个任务开始时登记;
+  /// 没登记的阶段不计入整体进度。
+  final _weights = <String, int>{};
+  final _fracs = <String, double>{};
+
   /// 备份页把结果提示过了。
   void takeResult() {
     if (state.result != null) state = CloudJobState(kind: state.kind);
@@ -57,6 +65,12 @@ class CloudJob extends Notifier<CloudJobState> {
     required bool inspiration,
     required bool vibes,
   }) => _run('backup', '正在备份到云端', '备份', (done, failed) async {
+    if (vibes) {
+      _weights['推送 Vibe'] = [
+        for (final e in ref.read(vibeLibraryProvider).value ?? <VibeEntry>[])
+          if (e.needsPush) e.sizeBytes,
+      ].fold(0, (a, b) => a + b);
+    }
     if (inspiration) {
       try {
         var bytes = (0, 0);
@@ -64,7 +78,10 @@ class CloudJob extends Notifier<CloudJobState> {
             .read(tagCloudBackupProvider)
             .upload(
               sessionId,
-              onBytes: (d, t) => bytes = (d, t),
+              onBytes: (d, t) {
+                bytes = (d, t);
+                _weights['上传预览'] = t;
+              },
               onProgress: (label, d, t) => _report(
                 label,
                 d,
@@ -110,7 +127,15 @@ class CloudJob extends Notifier<CloudJobState> {
     CloudTagBackup? inspiration,
     int inspirationCount = 0,
     required bool vibes,
+    int vibeCount = 0,
   }) => _run('restore', '正在从云端恢复', '恢复', (done, failed) async {
+    if (inspiration != null) {
+      _weights['恢复预览'] = TagLibrary.previewRefCount(
+        inspiration.categories,
+        custom: inspiration.custom,
+      );
+    }
+    if (vibes) _weights['拉取 Vibe'] = vibeCount;
     if (inspiration != null) {
       _report('恢复灵感库', 0, 0);
       try {
@@ -155,6 +180,73 @@ class CloudJob extends Notifier<CloudJobState> {
     }
   });
 
+  /// 备份到 Google 云端硬盘([plan] 是选内容前比对好的)。
+  Future<void> driveBackup(
+    DriveBackupPlan plan, {
+    required bool inspiration,
+    required bool vibes,
+  }) => _run('drive-backup', '正在备份到 Google 云端硬盘', '备份', (done, failed) async {
+    if (inspiration) _weights['上传预览'] = plan.previewBytes;
+    if (vibes) _weights['上传 Vibe'] = plan.vibeBytes;
+    final r = await ref
+        .read(driveBackupProvider)
+        .backup(
+          plan,
+          inspiration: inspiration,
+          vibes: vibes,
+          onProgress: (label, d, t, bd, bt) =>
+              _report(label, d, t, bytesDone: bd, bytesTotal: bt),
+        );
+    if (inspiration) {
+      final pics = [
+        if (r.previews > 0) '预览上传 ${r.previews}',
+        if (r.previewsFailed > 0) '${r.previewsFailed} 张预览没传上',
+      ].join('、');
+      (r.previewsFailed > 0 ? failed : done).add(
+        '灵感库 ${r.entries} 条${pics.isEmpty ? '' : ' · $pics'}',
+      );
+    }
+    if (vibes) {
+      final skipped = plan.vibes.length - r.vibes - r.vibesFailed;
+      final text = _vibeText(r.vibes, 0, skipped, r.vibesFailed, '上传');
+      (r.vibesFailed > 0 ? failed : done).add('Vibe $text');
+    }
+  });
+
+  /// 从 Google 云端硬盘恢复最新那份备份。
+  Future<void> driveRestore(
+    DriveSnapshot snap, {
+    required bool inspiration,
+    required bool vibes,
+  }) => _run('drive-restore', '正在从 Google 云端硬盘恢复', '恢复', (done, failed) async {
+    if (snap.inspiration case final j? when inspiration) {
+      _weights['恢复预览'] = TagLibrary.previewRefCount(
+        j['categories'] is Map<String, dynamic>
+            ? j['categories'] as Map<String, dynamic>
+            : const {},
+        custom: j['custom'] is Map<String, dynamic>
+            ? j['custom'] as Map<String, dynamic>
+            : null,
+      );
+    }
+    if (vibes) _weights['恢复 Vibe'] = snap.vibes.length;
+    _report('恢复中', 0, 0);
+    final r = await ref
+        .read(driveBackupProvider)
+        .restore(
+          snap,
+          inspiration: inspiration,
+          vibes: vibes,
+          onProgress: _report,
+        );
+    if (r.stat case final stat?) {
+      final added = stat.values.fold(0, (a, s) => a + s.added);
+      final updated = stat.values.fold(0, (a, s) => a + s.updated);
+      done.add('灵感库 新增 $added、覆盖 $updated');
+    }
+    if (vibes) done.add('Vibe ${r.vibes} 条');
+  });
+
   Future<void> _run(
     String kind,
     String title,
@@ -163,6 +255,8 @@ class CloudJob extends Notifier<CloudJobState> {
   ) async {
     if (state.busy) return;
     state = CloudJobState(kind: kind);
+    _weights.clear();
+    _fracs.clear();
     LiveProgress.instance.beginBackup(title);
     final done = <String>[], failed = <String>[];
     try {
@@ -185,7 +279,8 @@ class CloudJob extends Notifier<CloudJobState> {
     state = CloudJobState(result: (text: text, ok: ok));
   }
 
-  /// 报进度:页面上的那行字随时刷,通知栏最多一秒一次。
+  /// 报某阶段的进度(有字节数按字节,否则按件数),折成整体百分比:页面那行随时刷,
+  /// 通知栏最多一秒一次,正文带上阶段明细。
   void _report(
     String label,
     int done,
@@ -193,14 +288,24 @@ class CloudJob extends Notifier<CloudJobState> {
     int bytesDone = 0,
     int bytesTotal = 0,
   }) {
-    final text = [
-      label,
-      if (total > 0) '$done/$total',
-      if (bytesTotal > 0) '${fmtBytes(bytesDone)} / ${fmtBytes(bytesTotal)}',
-    ].join(' ');
+    if (bytesTotal > 0) {
+      _fracs[label] = (bytesDone / bytesTotal).clamp(0.0, 1.0);
+    } else if (total > 0) {
+      _fracs[label] = (done / total).clamp(0.0, 1.0);
+    }
+    final sum = _weights.values.fold(0, (a, b) => a + b);
+    final pct = sum == 0
+        ? null
+        : (_weights.entries.fold(
+                    0.0,
+                    (a, e) => a + (_fracs[e.key] ?? 0) * e.value,
+                  ) *
+                  100 /
+                  sum)
+              .floor();
     state = CloudJobState(
       kind: state.kind,
-      progress: total > 0 ? text : '$label…',
+      progress: pct == null ? '' : '$pct%',
     );
     final now = DateTime.now();
     if (now.difference(_notifiedAt) < const Duration(seconds: 1) &&
@@ -208,14 +313,15 @@ class CloudJob extends Notifier<CloudJobState> {
       return;
     }
     _notifiedAt = now;
-    // 通知的进度条按字节走(有字节数时),KB 计免得超出整型
-    final cur = bytesTotal > 0 ? bytesDone >> 10 : done;
-    final max = bytesTotal > 0 ? bytesTotal >> 10 : total;
     LiveProgress.instance.updateBackup(
-      cur: cur,
-      total: max,
-      text: text,
-      short: max > 0 ? '${(cur * 100 / max).floor()}%' : '',
+      cur: pct ?? 0,
+      total: pct == null ? 0 : 100,
+      text: [
+        label,
+        if (total > 0) '$done/$total',
+        if (bytesTotal > 0) '${fmtBytes(bytesDone)} / ${fmtBytes(bytesTotal)}',
+      ].join(' '),
+      short: pct == null ? '' : '$pct%',
     );
   }
 
@@ -228,7 +334,12 @@ class CloudJob extends Notifier<CloudJobState> {
         detail: detail,
       );
 
-  static String _errText(Object e) => e is BackendException ? e.message : '$e';
+  static String _errText(Object e) => switch (e) {
+    BackendException(:final message) ||
+    DriveException(:final message) ||
+    FormatException(:final message) => message,
+    _ => '$e',
+  };
 
   static String _vibeText(
     int pushed,
