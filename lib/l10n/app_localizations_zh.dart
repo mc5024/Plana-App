@@ -4695,6 +4695,9 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get imageAuto => '自动';
+
+  @override
   String get quoteImage => '引用';
 
   @override

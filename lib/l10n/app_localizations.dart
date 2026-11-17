@@ -8248,6 +8248,12 @@ abstract class AppLocalizations {
   /// **'比例 {v}'**
   String aspectChip(String v);
 
+  /// No description provided for @imageAuto.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动'**
+  String get imageAuto;
+
   /// No description provided for @quoteImage.
   ///
   /// In zh, this message translates to:

@@ -90,7 +90,7 @@ class _OptionSheet extends StatelessWidget {
     return SettingSheet(
       title: title,
       children: [
-        if (auto) row('', context.l10n.settingAuto),
+        if (auto) row('', context.l10n.imageAuto),
         for (final o in options) row(o, labelOf?.call(o) ?? o),
       ],
     );

@@ -148,7 +148,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
     );
     final room = kMaxAttach - ref.read(draftImagesProvider).length;
     if (room <= 0) return full();
-    final source = await showAttachSourceSheet(context);
+    final source = await showAttachSourceDialog(context);
     if (source == null || !mounted) return;
     final picked = source == AttachSource.gallery
         ? await pickGalleryImages(context, ref, max: room)
@@ -734,7 +734,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
             _imageOptionChip(
               icon: Icons.photo_size_select_large_outlined,
               label: context.l10n.resolutionChip(
-                size.isEmpty ? context.l10n.settingAuto : size,
+                size.isEmpty ? context.l10n.imageAuto : size,
               ),
               on: size.isNotEmpty,
               enabled: m.sizes.isNotEmpty,
@@ -753,7 +753,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
             _imageOptionChip(
               icon: Icons.aspect_ratio,
               label: context.l10n.aspectChip(
-                aspect.isEmpty ? context.l10n.settingAuto : aspect,
+                aspect.isEmpty ? context.l10n.imageAuto : aspect,
               ),
               on: aspect.isNotEmpty,
               enabled: m.aspects.isNotEmpty,

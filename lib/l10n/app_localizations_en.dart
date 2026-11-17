@@ -5097,6 +5097,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get imageAuto => 'Auto';
+
+  @override
   String get quoteImage => 'Quote';
 
   @override

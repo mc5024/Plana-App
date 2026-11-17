@@ -1686,6 +1686,7 @@
   "@resolutionChip": {"placeholders": {"v": {"type": "String"}}},
   "aspectChip": "比例 {v}",
   "@aspectChip": {"placeholders": {"v": {"type": "String"}}},
+  "imageAuto": "自动",
   "quoteImage": "引用",
   "imagesMax": "最多带 {n} 张图",
   "@imagesMax": {"placeholders": {"n": {"type": "int"}}},

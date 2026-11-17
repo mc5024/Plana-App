@@ -10,7 +10,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/store/app_stores.dart';
 import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/ui/setting_row.dart';
 import '../../../core/util/haptics.dart';
 import '../../../core/util/image_pick.dart';
 import '../../gallery/gallery_state.dart'
@@ -20,36 +19,41 @@ import '../../../l10n/l10n.dart';
 
 enum AttachSource { photos, gallery }
 
-/// 从哪儿挑;关掉是 null。
-Future<AttachSource?> showAttachSourceSheet(BuildContext context) async {
-  final picked = await showModalBottomSheet<AttachSource>(
+/// 从哪儿挑(居中弹窗);关掉是 null。
+Future<AttachSource?> showAttachSourceDialog(BuildContext context) async {
+  final picked = await showDialog<AttachSource>(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: false,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: .18),
     builder: (context) {
       Widget row(AttachSource s, IconData icon, String label) => ListTile(
         onTap: () => Navigator.pop(context, s),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-        leading: Icon(icon, size: 21),
+        leading: Icon(icon, size: 21, color: context.scheme.primary),
         title: Text(
           label,
           style: context.texts.bodyLarge!.copyWith(fontWeight: FontWeight.w500),
         ),
       );
-      return SettingSheet(
-        title: context.l10n.attachImage,
-        children: [
-          row(
-            AttachSource.photos,
-            Icons.phone_android_outlined,
-            context.l10n.systemAlbum,
-          ),
-          row(
-            AttachSource.gallery,
-            Icons.photo_library_outlined,
-            context.l10n.gallery,
+      return AlertDialog(
+        title: Text(context.l10n.attachImage),
+        contentPadding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            row(
+              AttachSource.photos,
+              Icons.phone_android_outlined,
+              context.l10n.systemAlbum,
+            ),
+            row(
+              AttachSource.gallery,
+              Icons.photo_library_outlined,
+              context.l10n.gallery,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(context.l10n.cancel),
           ),
         ],
       );
