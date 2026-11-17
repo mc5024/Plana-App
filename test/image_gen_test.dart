@@ -160,7 +160,7 @@ void main() {
       expect(AssistantSettings.fromJson(const {'imageCount': 5}).imageCount, 1);
     });
 
-    test('一批:同时最多两张,按次序排,没出成的跳过并带回第一个错', () async {
+    test('一批:几张同时出,按次序排,没出成的跳过并带回第一个错', () async {
       var running = 0;
       var peak = 0;
       var n = 0;
@@ -175,7 +175,7 @@ void main() {
         if (i == 3) return null;
         return 'img$i';
       });
-      expect(peak, 2);
+      expect(peak, 4);
       expect(ok, ['img0', 'img2']);
       expect((error as AgentFailure).message, '额度用完');
 

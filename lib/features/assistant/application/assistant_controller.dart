@@ -920,7 +920,7 @@ class AssistantController extends Notifier<AssistantState> {
     );
   }
 
-  /// 按 [spec] 让 [choice] 出 [ImageGenSpec.count] 张、存进图库,同时最多出两张。
+  /// 按 [spec] 让 [choice] 同时出 [ImageGenSpec.count] 张、存进图库。
   /// 按次序返回条目 id 和第一张没出成的原因;一张都没出成就抛这个原因。
   /// [attached] 是这轮提问附的图;[keep] 返回 false 之后出好的不存。
   Future<(List<String>, String?)> _drawImages(

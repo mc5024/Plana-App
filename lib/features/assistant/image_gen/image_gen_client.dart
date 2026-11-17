@@ -4,7 +4,6 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
@@ -31,28 +30,23 @@ abstract interface class ImageGenClient {
   });
 }
 
-/// 跑 [count] 次 [one],同时最多 [lanes] 次,结果按次序排;抛错的和返回 null 的跳过。
+/// 同时跑 [count] 次 [one],结果按次序排;抛错的和返回 null 的跳过。
 /// 返回出成的和第一个错。
 Future<(List<T>, Object?)> drawBatch<T extends Object>(
   int count,
-  Future<T?> Function() one, {
-  int lanes = 2,
-}) async {
-  final results = List<T?>.filled(count, null);
+  Future<T?> Function() one,
+) async {
   Object? error;
-  var next = 0;
-  Future<void> lane() async {
-    while (next < count) {
-      final i = next++;
-      try {
-        results[i] = await one();
-      } catch (e) {
-        error ??= e;
-      }
-    }
-  }
-
-  await Future.wait([for (var k = 0; k < math.min(lanes, count); k++) lane()]);
+  final results = await Future.wait([
+    for (var i = 0; i < count; i++)
+      one().then<T?>(
+        (r) => r,
+        onError: (Object e) {
+          error ??= e;
+          return null;
+        },
+      ),
+  ]);
   return ([for (final r in results) ?r], error);
 }
 
