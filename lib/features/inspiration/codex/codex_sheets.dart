@@ -57,7 +57,7 @@ Future<T?> _sheet<T>(BuildContext context, Widget child) =>
 /// (含各角色段)折叠进主提示词。
 ///
 /// 主提示词分过区([asSection] 或已有分区)时,公共部分不折叠,自成一格
-/// (格子叫「法典」,见 GenerateNotifier.addEntrySections)。
+/// (格子名是词条标题,见 GenerateNotifier.addEntrySections)。
 ({int added, int dropped}) codexAddToPrompt(
   WidgetRef ref,
   CodexEntry e, {
@@ -109,7 +109,7 @@ Future<T?> _sheet<T>(BuildContext context, Widget child) =>
   return (added: added, dropped: chars.length - added);
 }
 
-/// 一段内容自成一格(不折叠),格子叫「法典」。空段跳过。
+/// 一段内容自成一格(不折叠),格子名是词条标题,没标题叫「法典」。空段跳过。
 void _codexSectionInto(WidgetRef ref, CodexEntry e, String content) {
   if (content.trim().isEmpty) return;
   ref.read(generateProvider.notifier).addEntrySections([
@@ -119,7 +119,7 @@ void _codexSectionInto(WidgetRef ref, CodexEntry e, String content) {
       name: e.title,
       positive: content,
     ),
-  ], name: '法典');
+  ], fallback: '法典');
 }
 
 /// 把一段内容作为**命名折叠组**追加进主提示词(复用灵感页同一条链路:草稿带回

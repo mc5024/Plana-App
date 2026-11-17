@@ -43,6 +43,14 @@ const _a12 = TagEntry(
   positive: 'artist:wlop, artist:ask, year 2024',
 );
 
+/// 加进来之后库里那条改过词的 [_a12]。
+const _a12Edited = TagEntry(
+  id: 't1',
+  category: TagCategory.artist,
+  name: 'A12',
+  positive: 'artist:wlop',
+);
+
 /// [id] 那一行里的 [icon] 按钮。
 Finder _inRow(String id, IconData icon) => find.descendant(
   of: find.byKey(ValueKey('sec$id')),
@@ -63,6 +71,9 @@ Future<GenerateNotifier> _pumpCard(
       tagLibraryProvider.overrideWith(() => _Library(library)),
       publicTagsProvider(
         TagCategory.artist,
+      ).overrideWith((_) async => const []),
+      publicTagsProvider(
+        TagCategory.character,
       ).overrideWith((_) async => const []),
     ],
   );
@@ -99,11 +110,20 @@ void main() {
   testWidgets('窄屏一格一行不溢出;画风条目自成一格,主体也有开关和删除', (tester) async {
     await _pumpCard(tester);
     expect(tester.takeException(), isNull);
-    expect(find.text('画风'), findsOneWidget);
+    expect(find.text('A12'), findsOneWidget);
     expect(find.text('主体'), findsOneWidget);
     expect(find.text('分区 1'), findsOneWidget);
     expect(find.byIcon(Icons.delete_outline), findsNWidgets(3));
     expect(find.byIcon(Icons.power_settings_new), findsNWidgets(3));
+    await _settleTimers(tester);
+  });
+
+  testWidgets('名字签最多显示 6 个字', (tester) async {
+    final gen = await _pumpCard(tester);
+    gen.updateSection(gen.state.sections[1].id, name: '银发蓝眼白裙少女');
+    await tester.pumpAndSettle();
+    expect(find.text('银发蓝眼白裙'), findsOneWidget);
+    expect(tester.takeException(), isNull);
     await _settleTimers(tester);
   });
 
@@ -112,10 +132,10 @@ void main() {
     await tester.tap(_inRow(gen.state.sections[1].id, Icons.delete_outline));
     await tester.pumpAndSettle();
     expect([for (final s in gen.state.sections) s.name], ['主体', '分区 1']);
-    expect(find.text('已删除「画风」'), findsOneWidget);
+    expect(find.text('已删除「A12」'), findsOneWidget);
     await tester.tap(find.text('撤销'));
     await tester.pumpAndSettle();
-    expect([for (final s in gen.state.sections) s.name], ['主体', '画风', '分区 1']);
+    expect([for (final s in gen.state.sections) s.name], ['主体', 'A12', '分区 1']);
     await _settleTimers(tester);
   });
 
@@ -177,7 +197,7 @@ void main() {
 
     await tester.tap(find.text('撤销'));
     await tester.pumpAndSettle();
-    expect([for (final s in gen.state.sections) s.name], ['主体', '画风', '分区 1']);
+    expect([for (final s in gen.state.sections) s.name], ['主体', 'A12', '分区 1']);
     expect(gen.state.prompt, startsWith('1girl, solo'));
     expect(clearBtn, findsOneWidget);
     await _settleTimers(tester);
@@ -240,7 +260,7 @@ void main() {
     final gen = await _pumpCard(tester);
     final art = gen.state.sections[1];
     final extra = gen.state.sections[2];
-    await hold(tester, find.text('画风'));
+    await hold(tester, find.text('A12'));
     expect(find.text('已选 1'), findsOneWidget);
     expect(find.text('重命名'), findsNothing);
     expect(_inRow(art.id, Icons.check), findsOneWidget);
@@ -276,7 +296,7 @@ void main() {
     final gen = await _pumpCard(tester);
     final art = gen.state.sections[1];
     final extra = gen.state.sections[2];
-    await hold(tester, find.text('画风'));
+    await hold(tester, find.text('A12'));
     // 多选态:卡头不放按钮,行尾换成勾选圈
     expect(find.byTooltip('灵感库'), findsNothing);
     expect(find.byIcon(Icons.delete_outline), findsOneWidget); // 只剩卡头那颗
@@ -294,7 +314,7 @@ void main() {
     await tester.tap(find.byTooltip('合并'));
     await tester.pumpAndSettle();
     expect([for (final s in gen.state.sections) s.id], ['main', art.id]);
-    expect(find.text('已合并到「画风」'), findsOneWidget);
+    expect(find.text('已合并到「A12」'), findsOneWidget);
     expect(find.byTooltip('灵感库'), findsOneWidget); // 退回平时的卡头
 
     await tester.tap(find.text('撤销'));
@@ -309,7 +329,7 @@ void main() {
   testWidgets('多选:批量停用 / 删除连主体一起;删了主体,撤销连正向放回', (tester) async {
     final gen = await _pumpCard(tester);
     await hold(tester, find.text('主体'));
-    await tester.tap(find.text('画风'));
+    await tester.tap(find.text('A12'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('停用'));
     await tester.pumpAndSettle();
@@ -326,14 +346,14 @@ void main() {
     expect(find.text('已删除 2 个分区'), findsOneWidget);
     await tester.tap(find.text('撤销'));
     await tester.pumpAndSettle();
-    expect([for (final s in gen.state.sections) s.name], ['主体', '画风', '分区 1']);
+    expect([for (final s in gen.state.sections) s.name], ['主体', 'A12', '分区 1']);
     expect(gen.state.prompt, prompt);
     await _settleTimers(tester);
   });
 
   testWidgets('多选:点卡头的退出,平时的卡头按钮回来', (tester) async {
     await _pumpCard(tester);
-    await hold(tester, find.text('画风'));
+    await hold(tester, find.text('A12'));
     expect(find.text('已选 1'), findsOneWidget);
     await tester.tap(find.byTooltip('退出多选'));
     await tester.pumpAndSettle();
@@ -372,11 +392,12 @@ void main() {
           name: 'A1',
           positive: 'artist:foo',
         ),
+        _a12Edited,
       ],
     );
-    await openSave(tester, ['画风']);
+    await openSave(tester, ['A12']);
     expect(find.text('新建画风'), findsOneWidget);
-    expect(draftOf(tester)?.name, 'A2'); // 编号避开库里的 A1
+    expect(draftOf(tester)?.name, 'A2'); // 来源条目名不算自己起的;编号避开库里的 A1
     expect(draftOf(tester)?.positive, 'artist:wlop, artist:ask, year 2024');
     await tester.tap(find.text('保存到本地'));
     await tester.pumpAndSettle();
@@ -413,7 +434,7 @@ void main() {
     final btn = find.widgetWithIcon(RoundIconBtn, Icons.save_outlined);
     VoidCallback? onTap() => tester.widget<RoundIconBtn>(btn).onTap;
     expect(onTap(), isNull); // 只勾了空的
-    await tester.tap(find.text('画风'));
+    await tester.tap(find.text('A12'));
     await tester.tap(find.text('分区 1'));
     await tester.pumpAndSettle();
     expect(onTap(), isNotNull);
@@ -426,12 +447,12 @@ void main() {
   });
 
   testWidgets('存到灵感库:勾几格直接各存一条,不进新建页;已有的跳过', (tester) async {
-    await _pumpCard(tester);
-    await openSave(tester, ['画风', '主体', '分区 1']);
+    await _pumpCard(tester, library: const [_a12Edited]);
+    await openSave(tester, ['A12', '主体', '分区 1']);
     expect(find.byType(TagEditorPage), findsNothing);
     final art = libOf(tester, TagCategory.artist);
-    expect(art.single.name, 'A1'); // 画风格用新编号
-    expect(art.single.positive, 'artist:wlop, artist:ask, year 2024');
+    expect(art.last.name, 'A1'); // 画风格用新编号
+    expect(art.last.positive, 'artist:wlop, artist:ask, year 2024');
     final chars = libOf(tester, TagCategory.character);
     expect(chars.single.name, '1girl'); // 主体猜不出:落第一类,名字取第一个词
     expect(find.text('已存 2 条到灵感库'), findsOneWidget);
@@ -439,8 +460,8 @@ void main() {
     await _settleTimers(tester);
 
     // 再存一次:都已有
-    await openSave(tester, ['画风', '主体']);
-    expect(libOf(tester, TagCategory.artist), hasLength(1));
+    await openSave(tester, ['A12', '主体']);
+    expect(libOf(tester, TagCategory.artist), hasLength(2));
     expect(find.text('灵感库里都已有了'), findsOneWidget);
     await _settleTimers(tester);
   });

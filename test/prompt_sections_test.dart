@@ -273,14 +273,14 @@ void main() {
       expect(r.section.isMain, isTrue);
       expect(st().prompt, isEmpty);
       expect(st().negativePrompt, 'lowres');
-      expect(_names(st().sections), ['画风']);
+      expect(_names(st().sections), ['A12']);
       expect(
         stripHiddenModules(st(), const GenModuleSettings()).negativePrompt,
         'lowres, blurry',
       );
       // 外头写进了正向:主体那一行补回最上面,也照样进载荷
       gen.setPrompts(positive: '2girls');
-      expect(_names(withMainRow(st().sections, st().prompt)), ['主体', '画风']);
+      expect(_names(withMainRow(st().sections, st().prompt)), ['主体', 'A12']);
       expect(
         stripHiddenModules(st(), const GenModuleSettings()).prompt,
         '2girls, artist:wlop, artist:ask',
@@ -352,7 +352,7 @@ void main() {
       positive: 'artist:wlop, 2girls, smile',
       negative: 'lowres, bad hands',
     );
-    expect(_names(st().sections), ['主体', '画风', '分区 1']);
+    expect(_names(st().sections), ['主体', 'A12', '分区 1']);
     final added = st().sections.last;
     expect(added.positive, '2girls, smile');
     expect(added.negative, 'bad hands');
@@ -388,7 +388,7 @@ void main() {
     expect(st().prompt, '1girl');
   });
 
-  test('灵感库落地:每条自成一格、名字是分类名;角色也进分区,不进角色卡', () {
+  test('灵感库落地:每条自成一格、名字是条目名;角色也进分区,不进角色卡', () {
     const rain = TagEntry(
       id: 's1',
       category: TagCategory.scene,
@@ -404,7 +404,7 @@ void main() {
     );
     gen.setPrompts(positive: '1girl');
     gen.addEntrySections([_a12, rain, miku, _watercolor]);
-    expect(_names(st().sections), ['主体', '画风', '场景', '角色', '画风']);
+    expect(_names(st().sections), ['主体', 'A12', '雨夜', '初音', '水彩厚涂']);
     expect(
       [for (final s in st().sections) s.positive],
       [
@@ -418,7 +418,7 @@ void main() {
     expect(st().characters, isEmpty);
     expect(st().prompt, '1girl');
     expect(st().sections[2].negative, 'sunny');
-    // 法典词条由调用方给名字
+    // 条目没名字时用调用方给的名字
     gen.addEntrySections([
       const TagEntry(
         id: 'codex_1',
@@ -426,8 +426,14 @@ void main() {
         name: '雨中回眸',
         positive: 'looking back, umbrella',
       ),
-    ], name: '法典');
-    expect(st().sections.last.name, '法典');
+      const TagEntry(
+        id: 'codex_2',
+        category: TagCategory.other,
+        name: '',
+        positive: 'cherry blossoms',
+      ),
+    ], fallback: '法典');
+    expect(_names(st().sections).skip(5), ['雨中回眸', '法典']);
   });
 
   test('正向已在提示词里不另建格子、同名格子只重新打开的,负面照样带进来', () {

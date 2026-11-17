@@ -510,7 +510,7 @@ class _PromptCardState extends ConsumerState<PromptCard> {
   }
 
   /// 卡头「灵感库」:角色、画风、场景与法典收藏都能挑。选完每条自成一格、
-  /// 不折叠,格子名是分类名(角色也进分区,角色卡有自己的选择器),按勾选顺序
+  /// 不折叠,格子名是条目名(角色也进分区,角色卡有自己的选择器),按勾选顺序
   /// 接在最后;法典收藏同法典页的「使用」(角色段照旧拆成角色卡),画师串词典
   /// 里收的算画风。
   Future<void> _importFromLibrary(BuildContext context, WidgetRef ref) async {
@@ -883,7 +883,7 @@ class _PickDot extends StatelessWidget {
   }
 }
 
-/// 分区名:填色小签,停用时改成描边、灰字。点它改名。
+/// 分区名:填色小签,最多显示 6 个字,停用时改成描边、灰字。点它改名。
 class _NameChip extends StatelessWidget {
   const _NameChip({
     required this.name,
@@ -911,20 +911,17 @@ class _NameChip extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 76),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-            child: Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: context.texts.labelMedium!.copyWith(
-                fontWeight: FontWeight.w600,
-                color: enabled
-                    ? context.onSolidFill(scheme.onPrimaryContainer)
-                    : scheme.outline,
-              ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          child: Text(
+            name.characters.take(6).toString(),
+            maxLines: 1,
+            softWrap: false,
+            style: context.texts.labelMedium!.copyWith(
+              fontWeight: FontWeight.w600,
+              color: enabled
+                  ? context.onSolidFill(scheme.onPrimaryContainer)
+                  : scheme.outline,
             ),
           ),
         ),

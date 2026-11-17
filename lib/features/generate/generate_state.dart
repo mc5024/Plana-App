@@ -867,15 +867,17 @@ class GenerateNotifier extends Notifier<GenerateState> {
 
   // ---- 主提示词分区 ----
 
-  /// 灵感库条目各自成一格,不折叠(见 [withEntrySections])。格子名是分类名
-  /// (画风 / 角色 / 场景…),给了 [name] 就用它(法典词条叫「法典」)。
+  /// 灵感库条目各自成一格,不折叠(见 [withEntrySections])。格子名是条目名,
+  /// 条目没名字时用 [fallback],没给就用分类名(画风 / 角色 / 场景…)。
   ///
   /// 正向已全在提示词里没另建格子的、同名同词的格子只是重新打开的,条目负面里
   /// 整张卡还没有的词接到主体负面。
-  void addEntrySections(Iterable<TagEntry> entries, {String? name}) {
+  void addEntrySections(Iterable<TagEntry> entries, {String? fallback}) {
     final named = [
       for (final e in entries)
-        e.copyWith(name: name ?? tagCategoryDef(e.category).label),
+        e.name.trim().isNotEmpty
+            ? e
+            : e.copyWith(name: fallback ?? tagCategoryDef(e.category).label),
     ];
     final sections = withEntrySections(
       _rows,

@@ -516,7 +516,7 @@ List<PromptSection> restoreSection(
   return normalizeSections(out);
 }
 
-/// 灵感库条目各自成一格,不折叠:名字取条目名(调用方换成分类名),正负向原样
+/// 灵感库条目各自成一格,不折叠:名字取条目名,正负向原样
 /// 放进这一格,条目 id 记进 [PromptSection.sources]。新格子一律接在最后,按加进来的先后往下排 —— 别按分类插到
 /// 主体前后,那样主体看着像在跳。
 ///
