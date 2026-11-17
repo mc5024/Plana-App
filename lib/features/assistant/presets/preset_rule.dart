@@ -100,64 +100,6 @@ String ruleSectionLabel(String name) => switch (name) {
   _ => name,
 };
 
-/// 内置段名 → 段落页上归进的组。
-const _ruleGroups = {
-  'role': 'persona',
-  'model_traits': 'writing',
-  'prompt_construction': 'writing',
-  'weight_control': 'writing',
-  'custom_tags': 'writing',
-  'text_rendering': 'writing',
-  'alpha_transparency': 'writing',
-  'character_tag_rules': 'characters',
-  'multi_character_composition': 'characters',
-  'comic_composition': 'comic',
-  'mode_comic': 'comic',
-  'natural_construction': 'natural',
-  'mode_natural': 'natural',
-  'output_specification': 'output',
-};
-
-String ruleGroupLabel(String group) => switch (group) {
-  'persona' => l10nNow.ruleGroupPersona,
-  'writing' => l10nNow.ruleGroupWriting,
-  'characters' => l10nNow.ruleGroupCharacters,
-  'comic' => l10nNow.ruleGroupComic,
-  'natural' => l10nNow.ruleGroupNatural,
-  'output' => l10nNow.ruleGroupOutput,
-  _ => group,
-};
-
-/// 段落页上的一张卡。
-class RuleCard {
-  const RuleCard(this.group, this.indices);
-
-  /// 组;null = 认不出的段名,单独一张。
-  final String? group;
-
-  /// 卡里的段在规则里的下标,按原顺序。
-  final List<int> indices;
-}
-
-/// 规则 → 段落页的卡:内置段按组归成一张,认不出的段名各自一张;
-/// 卡按各自第一段的位置排。
-List<RuleCard> ruleCardsOf(List<PresetRule> rules) {
-  final cards = <RuleCard>[];
-  final byGroup = <String, List<int>>{};
-  for (var i = 0; i < rules.length; i++) {
-    final g = _ruleGroups[rules[i].name];
-    if (g == null) {
-      cards.add(RuleCard(null, [i]));
-    } else if (byGroup[g] case final list?) {
-      list.add(i);
-    } else {
-      final list = byGroup[g] = [i];
-      cards.add(RuleCard(g, list));
-    }
-  }
-  return cards;
-}
-
 /// 条件段的小标签,常驻的段返回 null。`comic` 和 `mode:comic` 选漫画模式时都发,显示成同一个。
 String? whenTag(String when) {
   final not = when.startsWith(kWhenNotPrefix);

@@ -5610,27 +5610,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ruleSectionsLabel => 'Sections';
 
   @override
-  String get ruleGroupPersona => 'Persona';
-
-  @override
-  String get ruleGroupWriting => 'Prompt Writing';
-
-  @override
-  String get ruleGroupCharacters => 'Characters & Composition';
-
-  @override
-  String get ruleGroupComic => 'Comics';
-
-  @override
-  String get ruleGroupNatural => 'Natural Language Only';
-
-  @override
-  String get ruleGroupOutput => 'Output Format';
-
-  @override
-  String get deleteRuleGroupQ => 'Delete this group?';
-
-  @override
   String whenOffTag(String mode) {
     return 'Off in $mode';
   }

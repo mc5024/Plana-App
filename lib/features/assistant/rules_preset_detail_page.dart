@@ -1,7 +1,6 @@
 /// 预设页:上面是这份预设的名称、作者、支持的模型和启用的模型,下面是段落。
 ///
-/// 段落里内置段按用途归成几张卡(见 [ruleCardsOf]),认不出的段名各自一张。点卡进编辑页,
-/// 卡里几段上下排开一起改;点自己加的段名改名;⏻ 停用、🗑 删除、长按拖动排序都按整张卡来。
+/// 段落一段一张卡:点卡进编辑页改内容,点名字改名,⏻ 停用、🗑 删除、长按拖动排序。
 ///
 /// 默认规则的原件在包里,改不了:名称、作者、支持的模型只读,段落第一次保存时另存为
 /// 「原名 (副本)」,这个模型原先用默认规则的就改用这份副本,之后在这页接着改的都是它。
@@ -85,7 +84,6 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
         if (models.contains(m) && lib.activeFor(m).id == selfId)
           rulesFamilyLabel(m),
     ];
-    final cards = ruleCardsOf(rules);
     final header = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -137,45 +135,33 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
         padding: const EdgeInsets.only(top: 2),
         child: _addButton(() => _add(rules)),
       ),
-      itemCount: cards.length,
+      itemCount: rules.length,
       proxyDecorator: (child, _, _) => Material(
         color: Colors.transparent,
         elevation: 3,
         borderRadius: BorderRadius.circular(16),
         child: child,
       ),
-      // 整张卡一起挪:组里的段挪完挨在一起
       onReorderItem: (from, to) {
-        final next = [...cards];
+        final next = [...rules];
         next.insert(to, next.removeAt(from));
-        _commit([
-          for (final c in next)
-            for (final i in c.indices) rules[i],
-        ]);
+        _commit(next);
       },
-      itemBuilder: (context, k) {
-        final c = cards[k];
-        final members = [for (final i in c.indices) rules[i]];
-        return Padding(
-          key: ObjectKey(members.first),
-          padding: const EdgeInsets.only(bottom: 10),
-          child: _RuleCardView(
-            title: _cardTitle(rules, c),
-            rules: members,
-            onEdit: () => _edit(rules, c),
-            onRename: c.group == null
-                ? () => _rename(rules, c.indices.single)
-                : null,
-            onToggle: () => _toggle(rules, c),
-            onDelete: () => _delete(rules, c),
+      itemBuilder: (context, i) => Padding(
+        key: ObjectKey(rules[i]),
+        padding: const EdgeInsets.only(bottom: 10),
+        child: _RuleCardView(
+          rule: rules[i],
+          onEdit: () => _edit(rules, i),
+          onRename: () => _rename(rules, i),
+          onToggle: () => _commit(
+            [...rules]..[i] = rules[i].copyWith(enabled: !rules[i].enabled),
           ),
-        );
-      },
+          onDelete: () => _delete(rules, i),
+        ),
+      ),
     );
   }
-
-  String _cardTitle(List<PresetRule> rules, RuleCard c) =>
-      c.group == null ? rules[c.indices.single].name : ruleGroupLabel(c.group!);
 
   Future<void> _replace(
     RulesPreset p, {
@@ -358,32 +344,13 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
     }
   }
 
-  Future<void> _edit(List<PresetRule> rules, RuleCard c) async {
-    final edited = await Navigator.push<List<PresetRule>>(
+  Future<void> _edit(List<PresetRule> rules, int i) async {
+    final edited = await Navigator.push<PresetRule>(
       context,
-      MaterialPageRoute(
-        builder: (_) => _GroupEditorPage(
-          title: _cardTitle(rules, c),
-          rules: [for (final i in c.indices) rules[i]],
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => _SectionEditorPage(rule: rules[i])),
     );
     if (edited == null) return;
-    final next = [...rules];
-    for (final (j, i) in c.indices.indexed) {
-      next[i] = edited[j];
-    }
-    await _commit(next);
-  }
-
-  /// 有一段开着就整张关掉,全关着就整张打开。
-  Future<void> _toggle(List<PresetRule> rules, RuleCard c) {
-    final anyOn = c.indices.any((i) => rules[i].enabled);
-    final next = [...rules];
-    for (final i in c.indices) {
-      next[i] = rules[i].copyWith(enabled: !anyOn);
-    }
-    return _commit(next);
+    await _commit([...rules]..[i] = edited);
   }
 
   Widget _addButton(VoidCallback onPressed) => FilledButton.tonalIcon(
@@ -397,22 +364,21 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
   Future<void> _add(List<PresetRule> rules, {bool atStart = false}) async {
     final name = await _askSectionName('');
     if (name == null || !mounted) return;
-    final edited = await Navigator.push<List<PresetRule>>(
+    final edited = await Navigator.push<PresetRule>(
       context,
       MaterialPageRoute(
-        builder: (_) => _GroupEditorPage(
-          title: name,
-          rules: [PresetRule(name: name, content: '')],
+        builder: (_) => _SectionEditorPage(
+          rule: PresetRule(name: name, content: ''),
         ),
       ),
     );
     if (edited == null) return;
-    await _commit(atStart ? [...edited, ...rules] : [...rules, ...edited]);
+    await _commit(atStart ? [edited, ...rules] : [...rules, edited]);
   }
 
-  /// 点名字改名(只有认不出的段,内置段归在组里不单独改名)。
+  /// 点名字改名。框里是显示名,没改就不动(内置段名不会被换成中文)。
   Future<void> _rename(List<PresetRule> rules, int i) async {
-    final shown = rules[i].name;
+    final shown = ruleSectionLabel(rules[i].name);
     final name = await _askSectionName(shown);
     if (name == null || name == shown) return;
     await _commit([...rules]..[i] = rules[i].copyWith(name: name));
@@ -474,21 +440,17 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
     return v;
   }
 
-  Future<void> _delete(List<PresetRule> rules, RuleCard c) async {
+  Future<void> _delete(List<PresetRule> rules, int i) async {
     final ok = await confirmDialog(
       context,
-      title: c.indices.length > 1
-          ? context.l10n.deleteRuleGroupQ
-          : context.l10n.deleteRuleSectionQ,
-      message: context.l10n.deleteRuleSectionBody(_cardTitle(rules, c)),
+      title: context.l10n.deleteRuleSectionQ,
+      message: context.l10n.deleteRuleSectionBody(
+        ruleSectionLabel(rules[i].name),
+      ),
       confirmLabel: context.l10n.delete,
     );
     if (!ok) return;
-    final drop = c.indices.toSet();
-    await _commit([
-      for (final (i, r) in rules.indexed)
-        if (!drop.contains(i)) r,
-    ]);
+    await _commit([...rules]..removeAt(i));
   }
 
   /// 全文编辑:摊开的就是导出的那份文本,电脑上改好的能整段贴进来。
@@ -526,34 +488,26 @@ class _RulesPresetDetailPageState extends ConsumerState<RulesPresetDetailPage> {
 
 class _RuleCardView extends StatelessWidget {
   const _RuleCardView({
-    required this.title,
-    required this.rules,
+    required this.rule,
     required this.onEdit,
+    required this.onRename,
     required this.onToggle,
     required this.onDelete,
-    this.onRename,
   });
 
-  final String title;
-
-  /// 卡里的段。
-  final List<PresetRule> rules;
+  final PresetRule rule;
   final VoidCallback onEdit;
+  final VoidCallback onRename;
   final VoidCallback onToggle;
   final VoidCallback onDelete;
-
-  /// 内置段的组卡不改名,传 null。
-  final VoidCallback? onRename;
 
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    final on = rules.any((r) => r.enabled);
-    final tags = {for (final r in rules) whenTag(r.when)};
+    final on = rule.enabled;
     final meta = [
-      if (tags.length == 1) ?tags.single,
-      if (rules.length > 1) context.l10n.sectionsN(rules.length),
-      context.l10n.charsN(rules.fold(0, (n, r) => n + r.content.length)),
+      ?whenTag(rule.when),
+      context.l10n.charsN(rule.content.length),
     ].join(' · ');
     // 与角色卡的开关 / 删除同一尺寸(窄屏同样收到 32)
     final btnSize = MediaQuery.sizeOf(context).width < 350 ? 32.0 : 36.0;
@@ -580,7 +534,7 @@ class _RuleCardView extends StatelessWidget {
                         GestureDetector(
                           onTap: onRename,
                           child: Text(
-                            title,
+                            ruleSectionLabel(rule.name),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: context.texts.bodyLarge!.copyWith(
@@ -669,48 +623,42 @@ Future<void> _confirmLeave(BuildContext context) async {
   if (ok && context.mounted) Navigator.pop(context);
 }
 
-/// 段落编辑页(一张卡里不管几段都用它):一段一张卡上下排开,卡头是段名、条件段的小标签和 ⏻,
-/// 下面就是这段的内容。顶栏保存一起存,没保存就返回要确认一下。
-class _GroupEditorPage extends StatefulWidget {
-  const _GroupEditorPage({required this.title, required this.rules});
+/// 段落编辑页:一张卡,卡头是段名、条件段的小标签和 ⏻,下面就是这段的内容。
+/// 顶栏保存,没保存就返回要确认一下。
+class _SectionEditorPage extends StatefulWidget {
+  const _SectionEditorPage({required this.rule});
 
-  final String title;
-  final List<PresetRule> rules;
+  final PresetRule rule;
 
   @override
-  State<_GroupEditorPage> createState() => _GroupEditorPageState();
+  State<_SectionEditorPage> createState() => _SectionEditorPageState();
 }
 
-class _GroupEditorPageState extends State<_GroupEditorPage> {
-  late final _ctls = [
-    for (final r in widget.rules) TextEditingController(text: r.content),
-  ];
-  late final _enabled = [for (final r in widget.rules) r.enabled];
+class _SectionEditorPageState extends State<_SectionEditorPage> {
+  late final _ctl = TextEditingController(text: widget.rule.content);
+  late var _enabled = widget.rule.enabled;
   var _dirty = false;
 
   @override
   void dispose() {
-    for (final c in _ctls) {
-      c.dispose();
-    }
+    _ctl.dispose();
     super.dispose();
   }
 
   void _save() {
-    final out = <PresetRule>[];
-    for (final (i, r) in widget.rules.indexed) {
-      final content = _tidy(_ctls[i].text);
-      if (content.trim().isEmpty) {
-        hintSnack(
-          context,
-          context.l10n.ruleSectionEmpty,
-          icon: Icons.error_outline,
-        );
-        return;
-      }
-      out.add(r.copyWith(content: content, enabled: _enabled[i]));
+    final content = _tidy(_ctl.text);
+    if (content.trim().isEmpty) {
+      hintSnack(
+        context,
+        context.l10n.ruleSectionEmpty,
+        icon: Icons.error_outline,
+      );
+      return;
     }
-    Navigator.pop(context, out);
+    Navigator.pop(
+      context,
+      widget.rule.copyWith(content: content, enabled: _enabled),
+    );
   }
 
   void _touch(VoidCallback change) => setState(() {
@@ -727,7 +675,7 @@ class _GroupEditorPageState extends State<_GroupEditorPage> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(widget.title),
+          title: Text(ruleSectionLabel(widget.rule.name)),
           actions: [
             IconButton(
               tooltip: context.l10n.save,
@@ -743,21 +691,16 @@ class _GroupEditorPageState extends State<_GroupEditorPage> {
             14,
             24 + MediaQuery.viewPaddingOf(context).bottom,
           ),
-          children: [
-            for (var i = 0; i < widget.rules.length; i++)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _block(context, i),
-              ),
-          ],
+          children: [_block(context)],
         ),
       ),
     );
   }
 
-  Widget _block(BuildContext context, int i) {
+  Widget _block(BuildContext context) {
     final scheme = context.scheme;
-    final on = _enabled[i];
+    final rule = widget.rule;
+    final on = _enabled;
     final btnSize = MediaQuery.sizeOf(context).width < 350 ? 32.0 : 36.0;
     return Lifted(
       radius: BorderRadius.circular(16),
@@ -774,7 +717,7 @@ class _GroupEditorPageState extends State<_GroupEditorPage> {
                 children: [
                   Flexible(
                     child: Text(
-                      ruleSectionLabel(widget.rules[i].name),
+                      ruleSectionLabel(rule.name),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: context.texts.bodyLarge!.copyWith(
@@ -784,8 +727,7 @@ class _GroupEditorPageState extends State<_GroupEditorPage> {
                     ),
                   ),
                   // 触发条件只显示,要改去全文编辑
-                  if (whenTag(widget.rules[i].when) case final tag?)
-                    _CondTag(tag),
+                  if (whenTag(rule.when) case final tag?) _CondTag(tag),
                   const Spacer(),
                   RoundIconBtn(
                     Icons.power_settings_new,
@@ -796,7 +738,7 @@ class _GroupEditorPageState extends State<_GroupEditorPage> {
                         : context.l10n.enable,
                     onTap: () {
                       Haptics.selection();
-                      _touch(() => _enabled[i] = !on);
+                      _touch(() => _enabled = !on);
                     },
                   ),
                 ],
@@ -806,8 +748,8 @@ class _GroupEditorPageState extends State<_GroupEditorPage> {
               duration: Motion.fast,
               opacity: on ? 1 : .45,
               child: TextField(
-                controller: _ctls[i],
-                autofocus: i == 0 && widget.rules[i].content.isEmpty,
+                controller: _ctl,
+                autofocus: rule.content.isEmpty,
                 maxLines: null,
                 minLines: 3,
                 keyboardType: TextInputType.multiline,
