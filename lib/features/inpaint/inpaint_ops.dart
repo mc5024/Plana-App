@@ -281,12 +281,12 @@ IntRect alignSendRect(IntRect tight, int fullW, int fullH) {
   return (x: x, y: y, w: w, h: h);
 }
 
-/// 贴着遮罩的局部框:遮罩 + 留白,对齐原图 64 网格,单边封顶 [maxSide]。
-/// [keep] 是用户拉过的框,只扩不缩。无涂抹返回 null。
+/// 贴着遮罩的局部框:遮罩 + 留白,对齐原图 64 网格,收进长边 [maxSide]、
+/// 面积 [maxPixels]。[keep] 是用户拉过的框,只扩不缩。无涂抹返回 null。
 ///
 /// 涂抹铺满大半张图(或两处离得很远)时按整图算,再由封顶挑最该盖的一段 ——
 /// 这时框未必装得下全部涂抹,调用方用 [MaskGrid.hasCellsOutside] 判断。
-IntRect? cropForMask(MaskGrid g, int maxSide, {IntRect? keep}) {
+IntRect? cropForMask(MaskGrid g, int maxSide, int maxPixels, {IntRect? keep}) {
   final bounds = maskBounds(g);
   if (bounds == null) return null;
   final tight = tightCropRect(g) ?? (x: 0, y: 0, w: g.imgW, h: g.imgH);
@@ -298,24 +298,76 @@ IntRect? cropForMask(MaskGrid g, int maxSide, {IntRect? keep}) {
     final b = math.max(keep.y + keep.h, want.y + want.h);
     want = (x: x, y: y, w: r - x, h: b - y);
   }
-  return capSendRect(want, maxSide, focus: bounds, keep: keep);
+  return capSendRect(want, maxSide, maxPixels, focus: bounds, keep: keep);
 }
 
-/// 把发送框收进 [maxSide]×[maxSide]([maxSide] 须是 64 的倍数)。
-/// 横竖各自处理,放得下的方向原样返回。
+/// 把发送框收进长边 [maxSide]、面积 [maxPixels]([maxSide] 须是 64 的倍数)。
 ///
-/// 放不下就在 [rect] 里挑一段 [maxSide] 长的窗口,起点从 rect 起点按 64 步进
-/// (不破坏网格对齐):先尽量多盖 [focus](遮罩本体),再尽量多留 [keep]
+/// 先定宽高(见 [_capSize]),再在 [rect] 里挑窗口:起点从 rect 起点按 64 步进
+/// (不破坏网格对齐),先尽量多盖 [focus](遮罩本体),再尽量多留 [keep]
 /// (用户拉过的框),都一样时贴着 focus 居中。
 IntRect capSendRect(
   IntRect rect,
-  int maxSide, {
+  int maxSide,
+  int maxPixels, {
   IntRect? focus,
   IntRect? keep,
 }) {
-  final (x, w) = _capAxis(rect, maxSide, focus, keep, vertical: false);
-  final (y, h) = _capAxis(rect, maxSide, focus, keep, vertical: true);
+  final (w, h) = _capSize(rect, maxSide, maxPixels, focus);
+  final (x, _) = _capAxis(rect, w, focus, keep, vertical: false);
+  final (y, _) = _capAxis(rect, h, focus, keep, vertical: true);
   return (x: x, y: y, w: w, h: h);
+}
+
+/// [capSendRect] 的宽高:放得下原样;放不下先保住盖满 [focus] 的长度,剩下的
+/// 面积匀给留白(每次给离上限还远的那边加 64);遮罩本身就超面积时按它的比例缩。
+(int, int) _capSize(IntRect rect, int maxSide, int maxPixels, IntRect? focus) {
+  final w = math.min(rect.w, maxSide), h = math.min(rect.h, maxSide);
+  if (w * h <= maxPixels) return (w, h);
+  // 这个方向盖满 focus 要多长:focus 两端按 rect 起点的相位扩到 64 格线
+  int need(int pos, int span, int limit, int? at, int? len) {
+    final floor = math.min(256, limit);
+    if (at == null || len == null) return floor;
+    final lo = pos + (math.max(at, pos) - pos) ~/ 64 * 64;
+    final hi = pos + ((at + len - pos) / 64).ceil() * 64;
+    return (math.min(hi, pos + span) - lo).clamp(floor, limit);
+  }
+
+  var fw = need(rect.x, rect.w, w, focus?.x, focus?.w);
+  var fh = need(rect.y, rect.h, h, focus?.y, focus?.h);
+  if (fw * fh > maxPixels) {
+    final s = fitCropArea(fw, fh, maxPixels);
+    return (s.w, s.h);
+  }
+  while (true) {
+    final nw = math.min(w, fw + 64), nh = math.min(h, fh + 64);
+    final growW = nw > fw && nw * fh <= maxPixels;
+    final growH = nh > fh && fw * nh <= maxPixels;
+    if (!growW && !growH) return (fw, fh);
+    if (growW && (!growH || w - fw >= h - fh)) {
+      fw = nw;
+    } else {
+      fh = nh;
+    }
+  }
+}
+
+/// 框面积收进 [maxPixels],宽高向下取 64 的倍数,只缩不放。[lockW] / [lockH]
+/// 那边不动、只缩另一边;都不锁就按原比例一起缩。
+({int w, int h}) fitCropArea(
+  int w,
+  int h,
+  int maxPixels, {
+  bool lockW = false,
+  bool lockH = false,
+}) {
+  if (w * h <= maxPixels) return (w: w, h: h);
+  // 加一点余量:1088² 缩回 1024² 时 sqrt 会算出 1023.999…
+  int floor64(double v) => math.max(64, (v + 1e-6) ~/ 64 * 64);
+  if (lockH) return (w: floor64(maxPixels / h), h: h);
+  if (lockW) return (w: w, h: floor64(maxPixels / w));
+  final k = math.sqrt(maxPixels / (w * h));
+  return (w: floor64(w * k), h: floor64(h * k));
 }
 
 /// [capSendRect] 的单方向版本,返回 (起点, 长度)。
