@@ -1030,25 +1030,39 @@ class AssistantController extends Notifier<AssistantState> {
     _set(state.copyWith(jobs: next), persist: false);
   }
 
-  /// 停:掐掉这一轮。已经发出去的那次 LLM 调用掐不掉,但用户不用再干等。
-  void stop() {
-    if (!state.running) return;
+  /// 停:掐掉这一轮,这一轮的提问从对话里撤下,返回它(连同附的图)给输入框回填。
+  /// 已经发出去的那次 LLM 调用掐不掉,但用户不用再干等。
+  Future<QueuedAsk?> stop() async {
+    if (!state.running) return null;
     _traces.finish('手动停止');
     _seq++;
-    _sub?.cancel();
+    unawaited(_sub?.cancel());
     _sub = null;
     _imageClient?.close();
     _imageClient = null;
     LiveProgress.instance.cancelAssistant();
+    final last = state.msgs.lastOrNull;
+    final ask = last?.role == MsgRole.user ? last : null;
     _set(
       state.copyWith(
+        msgs: ask == null
+            ? state.msgs
+            : state.msgs.sublist(0, state.msgs.length - 1),
         running: false,
         liveTools: const [],
         stage: '',
         liveText: '',
         liveReasoning: '',
       ),
-      persist: false,
+      persist: ask != null,
+    );
+    if (ask == null) return null;
+    return QueuedAsk(
+      id: ask.id,
+      text: ask.text,
+      at: ask.at,
+      images: [for (final h in ask.imageHashes) ?await _repo.image(h)],
+      withCanvas: ask.withCanvas,
     );
   }
 

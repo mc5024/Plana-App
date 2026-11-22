@@ -590,21 +590,32 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
         n.unqueue(q.id);
       case 'edit' when still:
         n.unqueue(q.id);
-        // 输入框里正写着的接在后面,不覆盖
-        final draft = _input.text;
-        final t = draft.trim().isEmpty ? q.text : '${q.text}\n$draft';
-        _input.text = t;
-        _input.selection = TextSelection.collapsed(offset: t.length);
-        if (ref.read(draftImagesProvider).isEmpty && q.images.isNotEmpty) {
-          ref.read(draftImagesProvider.notifier).set([
-            for (final b in q.images) PickedImage('image', b),
-          ]);
-        }
-        if (q.withCanvas) setState(() => _withCanvas = true);
+        _restoreDraft(q);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _inputFocus.requestFocus();
         });
     }
+  }
+
+  /// 停下:这一轮的提问退回输入框。
+  Future<void> _stop() async {
+    final ask = await ref.read(assistantProvider.notifier).stop();
+    if (ask != null && mounted) _restoreDraft(ask);
+  }
+
+  /// 没发成的一句放回输入框:正写着的接在后面不覆盖;输入框没带图时带回它的图,
+  /// 引用创作页也带回。
+  void _restoreDraft(QueuedAsk q) {
+    final draft = _input.text;
+    final t = draft.trim().isEmpty ? q.text : '${q.text}\n$draft';
+    _input.text = t;
+    _input.selection = TextSelection.collapsed(offset: t.length);
+    if (ref.read(draftImagesProvider).isEmpty && q.images.isNotEmpty) {
+      ref.read(draftImagesProvider.notifier).set([
+        for (final b in q.images) PickedImage('image', b),
+      ]);
+    }
+    if (q.withCanvas) setState(() => _withCanvas = true);
   }
 
   /// 从某一句提问重来。和 [_send] 一样先回到底部:重来的那一轮出在最下面,
@@ -999,9 +1010,7 @@ class _AssistantPageState extends ConsumerState<AssistantPage>
                     child: running && !hasDraft
                         ? IconButton.filledTonal(
                             tooltip: context.l10n.stop,
-                            onPressed: ref
-                                .read(assistantProvider.notifier)
-                                .stop,
+                            onPressed: _stop,
                             icon: const Icon(Icons.stop, size: 20),
                           )
                         : IconButton.filled(
