@@ -549,10 +549,15 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
           if (e.origin == TagOrigin.created &&
               e.publicId != null &&
               session != null) {
-            if (_cat == TagCategory.character) {
-              await client.deletePublicOc(session.sessionId, e.publicId!);
-            } else {
-              await client.deletePublicArtist(session.sessionId, e.publicId!);
+            try {
+              if (_cat == TagCategory.character) {
+                await client.deletePublicOc(session.sessionId, e.publicId!);
+              } else {
+                await client.deletePublicArtist(session.sessionId, e.publicId!);
+              }
+            } on BackendException catch (err) {
+              // 公共条目早被删了(404):当作已删,接着删本地副本
+              if (err.status != 404) rethrow;
             }
           }
           await notifier.remove(e.id);

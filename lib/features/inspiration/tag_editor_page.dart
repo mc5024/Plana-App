@@ -622,18 +622,23 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
     }
     await _run(() async {
       final client = ref.read(backendClientProvider);
-      if (widget.cat == TagCategory.character) {
-        await client.updatePublicOc(
-          sessionId: session.sessionId,
-          enName: edit.publicId!,
-          createdBy: target,
-        );
-      } else {
-        await client.updatePublicArtist(
-          sessionId: session.sessionId,
-          id: edit.publicId!,
-          addedBy: target,
-        );
+      try {
+        if (widget.cat == TagCategory.character) {
+          await client.updatePublicOc(
+            sessionId: session.sessionId,
+            enName: edit.publicId!,
+            createdBy: target,
+          );
+        } else {
+          await client.updatePublicArtist(
+            sessionId: session.sessionId,
+            id: edit.publicId!,
+            addedBy: target,
+          );
+        }
+      } on BackendException catch (e) {
+        if (e.status == 404) throw BackendException('公共库里已没有这条');
+        rethrow;
       }
       ref.invalidate(publicTagsProvider(widget.cat));
       if (!mounted) return;
@@ -659,10 +664,15 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
         final session = ref.read(botSessionProvider).value;
         if (session == null) throw BackendException('暂未开放');
         final client = ref.read(backendClientProvider);
-        if (widget.cat == TagCategory.character) {
-          await client.deletePublicOc(session.sessionId, edit.publicId!);
-        } else {
-          await client.deletePublicArtist(session.sessionId, edit.publicId!);
+        try {
+          if (widget.cat == TagCategory.character) {
+            await client.deletePublicOc(session.sessionId, edit.publicId!);
+          } else {
+            await client.deletePublicArtist(session.sessionId, edit.publicId!);
+          }
+        } on BackendException catch (e) {
+          // 公共条目早被删了(404):当作已删,接着删本地副本
+          if (e.status != 404) rethrow;
         }
         ref.invalidate(publicTagsProvider(widget.cat));
       }
