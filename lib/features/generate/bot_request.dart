@@ -38,6 +38,9 @@ Map<String, dynamic> buildBotParams(
   /// 见 [buildNaiPayload]:透明图的 alpha 编码约定。
   bool straightAlpha = true,
   Img2ImgRef? img2img,
+
+  /// [img2img] 是原图,由后端 cover 放大到出图尺寸(后端 caps 的 img2img_fit)。
+  bool img2imgFit = false,
   List<CharRefPayload> charRefs = const [],
   List<BotVibe> vibes = const [],
   List<KreaStyleRefPayload> kreaStyleRefs = const [],
@@ -163,6 +166,7 @@ Map<String, dynamic> buildBotParams(
     // 图生图
     params['img2img'] = {
       'imageBase64': img2img.image,
+      if (img2imgFit) 'fit': 'cover',
       'strength': img2img.strength,
       'noise': img2img.noise,
     };

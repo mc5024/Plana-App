@@ -732,6 +732,37 @@ class GenerateNotifier extends Notifier<GenerateState> {
 
   void disableImg2Img() => state = state.copyWith(img2img: null);
 
+  /// 图生图放大存入:底图 + 倍率 + 强度/噪声,顶掉原有底图与遮罩。主分辨率不动,
+  /// 发送尺寸见 [Img2ImgUpscale]。
+  void setImg2ImgUpscale({
+    required Uint8List image,
+    required int srcW,
+    required int srcH,
+    required EnhanceScale scale,
+    required double strength,
+    required double noise,
+  }) {
+    state = state.copyWith(
+      img2img: Img2ImgConfig(
+        image: image,
+        strength: strength,
+        noise: noise,
+        upscale: Img2ImgUpscale(scale: scale, srcW: srcW, srcH: srcH),
+      ),
+      inpaint: null,
+    );
+    openPanel(Panel.i2i);
+  }
+
+  void updateImg2ImgScale(EnhanceScale scale) {
+    final cur = state.img2img;
+    final up = cur?.upscale;
+    if (cur == null || up == null) return;
+    state = state.copyWith(
+      img2img: cur.copyWith(upscale: up.copyWith(scale: scale)),
+    );
+  }
+
   // ---- 重绘遮罩 ----
 
   /// 遮罩编辑器存盘:底图 + 遮罩 + 强度(+ 局部重绘的回贴信息)一起落进创作页

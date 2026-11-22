@@ -87,6 +87,7 @@ Future<List<Uint8List>> streamBotTask({
   Duration timeout = const Duration(minutes: 13),
 }) async {
   final completer = Completer<List<Uint8List>>();
+  final sw = Stopwatch()..start();
   var lastStep = -1;
   // WS 和轮询都会带同一条 warning,只报一次
   var warned = false;
@@ -126,7 +127,11 @@ Future<List<Uint8List>> streamBotTask({
     }
   }
 
-  Future<void> finish(List<Uint8List> raw, List<String> urls, String via) async {
+  Future<void> finish(
+    List<Uint8List> raw,
+    List<String> urls,
+    String via,
+  ) async {
     try {
       final out = await Future.wait([
         for (var i = 0; i < raw.length; i++) toPng(raw[i], urls[i]),
@@ -347,7 +352,10 @@ Future<List<Uint8List>> streamBotTask({
   });
 
   try {
-    return await completer.future;
+    final out = await completer.future;
+    final kib = out.fold<int>(0, (a, b) => a + b.length) ~/ 1024;
+    logi('[bot] $taskId 收图 ${sw.elapsedMilliseconds}ms · $kib KiB');
+    return out;
   } finally {
     watchdog?.cancel();
     poll.cancel();

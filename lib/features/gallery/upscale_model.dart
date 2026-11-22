@@ -5,7 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/store/app_stores.dart';
 import '../../core/store/prefs_store.dart';
-import '../generate/models.dart' show isNai5Model;
+import '../generate/models.dart' show EnhanceScale, Img2ImgUpscale, isNai5Model;
+export '../generate/models.dart' show EnhanceScale;
 import '../../l10n/l10n.dart';
 
 /// 放大方式。全部走 NAI 远程、全部扣点 —— 本地 ncnn-vulkan 超分已于
@@ -70,20 +71,6 @@ bool naiV5UpscaleSupportsSize(int w, int h) => naiV5UpscalePrice(w, h) != null;
     (w: (w ~/ 16) * 16 * 2, h: (h ~/ 16) * 16 * 2);
 
 // ==================== 图生图放大(重绘)的倍率档 ====================
-
-/// 放大重绘的倍率。[factor] 为 null = Max ✨ 档:**发原图尺寸 + upscaled_enhance**,
-/// 由服务端放大到总像素上限,客户端不自己算目标尺寸(算了也只用于预估价格)。
-enum EnhanceScale {
-  max('Max', null),
-  x2('2×', 2.0),
-  x15('1.5×', 1.5),
-  x1('1×', 1.0);
-
-  const EnhanceScale(this.label, this.factor);
-
-  final String label;
-  final double? factor;
-}
 
 /// 重绘默认强度/噪声(对齐 web MAGNITUDE_PRESETS 档 3)。
 const kRedrawStrength = 0.5;
@@ -186,6 +173,25 @@ List<EnhanceScale> enhanceScaleOptions(int w, int h, String displayModel) {
   ];
 }
 
+/// 图生图放大实际用的倍率:存的那档当前模型给不了(Max 只有 V5)时,落到可用的头一个数值档。
+EnhanceScale effectiveEnhanceScale(Img2ImgUpscale u, String model) {
+  final opts = enhanceScaleOptions(u.srcW, u.srcH, model);
+  if (opts.contains(u.scale)) return u.scale;
+  return opts.firstWhere(
+    (s) => s.factor != null,
+    orElse: () => EnhanceScale.x1,
+  );
+}
+
+/// 图生图放大的发送尺寸:Max 发原图尺寸(服务端放大),数值档即 [enhanceTargetSize]。
+({int w, int h}) img2imgUpscaleSendSize(
+  EnhanceScale scale,
+  int srcW,
+  int srcH,
+) => scale.factor == null
+    ? (w: srcW, h: srcH)
+    : enhanceTargetSize(srcW, srcH, scale);
+
 // ==================== 面板的参数(整体持久化) ====================
 
 /// 官方 Magnitude 五档:点一下同时设好强度与噪声,两个滑杆仍可继续微调。
@@ -197,6 +203,18 @@ const kMagnitudePresets = <({String label, double strength, double noise})>[
   (label: '4', strength: 0.6, noise: 0),
   (label: '5', strength: 0.7, noise: 0.1),
 ];
+
+/// 强度/噪声正好命中哪一档 Magnitude;都不命中(手动微调过)= -1。
+int magnitudeIndexOf(double strength, double noise) {
+  for (var i = 0; i < kMagnitudePresets.length; i++) {
+    final m = kMagnitudePresets[i];
+    if ((m.strength - strength).abs() < 1e-6 &&
+        (m.noise - noise).abs() < 1e-6) {
+      return i;
+    }
+  }
+  return -1;
+}
 
 /// 放大面板的全部选择。一次性持久化,下次打开原样恢复。
 ///
@@ -228,16 +246,7 @@ class UpscaleSettings {
   );
 
   /// 当前强度/噪声正好命中哪一档 Magnitude;都不命中(手动微调过)= -1。
-  int get magnitudeIndex {
-    for (var i = 0; i < kMagnitudePresets.length; i++) {
-      final m = kMagnitudePresets[i];
-      if ((m.strength - strength).abs() < 1e-6 &&
-          (m.noise - noise).abs() < 1e-6) {
-        return i;
-      }
-    }
-    return -1;
-  }
+  int get magnitudeIndex => magnitudeIndexOf(strength, noise);
 
   Map<String, dynamic> toJson() => {
     'method': method.name,

@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/util/image_ops.dart';
+import '../../../core/ui/labeled_dropdown.dart';
 import '../../../core/util/image_pick.dart';
+import '../../gallery/upscale_model.dart';
 import '../../inpaint/inpaint_overlay.dart';
 import '../../shell/shell_state.dart';
 import '../canvas_state.dart';
@@ -97,6 +99,9 @@ class _Img2ImgCardState extends ConsumerState<Img2ImgCard> {
     final hasMask = job != null;
 
     if (hasMask) return _maskBody(state, notifier, job, expanded);
+    if (cfg?.upscale case final up? when hasImage) {
+      return _upscaleBody(state, notifier, cfg!, up, expanded);
+    }
 
     return SectionCard(
       icon: Icons.image_outlined,
@@ -207,6 +212,139 @@ class _Img2ImgCardState extends ConsumerState<Img2ImgCard> {
                 ),
               ],
             ),
+    );
+  }
+
+  /// 图生图放大形态:缩略图 + 强度/噪声,下面一行倍率与 Magnitude 两个下拉;
+  /// 标题栏读数是发送尺寸(Max 档由服务端放大,读数写 Max)。倍率按当前模型
+  /// 列,存的那档给不了时显示实际生效的那档。主分辨率不动。
+  Widget _upscaleBody(
+    GenerateState state,
+    GenerateNotifier notifier,
+    Img2ImgConfig cfg,
+    Img2ImgUpscale up,
+    bool expanded,
+  ) {
+    final scheme = context.scheme;
+    final model = state.params.model;
+    final scales = enhanceScaleOptions(up.srcW, up.srcH, model);
+    final scale = effectiveEnhanceScale(up, model);
+    final t = img2imgUpscaleSendSize(scale, up.srcW, up.srcH);
+    final size = scale.factor == null ? 'Max' : '${t.w}×${t.h}';
+    final mag = magnitudeIndexOf(cfg.strength, cfg.noise);
+    return SectionCard(
+      icon: Icons.auto_fix_high,
+      title: context.l10n.img2imgUpscale,
+      reorderIndex: widget.reorderIndex,
+      badge: CountBadge(size),
+      actions: [
+        RoundIconBtn(
+          Icons.delete_outline,
+          tooltip: context.l10n.removeBaseImage,
+          color: scheme.error,
+          onTap: notifier.disableImg2Img,
+        ),
+        RoundIconBtn(
+          Icons.add,
+          tooltip: context.l10n.changeBaseImage,
+          color: scheme.primary,
+          onTap: _onPick,
+        ),
+      ],
+      expanded: expanded,
+      onHeaderTap: () => notifier.togglePanel(Panel.i2i),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 90,
+                height: 118,
+                child: Material(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => _inpaintExternal(cfg.image!),
+                    child: StripeThumb(
+                      width: 90,
+                      height: 118,
+                      radius: 12,
+                      image: cfg.image,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  children: [
+                    ParamSlider(
+                      label: context.l10n.paramStrength,
+                      help: Help.img2imgStrength,
+                      value: cfg.strength.clamp(kStrengthMin, kStrengthMax),
+                      min: kStrengthMin,
+                      max: kStrengthMax,
+                      divisions: ((kStrengthMax - kStrengthMin) / 0.05).round(),
+                      valueText: cfg.strength.toStringAsFixed(2),
+                      onChanged: (v) => notifier.updateImg2Img(strength: v),
+                    ),
+                    const SizedBox(height: 6),
+                    ParamSlider(
+                      label: context.l10n.paramNoise,
+                      help: Help.img2imgNoise,
+                      value: cfg.noise.clamp(0, kNoiseMax),
+                      max: kNoiseMax,
+                      divisions: (kNoiseMax / 0.01).round(),
+                      valueText: cfg.noise.toStringAsFixed(2),
+                      onChanged: (v) => notifier.updateImg2Img(noise: v),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: LabeledDropdown<EnhanceScale>(
+                  label: context.l10n.scaleLabel,
+                  value: scale,
+                  items: [for (final s in scales) (value: s, text: s.label)],
+                  onChanged: notifier.updateImg2ImgScale,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: LabeledDropdown<int>(
+                  label: context.l10n.magnitudeLabel,
+                  value: mag,
+                  items: [
+                    for (var i = 0; i < kMagnitudePresets.length; i++)
+                      (
+                        value: i,
+                        text: context.l10n.magnitudeN(
+                          kMagnitudePresets[i].label,
+                        ),
+                      ),
+                    if (mag < 0) (value: -1, text: context.l10n.sizeCustom),
+                  ],
+                  onChanged: (i) {
+                    if (i < 0) return;
+                    notifier.updateImg2Img(
+                      strength: kMagnitudePresets[i].strength,
+                      noise: kMagnitudePresets[i].noise,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

@@ -4177,6 +4177,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String redrawStartMax(int w, int h, String model) {
+  @override
+  String upscaleStart(int w, int h) {
+    return 'Starting V5 upscale $w×$h';
+  }
+
+  @override
+  String get addToCreate => 'Add to Create';
+
+  @override
+  String get savedToImg2ImgUpscale => 'Saved to img2img upscale';
+
     return 'Starting Max enhance ≈$w×$h · $model';
   }
 

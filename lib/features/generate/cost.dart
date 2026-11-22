@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import '../gallery/upscale_model.dart' show enhanceMaxTargetSize;
 import 'models.dart';
 
 /// V5 涨价系数。官方前端:base 算完后 `if (family === v5) M *= 1.5`。
@@ -63,7 +64,12 @@ int estimateCost(
 }) {
   final p = s.params;
   if (isModalModel(p.model)) return 0; // Anima / Krea 走 Modal 后端,不扣 Anlas
-  final pixels = p.width * p.height;
+  final i2i = s.img2img;
+  // Max 放大重绘发原图尺寸,按服务端放大后的尺寸计价
+  final out = i2i?.upscaledEnhance == true
+      ? enhanceMaxTargetSize(p.width, p.height)
+      : (w: p.width, h: p.height);
+  final pixels = out.w * out.h;
   final free =
       isOpus &&
       p.naiSteps <= 28 &&
@@ -75,7 +81,6 @@ int estimateCost(
     isV5: isNai5Model(p.model),
     medium: isNai5MediumModel(p.model),
   );
-  final i2i = s.img2img;
   if (i2i?.image != null) baseCost = max(2, (baseCost * i2i!.strength).ceil());
   // 两笔附加费都按**模型是否真会下发**计:V5 不支持 Vibe / 角色参考,载荷里
   // 整组剥离(见 gen_modules.stripHiddenModules),再计费就是收一笔没发生的钱。

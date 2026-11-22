@@ -4,6 +4,8 @@ import 'package:flutter/material.dart' show IconData, Icons;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/store/app_stores.dart';
+import '../gallery/upscale_model.dart'
+    show effectiveEnhanceScale, img2imgUpscaleSendSize;
 import 'models.dart';
 import 'prompt_sections.dart';
 import '../../l10n/l10n.dart';
@@ -271,6 +273,16 @@ GenerateState stripHiddenModules(GenerateState s, GenModuleSettings ms) {
   ) when w != out.params.width || h != out.params.height) {
     out = out.copyWith(
       params: out.params.copyWith(width: w, height: h),
+    );
+  }
+  // 图生图放大同理:按倍率算出的发送尺寸换进快照,Max 档带 upscaled_enhance
+  final i2i = out.img2img;
+  if (i2i?.upscale case final u? when i2i!.image != null) {
+    final scale = effectiveEnhanceScale(u, model);
+    final t = img2imgUpscaleSendSize(scale, u.srcW, u.srcH);
+    out = out.copyWith(
+      img2img: i2i.copyWith(upscaledEnhance: scale.factor == null),
+      params: out.params.copyWith(width: t.w, height: t.h),
     );
   }
   return out;

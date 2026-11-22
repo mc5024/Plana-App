@@ -3826,6 +3826,17 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String redrawStartMax(int w, int h, String model) {
+  @override
+  String upscaleStart(int w, int h) {
+    return '开始 V5 超分 $w×$h';
+  }
+
+  @override
+  String get addToCreate => '存入创作页';
+
+  @override
+  String get savedToImg2ImgUpscale => '已存入图生图放大';
+
     return '开始 Max 重绘 ≈$w×$h · $model';
   }
 

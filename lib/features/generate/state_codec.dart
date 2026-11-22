@@ -127,6 +127,8 @@ Future<EncodedState> encodeGenerateState(
         'strength': i2i.strength,
         'noise': i2i.noise,
         'image': await putImg(i2i.image),
+        if (i2i.upscale case final u?)
+          'upscale': {'scale': u.scale.name, 'w': u.srcW, 'h': u.srcH},
       },
     'params': {
       'model': p.model,
@@ -387,6 +389,7 @@ Future<GenerateState> decodeGenerateState(
         strength: (e['strength'] as num?)?.toDouble() ?? 0.7,
         noise: (e['noise'] as num?)?.toDouble() ?? 0.0,
         image: bytes,
+        upscale: _decodeI2iUpscale(e['upscale']),
       );
     }
   }
@@ -666,3 +669,12 @@ List<String> _strings(Object? raw) => raw is List
           if (x is String && x.isNotEmpty) x,
       ]
     : const [];
+
+Img2ImgUpscale? _decodeI2iUpscale(Object? v) {
+  if (v is! Map) return null;
+  final scale = EnhanceScale.values.asNameMap()[v['scale']];
+  final w = (v['w'] as num?)?.toInt() ?? 0;
+  final h = (v['h'] as num?)?.toInt() ?? 0;
+  if (scale == null || w <= 0 || h <= 0) return null;
+  return Img2ImgUpscale(scale: scale, srcW: w, srcH: h);
+}

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/auth/auth_mode.dart';
 import '../../core/auth/bot_session_store.dart';
 import '../../core/net/backend_client.dart';
+import '../../core/net/gen_abort.dart';
 import '../../core/net/nai_client.dart';
 import '../../core/net/nai_gate.dart';
 import '../../core/store/app_stores.dart';
@@ -23,14 +24,13 @@ import '../../l10n/l10n.dart';
 /// 输入原图 PNG + 尺寸;返回 (超分 PNG, 结果宽高)。
 /// 远程一次性调用无逐步进度 —— 只经 [onStage] 报阶段。
 Future<({Uint8List png, int width, int height})> upscaleNai(
-  WidgetRef ref,
+  Ref ref,
   Uint8List srcPng, {
   required int width,
   required int height,
   void Function(String stage)? onStage,
+  GenAbort? abort,
 }) async {
-  onStage?.call(l10nNow.encodingImage);
-  final b64 = base64Encode(srcPng);
   final mode = ref.read(authModeProvider).value;
 
   Uint8List out;
@@ -42,7 +42,7 @@ Future<({Uint8List png, int width, int height})> upscaleNai(
         .read(backendClientProvider)
         .upscale(
           sessionId: session.sessionId,
-          imageBase64: b64,
+          image: srcPng,
           width: width,
           height: height,
           scale: 2,
@@ -50,12 +50,15 @@ Future<({Uint8List png, int width, int height})> upscaleNai(
           model: kNaiV5UpscaleModel,
           declaredBlurSigma: 0,
         );
-    if (!r.success || r.imageBase64 == null || r.imageBase64!.isEmpty) {
+    final img = r.image;
+    if (!r.success || img == null || img.isEmpty) {
       throw Exception(r.message.isNotEmpty ? r.message : 'NAI 超分失败');
     }
     onStage?.call(l10nNow.receivingResult);
-    out = base64Decode(r.imageBase64!);
+    out = img;
   } else {
+    onStage?.call(l10nNow.encodingImage);
+    final b64 = base64Encode(srcPng);
     onStage?.call(l10nNow.uploadingNai);
     // 占一个直连槽再打:超分和生成花的是同一个账号、撞的是同一个限流桶。
     // 不占的话「生成中顺手点一次超分」必 429(NAI 同 Key 不许并发)。
@@ -63,7 +66,10 @@ Future<({Uint8List png, int width, int height})> upscaleNai(
     // paid:超分一定扣点(按源图像素 1–4 点),所以没勾「参与点数生成」的 Key
     // 不参与 —— 白嫖号的点数不该被超分悄悄花掉。用哪把由闸门定。
     // 打哪台机器跟着闸门给的那把 Key 走(第三方的 key 只在它自己那台上有效)。
-    out = await ref.read(naiGateProvider).run(paid: true, (token, base) {
+    out = await ref.read(naiGateProvider).run(paid: true, abort: abort, (
+      token,
+      base,
+    ) {
       if (token == null || token.isEmpty) {
         throw Exception(l10nNow.noPaidToken);
       }

@@ -352,12 +352,44 @@ class InpaintPaste {
       (x: tightX, y: tightY, w: tightW, h: tightH);
 }
 
+/// 放大重绘的倍率。[factor] 为 null = Max ✨ 档:**发原图尺寸 + upscaled_enhance**,
+/// 由服务端放大到总像素上限,客户端不自己算目标尺寸(算了也只用于预估价格)。
+enum EnhanceScale {
+  max('Max', null),
+  x2('2×', 2.0),
+  x15('1.5×', 1.5),
+  x1('1×', 1.0);
+
+  const EnhanceScale(this.label, this.factor);
+
+  final String label;
+  final double? factor;
+}
+
+/// 图生图放大:底图按倍率重新生成。[srcW]×[srcH] 是底图原尺寸,发送尺寸由它和
+/// 倍率算(见 `img2imgUpscaleSendSize`),主分辨率不动。
+class Img2ImgUpscale {
+  const Img2ImgUpscale({
+    required this.scale,
+    required this.srcW,
+    required this.srcH,
+  });
+
+  final EnhanceScale scale;
+  final int srcW;
+  final int srcH;
+
+  Img2ImgUpscale copyWith({EnhanceScale? scale}) =>
+      Img2ImgUpscale(scale: scale ?? this.scale, srcW: srcW, srcH: srcH);
+}
+
 class Img2ImgConfig {
   const Img2ImgConfig({
     this.strength = 0.7,
     this.noise = 0.0,
     this.image,
     this.upscaledEnhance = false,
+    this.upscale,
   });
 
   final double strength;
@@ -371,16 +403,21 @@ class Img2ImgConfig {
   /// 倍率是客户端自己把 params 的宽高算好再发的。
   final bool upscaledEnhance;
 
+  /// 非空 = 图生图放大形态。
+  final Img2ImgUpscale? upscale;
+
   Img2ImgConfig copyWith({
     double? strength,
     double? noise,
     Uint8List? image,
     bool? upscaledEnhance,
+    Img2ImgUpscale? upscale,
   }) => Img2ImgConfig(
     strength: strength ?? this.strength,
     noise: noise ?? this.noise,
     image: image ?? this.image,
     upscaledEnhance: upscaledEnhance ?? this.upscaledEnhance,
+    upscale: upscale ?? this.upscale,
   );
 }
 

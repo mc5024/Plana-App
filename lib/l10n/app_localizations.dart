@@ -6754,6 +6754,24 @@ abstract class AppLocalizations {
   /// **'缺少参数快照,无法重绘放大'**
   String get redrawNoSnapshotShort;
 
+  /// No description provided for @upscaleStart.
+  ///
+  /// In zh, this message translates to:
+  /// **'开始 V5 超分 {w}×{h}'**
+  String upscaleStart(int w, int h);
+
+  /// No description provided for @addToCreate.
+  ///
+  /// In zh, this message translates to:
+  /// **'存入创作页'**
+  String get addToCreate;
+
+  /// No description provided for @savedToImg2ImgUpscale.
+  ///
+  /// In zh, this message translates to:
+  /// **'已存入图生图放大'**
+  String get savedToImg2ImgUpscale;
+
   /// No description provided for @redrawStartMax.
   ///
   /// In zh, this message translates to:

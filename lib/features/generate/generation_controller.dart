@@ -28,6 +28,7 @@ import '../../core/util/image_ops.dart';
 import '../../core/util/transparency.dart';
 import '../gallery/gallery_state.dart';
 import '../gallery/upscale_model.dart' show enhanceMaxTargetSize;
+import '../gallery/upscale_nai.dart';
 import '../gallery/models.dart' show ResultBadge;
 import '../inpaint/inpaint_ops.dart';
 import '../shell/shell_state.dart';
@@ -252,6 +253,7 @@ class GenerationNotifier extends Notifier<GenPool> {
 
   DateTime? _lastPush; // 通知节流游标
   final _runs = <String, _JobRun>{}; // 每条任务的运行时,键同 GenJob.id
+  final _upscales = <String, GenAbort>{}; // 放大任务的中止令牌,键同 GenJob.id
   var _seq = 0; // 提交序号,只增
   int _focusRevision = 0;
   var _streamMisses = 0; // 直连流式结束却没收到终图的次数(本次启动内)
@@ -394,6 +396,12 @@ class GenerationNotifier extends Notifier<GenPool> {
   void cancelJob(String id) {
     // 终图已收到后必须完成本地保存，不能再向服务端发送取消。
     if (_job(id)?.stage == GenJobStage.saving) return;
+    final up = _upscales.remove(id);
+    if (up != null) {
+      up.abort();
+      _remove(id);
+      return;
+    }
     final run = _runs[id];
     logi('[gen] cancel job=$id run=${run != null}');
     if (run == null) return;
@@ -413,6 +421,83 @@ class GenerationNotifier extends Notifier<GenPool> {
       }());
     }
     run.abort.abort();
+  }
+
+  /// 图库 NAI 超分:和出图一样挂任务卡、接管画布(源图作预览,只有阶段文案),
+  /// 池空时切到图库。成图入库;失败同出图。取消:等位时直接撤;请求已发出则丢弃结果。
+  Future<void> upscale({
+    required Uint8List source,
+    required int width,
+    required int height,
+    required GallerySaveTarget galleryTarget,
+    int seed = 0,
+    GenerateState? input,
+    bool Function()? canSelect,
+  }) async {
+    if (state.jobs.length >= kMaxPoolJobs) {
+      ref.read(genNoticeProvider.notifier).show(l10nNow.poolFull(kMaxPoolJobs));
+      return;
+    }
+    final job = GenJob(
+      galleryTarget: galleryTarget,
+      id: 'job${_seq++}',
+      kind: GenJobKind.upscale,
+      stage: GenJobStage.preparing,
+      width: width,
+      height: height,
+      seq: _seq,
+      preview: source,
+      note: l10nNow.preparingEllipsis,
+    );
+    final firstOfBatch = state.jobs.isEmpty;
+    final abort = GenAbort();
+    _upscales[job.id] = abort;
+    _focusRevision++;
+    state = state.copyWith(
+      jobs: [...state.jobs, job],
+      selectedId: job.id,
+      clearError: true,
+    );
+    if (firstOfBatch && !_inFlow) {
+      ref.read(shellIndexProvider.notifier).select(kTabGallery);
+    }
+    try {
+      final r = await upscaleNai(
+        ref,
+        await ensurePng(source),
+        width: width,
+        height: height,
+        abort: abort,
+        onStage: (s) => _patch(job.id, (j) => j.copyWith(note: s)),
+      );
+      if (abort.aborted) return;
+      _patch(job.id, (j) => j.copyWith(stage: GenJobStage.saving));
+      await ref
+          .read(galleryProvider.notifier)
+          .addResultToGallery(
+            target: galleryTarget,
+            canSelect: canSelect,
+            bytes: r.png,
+            width: r.width,
+            height: r.height,
+            seed: seed,
+            badge: ResultBadge.upscaled,
+            input: input,
+          );
+      unawaited(ref.read(anlasProvider.notifier).refresh());
+    } catch (e) {
+      if (abort.aborted) return;
+      final msg = l10nNow.upscaleFailed('$e');
+      _remove(job.id);
+      if (state.jobs.isEmpty) {
+        state = state.copyWith(error: msg);
+      } else {
+        ref.read(genNoticeProvider.notifier).show(msg);
+      }
+    } finally {
+      _upscales.remove(job.id);
+      _remove(job.id);
+    }
   }
 
   /// 用户取消一条:摘掉它(不弹错误)。池子空了才撤通知 —— 还有别的在跑时
@@ -1128,7 +1213,10 @@ class GenerationNotifier extends Notifier<GenPool> {
     while (true) {
       try {
         // 参考图:CR / 图生图离线处理;vibe 走统一编码服务(缓存,避免重复扣 2 Anlas)
-        final img2img = await _processImg2Img(s);
+        final img2img = await _prepImg2Img(
+          s,
+          serverFit: (await client.caps()).img2imgFit,
+        );
         final charRefs = await _processCharRefs(s);
         final prepared = await _prepareVibes(s);
         final styleRefs = await _processKreaStyleRefs(s);
@@ -1139,7 +1227,8 @@ class GenerationNotifier extends Notifier<GenPool> {
           presetId: preset.presetId,
           qualityToggle: preset.qualityToggle,
           straightAlpha: _straightAlpha,
-          img2img: img2img,
+          img2img: img2img?.ref,
+          img2imgFit: img2img?.fit ?? false,
           charRefs: charRefs,
           vibes: [
             for (final v in prepared)
@@ -1345,34 +1434,57 @@ class GenerationNotifier extends Notifier<GenPool> {
 
   /// 图生图预处理结果,按源图对象 + 目标尺寸缓存:重抽、循环、队列续张不再重做
   /// 解码 / 缩放 / 编码。源图对象释放时跟着回收。
-  static final _img2imgCache = Expando<({int w, int h, String b64})>();
+  static final _img2imgCache =
+      Expando<({int w, int h, bool fit, String b64})>();
 
   /// 图生图底图:cover 到当前目标分辨率 → PNG base64。无底图返回 null。
   /// 快照带重绘任务时跳过(重绘与图生图互斥,inpaint 优先)。
-  Future<Img2ImgRef?> _processImg2Img(GenerateState s) async {
+  Future<Img2ImgRef?> _processImg2Img(GenerateState s) async =>
+      (await _prepImg2Img(s))?.ref;
+
+  /// 同 [_processImg2Img]。[serverFit] = 后端能把底图放大到出图尺寸:不比出图尺寸
+  /// 大的底图直接发原图(fit 为 true),由后端 cover 放大。
+  Future<({Img2ImgRef ref, bool fit})?> _prepImg2Img(
+    GenerateState s, {
+    bool serverFit = false,
+  }) async {
     if (s.inpaint != null) return null;
     final cfg = s.img2img;
     final img = cfg?.image;
     if (cfg == null || img == null) return null;
     final w = s.params.width, h = s.params.height;
+    var fit = false;
+    if (serverFit && isNaiImageFormat(img)) {
+      final (sw, sh) = imageSizeOf(img) ?? await decodeImageSize(img);
+      fit = sw * sh <= w * h;
+    }
     var b64 = _img2imgCache[img];
-    if (b64 == null || b64.w != w || b64.h != h) {
-      // 源图真带 alpha 才保住它:透明图垫黑底 = 把透明区烧成黑色,
-      // 而不透明图垫不垫都看不见(cover 铺满画布),维持旧行为即可。
-      final png = await coverResizePng(
-        img,
-        w,
-        h,
-        keepAlpha: await pngHasAlpha(img),
-      );
-      b64 = (w: w, h: h, b64: base64Encode(png));
+    if (b64 == null || b64.w != w || b64.h != h || b64.fit != fit) {
+      final String data;
+      if (fit) {
+        data = base64Encode(img);
+      } else {
+        // 源图真带 alpha 才保住它:透明图垫黑底 = 把透明区烧成黑色,
+        // 而不透明图垫不垫都看不见(cover 铺满画布),维持旧行为即可。
+        final png = await coverResizePng(
+          img,
+          w,
+          h,
+          keepAlpha: await pngHasAlpha(img),
+        );
+        data = base64Encode(png);
+      }
+      b64 = (w: w, h: h, fit: fit, b64: data);
       _img2imgCache[img] = b64;
     }
     return (
-      image: b64.b64,
-      strength: cfg.strength,
-      noise: cfg.noise,
-      upscaledEnhance: cfg.upscaledEnhance,
+      ref: (
+        image: b64.b64,
+        strength: cfg.strength,
+        noise: cfg.noise,
+        upscaledEnhance: cfg.upscaledEnhance,
+      ),
+      fit: fit,
     );
   }
 

@@ -10,7 +10,8 @@ import '../gallery/albums/album_models.dart';
 
 /// 任务类型。重绘与普通出图并行不冲突,但**重绘之间仍是一次一条** ——
 /// 回贴信息(裁切框/原图)是随会话共享的,两条同时跑会串。
-enum GenJobKind { normal, inpaint }
+/// [upscale] 是图库的 NAI 超分:预览是源图,只有阶段文案、没有逐步进度。
+enum GenJobKind { normal, inpaint, upscale }
 
 /// 任务所处阶段。分这么细是因为每一档对用户的含义都不同:
 /// 「池满等位」和「服务端排着」都显示成排队会让人以为是同一件事,
