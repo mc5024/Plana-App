@@ -93,7 +93,11 @@ class NaiKeyStatusCache {
   /// 加上别处用掉的,不必每张之后都重查一趟、让下一单干等。快见底了才作废。
   void spent(NaiTarget t) {
     final u = _got[t]?.sub?.usage;
-    if (u != null && !u.isNegative && u.percent >= _margin) return;
+    if (u != null &&
+        !u.isNegative &&
+        u.percent + u.purchasedPercent >= _margin) {
+      return;
+    }
     invalidate(t);
   }
 

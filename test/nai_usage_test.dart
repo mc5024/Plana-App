@@ -7,8 +7,19 @@ import 'package:plana_app/core/net/nai_client.dart';
 /// 「约多少张」、「回充多快」全从这里取数 —— 钉住,免得日后有人顺手改成
 /// 「差不多的」数字,四处读数就各自漂了。
 void main() {
-  NaiUsage u({double pct = 50, bool neg = false, int secs = 0, int n = 1}) =>
-      (percent: pct, isNegative: neg, secondsToNextPct: secs, accounts: n);
+  NaiUsage u({
+    double pct = 50,
+    bool neg = false,
+    int secs = 0,
+    int n = 1,
+    double extra = 0,
+  }) => (
+    percent: pct,
+    isNegative: neg,
+    secondsToNextPct: secs,
+    accounts: n,
+    purchasedPercent: extra,
+  );
 
   group('usage 块解析', () {
     test('整块缺省 → null(非 Opus / 老服务端)', () {
@@ -49,6 +60,48 @@ void main() {
       expect(v.percent, 87.4);
       expect(v.isNegative, isFalse);
       expect(v.secondsToNextPct, 6048);
+    });
+
+    test('purchasedPercent:缺省 0,负数兜到 0', () {
+      expect(parseNaiUsage(const {'percent': 60})!.purchasedPercent, 0);
+      expect(
+        parseNaiUsage(const {
+          'percent': 60,
+          'purchasedPercent': 200,
+        })!.purchasedPercent,
+        200.0,
+      );
+      expect(
+        parseNaiUsage(const {
+          'percent': 60,
+          'purchasedPercent': -5,
+        })!.purchasedPercent,
+        0,
+      );
+    });
+  });
+
+  group('加购额度(Extra Usage)', () {
+    test('合计 = 常规 + 加购,加购不封顶 100', () {
+      expect(u(pct: 80, extra: 300).extraPct, 300);
+      expect(u(pct: 80, extra: 300).totalPct, 380);
+    });
+
+    test('常规用完时读数只剩加购', () {
+      expect(u(pct: 0, extra: 150).totalPct, 150);
+    });
+
+    test('张数按合计折算', () {
+      expect(u(pct: 100, extra: 400).imagesRemaining, 8650); // 17.3 × 500
+    });
+
+    test('距充满只看常规额度', () {
+      expect(u(pct: 90, secs: 86400, extra: 200).daysToFull, closeTo(10, 1e-9));
+    });
+
+    test('加购还有 5% 以上就不算低电', () {
+      expect(u(pct: 0, extra: 50).isLowOrEmpty, isFalse);
+      expect(u(pct: 3, extra: 4).isLowOrEmpty, isTrue);
     });
   });
 

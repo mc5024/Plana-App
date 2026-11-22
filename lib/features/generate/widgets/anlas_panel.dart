@@ -68,9 +68,9 @@ class AnlasChip extends ConsumerWidget {
         label: q.isAdmin ? '∞' : '${quotaPct(q).round()}%',
       ),
       (_, final NaiUsage u) => (
-        fraction: u.fullPct > 0 ? u.batteryPct / u.fullPct : 0.0,
+        fraction: u.totalPct / max(u.fullPct, u.totalPct),
         color: usageColor(context, u),
-        label: '${u.batteryPct.round()}%',
+        label: '${u.totalPct.round()}%',
       ),
       _ => null,
     };
@@ -158,6 +158,9 @@ Color quotaColor(BuildContext context, NaiQuota q) {
 /// 100%,超出的部分换个颜色叠画在上面(374% = 底下三整圈 + 上面第四圈 74%)。
 /// 把 500% 压成满刻度的话,「一个号见底另一个满仓」和「两个号各剩一半」画出来
 /// 一模一样,看不出池子其实已经瘸了一条腿。
+///
+/// 有加购额度时改成官网那种画法:加购段换强调色接在常规段后面,整条按
+/// max(满值, 合计) 缩放,不画预测段。
 class UsageBar extends StatelessWidget {
   const UsageBar({super.key, required this.usage, this.height = 10});
 
@@ -179,6 +182,16 @@ class UsageBar extends StatelessWidget {
     final scheme = context.scheme;
     final color = usageColor(context, usage);
     final pct = usage.batteryPct;
+    if (usage.extraPct > 0) {
+      final scale = max(usage.fullPct, usage.totalPct);
+      return _Bar(
+        height: height,
+        fills: [
+          (usage.totalPct / scale, scheme.tertiary),
+          (pct / scale, color),
+        ],
+      );
+    }
     final ghost = usage.isNegative
         ? pct
         : (pct + usage.refillPctPerDay).clamp(0.0, usage.fullPct);
@@ -393,7 +406,7 @@ class _AnlasSheetState extends ConsumerState<_AnlasSheet> {
               _row(
                 context,
                 '全平台额度',
-                usage == null ? '—' : '${_fmtPct(usage.batteryPct)}%',
+                usage == null ? '—' : '${_fmtPct(usage.totalPct)}%',
               ),
             ] else if (usage != null) ...[
               // 按小时报:一天回多少是个抽象的数,一小时回几张才对得上「等一会儿
@@ -703,6 +716,16 @@ class UsageCard extends StatelessWidget {
                   weight: FontWeight.w700,
                 ).copyWith(color: color, height: 1),
               ),
+              // 加购额度跟在后面,颜色同电池条上的加购段
+              if (usage.extraPct > 0)
+                Text(
+                  '+${_fmtPct(usage.extraPct)}',
+                  style: mono(
+                    context,
+                    size: 26,
+                    weight: FontWeight.w700,
+                  ).copyWith(color: scheme.tertiary, height: 1),
+                ),
               Text(
                 '%',
                 style: mono(

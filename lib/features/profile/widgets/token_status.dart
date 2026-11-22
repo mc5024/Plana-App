@@ -29,7 +29,7 @@ Widget tokenStatusLine(
         naiTierName(s.tier),
         'Anlas ${fmtInt(s.anlas)}',
         // 非 Opus / 读不到时不提,不顶个假的 0%
-        if (usage != null) context.l10n.quotaPct(usage.batteryPct.round()),
+        if (usage != null) context.l10n.quotaPct(usage.totalPct.round()),
       ].join(' · '),
       // 引导页那格右边还挤着「保存」按钮,折行就破了四态同高
       maxLines: 1,

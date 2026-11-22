@@ -18,6 +18,7 @@ NaiSubscription _sub({bool empty = false, double pct = 50}) => (
     isNegative: empty,
     secondsToNextPct: 0,
     accounts: 1,
+    purchasedPercent: 0.0,
   ),
 );
 
@@ -43,7 +44,10 @@ void main() {
 
   // 查的途中这个号跑完了一张:查回来的是那张之前的额度,不能交出去。
   test('查的途中作废:重查,不交出作废前的读数', () async {
-    final replies = [Completer<NaiSubscription>(), Completer<NaiSubscription>()];
+    final replies = [
+      Completer<NaiSubscription>(),
+      Completer<NaiSubscription>(),
+    ];
     var calls = 0;
     final cache = NaiKeyStatusCache((_) => replies[calls++].future);
 

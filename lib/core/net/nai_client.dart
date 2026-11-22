@@ -124,11 +124,15 @@ final _shortIdleIo = IOClient(_shortIdleHttp);
 ///                      Opus 号的个数,那时 [percent] 是**平均水位** —— 界面上
 ///                      的读数和折算张数都要乘回号数(每个号满值都是 ≈1730 张),
 ///                      换算一律走 [NaiUsageX],别直接读这个字段去画
+/// - [purchasedPercent] 单独购买的 Extra Usage(Opus Usage Boost,每个 +100%,
+///                      最多 400%)。不回充,常规额度用完才扣它;多号时同 [percent]
+///                      是平均值
 typedef NaiUsage = ({
   double percent,
   bool isNegative,
   int secondsToNextPct,
   int accounts,
+  double purchasedPercent,
 });
 
 /// `/user/subscription` 响应里的 `usage` 块 → [NaiUsage];整块缺省时返回 null。
@@ -149,6 +153,10 @@ NaiUsage? parseNaiUsage(Object? raw) {
     isNegative: raw['isNegative'] == true,
     secondsToNextPct: (raw['timeUntilNextPercent'] as num?)?.toInt() ?? 0,
     accounts: max(1, (raw['accounts'] as num?)?.toInt() ?? 1),
+    purchasedPercent: max(
+      0.0,
+      (raw['purchasedPercent'] as num?)?.toDouble() ?? 0,
+    ),
   );
 }
 
@@ -202,8 +210,14 @@ extension NaiUsageX on NaiUsage {
   double get batteryPct =>
       isNegative ? 0 : (percent * accounts).clamp(0.0, fullPct).toDouble();
 
-  /// 约合还能出多少张免费尺寸 V5 图。[batteryPct] 已是池子合计,不再乘号数。
-  int get imagesRemaining => (imagesPerPct * batteryPct).round();
+  /// 加购的 Extra Usage 读数(池子合计),不封顶 100。
+  double get extraPct => purchasedPercent * accounts;
+
+  /// 常规 + 加购,一共还剩多少。
+  double get totalPct => batteryPct + extraPct;
+
+  /// 约合还能出多少张免费尺寸 V5 图(常规 + 加购)。读数已是池子合计,不再乘号数。
+  int get imagesRemaining => (imagesPerPct * totalPct).round();
 
   /// 回充速率(百分点/天,**池子合计**:每个号都在各自回充,所以乘号数),
   /// 保留一位小数;拿不到回充节奏时为 0。
@@ -236,7 +250,8 @@ extension NaiUsageX on NaiUsage {
   ///
   /// 这里**故意读 percent 原值**(单号口径)而不是相加后的读数:门槛问的是
   /// 「一个号还剩多少」,跟着号数放大的话,5 个号各剩 4% 也会被算作健康。
-  bool get isLowOrEmpty => isNegative || percent < 5;
+  /// 加购额度还有 5% 以上时不算低电。
+  bool get isLowOrEmpty => (isNegative || percent < 5) && purchasedPercent < 5;
 }
 
 /// NovelAI 直连客户端(v1:App 用用户自己的 Bearer token 直接打 NAI)。

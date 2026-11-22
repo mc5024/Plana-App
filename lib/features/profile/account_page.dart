@@ -362,8 +362,8 @@ List<NaiKey> _quickSwitchSlice(List<NaiKey> on) {
 /// 免费生成的号,它的点数一分都不会被花,算进来就是虚数。
 ///
 /// 额度按**相加**算(两个号各 87% / 50% → 137%),不是取平均:平均水位看着像
-/// 单号的电量,跟「一共还能出多少张」对不上 —— 这套口径与 [NaiUsageX.batteryPct]
-/// 一致(那边给 bot 的号池用的也是相加)。
+/// 单号的电量,跟「一共还能出多少张」对不上 —— 这套口径与 [NaiUsageX.totalPct]
+/// 一致(那边给 bot 的号池用的也是相加),加购额度也算在内。
 ///
 /// 还没查到的号不计入,所以查询过程中数字是**往上长**的,不会先给个偏小的定值。
 class _TotalsLine extends ConsumerWidget {
@@ -389,7 +389,7 @@ class _TotalsLine extends ConsumerWidget {
       final u = sub.usage;
       if (u != null && k.joinFree) {
         hasUsage = true;
-        pct += u.batteryPct;
+        pct += u.totalPct;
       }
     }
     if (got == 0) {

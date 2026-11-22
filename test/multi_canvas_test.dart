@@ -50,7 +50,13 @@ class _Balance extends AnlasNotifier {
     purchasedAnlas: 0,
     isOpus: true,
     tier: 3,
-    usage: (percent: 70.0, isNegative: false, secondsToNextPct: 0, accounts: 1),
+    usage: (
+      percent: 70.0,
+      isNegative: false,
+      secondsToNextPct: 0,
+      accounts: 1,
+      purchasedPercent: 0.0,
+    ),
   );
 
   @override
