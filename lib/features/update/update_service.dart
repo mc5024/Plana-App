@@ -1,9 +1,13 @@
 /// 检查更新(只检查,不下载不安装)。
 ///
-/// 链路:GitHub Releases API 拿最新 release → 按语义化版本比 → 有新版就提示,
-/// 用户点「去下载」跳外部浏览器打开 Release 页。**下载与安装交给浏览器和系统**,
+/// 链路:Plana 后端 `/api/app/releases` 拿 release 列表 → 按语义化版本比 → 有新版就提示,
+/// 用户点「下载新版」跳外部浏览器打开下载地址。**下载与安装交给浏览器和系统**,
 /// 本应用不碰 —— 所以既不需要 `REQUEST_INSTALL_PACKAGES`,也不需要 FileProvider,
 /// 更不需要自己校验安装包。
+///
+/// 不直连 GitHub:国内经常连不上,匿名 API 每小时还只给 60 次。后端替我们读 GitHub
+/// Releases(缓存 10 分钟),最新正式版给的是后端的安装包直链(APK 搬在 R2 上),
+/// 点了直接下载,不用去 GitHub 页面。
 library;
 
 import 'dart:async';
@@ -13,7 +17,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
-import '../../core/app_info.dart';
+import '../../core/net/backend_config.dart' show kDefaultBackendBase;
 import '../../core/store/prefs_store.dart';
 import '../../core/util/log.dart';
 import '../../l10n/l10n.dart';
@@ -42,13 +46,14 @@ class InstalledInfo {
   bool get isKnown => versionName.isNotEmpty;
 }
 
-/// GitHub 的一条 release。
+/// GitHub 上的一条 release(经 Plana 后端转来,字段同 GitHub)。
 class GithubRelease {
   const GithubRelease({
     required this.tag,
     required this.name,
     required this.notes,
     required this.url,
+    required this.downloadUrl,
     required this.prerelease,
   });
 
@@ -57,23 +62,30 @@ class GithubRelease {
   final String name;
   final String notes;
 
-  /// Release 页地址,用户点「去下载」时用浏览器打开。
+  /// Release 页地址。
   final String url;
+
+  /// 用户点「下载新版」时浏览器打开的地址:最新正式版是后端的安装包直链,
+  /// 其余(beta 用户可能收到的预发布)是 Release 页。
+  final String downloadUrl;
   final bool prerelease;
 
   /// 展示名:GitHub 上 release 标题常留空,回落到 tag。
   String get display => name.isNotEmpty ? name : tag;
 
-  static GithubRelease? fromJson(Map<String, dynamic> j) {
+  /// [base] 是后端基址:后端给的直链是 `/api/...` 相对路径,在这里拼成完整地址。
+  static GithubRelease? fromJson(Map<String, dynamic> j, {String base = ''}) {
     if (j['draft'] == true) return null; // 草稿对外不存在
     final tag = j['tag_name'] as String?;
     final url = j['html_url'] as String?;
     if (tag == null || tag.isEmpty || url == null || url.isEmpty) return null;
+    final dl = (j['download_url'] as String?) ?? '';
     return GithubRelease(
       tag: tag,
       name: (j['name'] as String?) ?? '',
       notes: (j['body'] as String?) ?? '',
       url: url,
+      downloadUrl: dl.isEmpty ? url : (dl.startsWith('/') ? '$base$dl' : dl),
       prerelease: j['prerelease'] == true,
     );
   }
@@ -168,42 +180,33 @@ Future<InstalledInfo> installedInfo() async {
   }
 }
 
-/// 拉 GitHub 上比 [current] 新的 release;没有则 null。
+/// 拉比 [current] 新的 release;没有则 null。
 ///
-/// 用 `/releases` 列表而**不是** `/releases/latest` —— 后者会把预发布整个排除,
-/// 而我们发的就是 `1.0.0-beta.x`,用它等于永远查不到东西。
+/// 后端原样给 GitHub 的 `/releases` 列表(含预发布)而**不是** `/releases/latest` ——
+/// 后者会把预发布整个排除,还在 `1.0.0-beta.x` 上的用户就永远查不到东西。
 ///
-/// [repo] 为空时直接返回 null。非 200 一律抛 [UpdateException]。
+/// 非 200 一律抛 [UpdateException]。
 Future<GithubRelease?> fetchLatestRelease(
   String current, {
-  String repo = kGithubRepo,
+  String base = kDefaultBackendBase,
 }) async {
-  if (repo.isEmpty || current.isEmpty) return null;
+  if (current.isEmpty) return null;
   try {
     final resp = await http
-        .get(
-          Uri.parse('https://api.github.com/repos/$repo/releases?per_page=10'),
-          headers: const {'Accept': 'application/vnd.github+json'},
-        )
+        .get(Uri.parse('$base/api/app/releases'))
         .timeout(const Duration(seconds: 15));
-    if (resp.statusCode == 429 ||
-        (resp.statusCode == 403 &&
-            resp.headers['x-ratelimit-remaining'] == '0')) {
-      logd('[update] GitHub API 限流');
-      throw UpdateException(l10nNow.ghRateLimited);
-    }
     if (resp.statusCode != 200) {
       throw UpdateException(l10nNow.updateHttpFailed(resp.statusCode));
     }
     final j = jsonDecode(utf8.decode(resp.bodyBytes));
     if (j is! List) throw UpdateException(l10nNow.updateBadFormat);
-    return pickNewer(current, j);
+    return pickNewer(current, j, base: base);
   } on TimeoutException {
     throw UpdateException(l10nNow.updateTimeout);
   } on SocketException {
-    throw UpdateException(l10nNow.cantReachGithub);
+    throw UpdateException(l10nNow.cantReachUpdateServer);
   } on TlsException {
-    throw UpdateException(l10nNow.cantReachGithub);
+    throw UpdateException(l10nNow.cantReachUpdateServer);
   } on UpdateException {
     rethrow;
   } catch (e) {
@@ -216,11 +219,15 @@ Future<GithubRelease?> fetchLatestRelease(
 ///
 /// 已在正式版上的用户**不会**被推预发布 —— 否则装着 1.0.0 的人会被 1.1.0-beta.1
 /// 拽回测试轨道。仍在 beta 上的人则照收 beta。
-GithubRelease? pickNewer(String current, List<dynamic> releases) {
+GithubRelease? pickNewer(
+  String current,
+  List<dynamic> releases, {
+  String base = '',
+}) {
   final onPrerelease = isPrerelease(current);
   for (final r in releases) {
     if (r is! Map<String, dynamic>) continue;
-    final rel = GithubRelease.fromJson(r);
+    final rel = GithubRelease.fromJson(r, base: base);
     if (rel == null) continue;
     if (rel.prerelease && !onPrerelease) continue;
     if (compareSemver(rel.tag, current) > 0) return rel;
@@ -247,7 +254,7 @@ Future<void> markUpdateChecked(PrefsStore prefs) async {
 }
 
 /// 距上次检查是否已超过 [interval](默认 24h)。启动时自动检查用,避免每次
-/// 冷启都打一次 GitHub。
+/// 冷启都查一次。
 bool shouldAutoCheck(
   PrefsStore prefs, {
   Duration interval = const Duration(hours: 24),

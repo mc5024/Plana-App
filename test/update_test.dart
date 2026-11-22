@@ -125,19 +125,29 @@ void main() {
       final r = pickNewer('1.0.0', [rel('v1.2.0')]);
       expect(r?.display, 'v1.2.0');
     });
+
+    test('下载地址:后端给的相对直链拼上基址;没给就回落到 Release 页', () {
+      final direct = pickNewer('1.0.0', [
+        {...rel('v1.2.0'), 'download_url': '/api/app/download'},
+      ], base: 'https://b.test');
+      expect(direct?.downloadUrl, 'https://b.test/api/app/download');
+      expect(
+        pickNewer('1.0.0', [rel('v1.2.0')])?.downloadUrl,
+        'https://github.com/x/y/releases/tag/v1.2.0',
+      );
+    });
   });
 
   group('fetchLatestRelease', () {
-    Future<GithubRelease?> fetch(
-      int status, {
-      String body = '[]',
-      Map<String, String> headers = const {},
-    }) => http.runWithClient(
-      () => fetchLatestRelease('1.0.0', repo: 'x/y'),
-      () => MockClient(
-        (_) async => http.Response(body, status, headers: headers),
-      ),
-    );
+    final asked = <Uri>[];
+    Future<GithubRelease?> fetch(int status, {String body = '[]'}) =>
+        http.runWithClient(
+          () => fetchLatestRelease('1.0.0', base: 'https://b.test'),
+          () => MockClient((req) async {
+            asked.add(req.url);
+            return http.Response(body, status);
+          }),
+        );
 
     Matcher failsWith(String text) => throwsA(
       isA<UpdateException>().having(
@@ -147,16 +157,22 @@ void main() {
       ),
     );
 
-    test('200 且无更新 → null', () async {
+    test('200 且无更新 → null;查的是后端而不是 GitHub', () async {
+      asked.clear();
       expect(await fetch(200), isNull);
+      expect(asked.single.toString(), 'https://b.test/api/app/releases');
     });
 
-    test('限流 → 报错,不当成已是最新', () async {
-      await expectLater(
-        fetch(403, headers: {'x-ratelimit-remaining': '0'}),
-        failsWith('上限'),
-      );
-      await expectLater(fetch(429), failsWith('上限'));
+    test('有新版 → 下载地址是后端直链', () async {
+      const body =
+          '[{"tag_name":"v1.2.0","html_url":"https://github.com/x/y/releases/tag/v1.2.0",'
+          '"name":"","body":"","prerelease":false,"download_url":"/api/app/download"}]';
+      final r = await fetch(200, body: body);
+      expect(r?.downloadUrl, 'https://b.test/api/app/download');
+    });
+
+    test('后端暂时拿不到版本(503)→ 报错,不当成已是最新', () async {
+      await expectLater(fetch(503), failsWith('HTTP 503'));
     });
 
     test('其他非 200(含 403 / 404)→ 报错', () async {

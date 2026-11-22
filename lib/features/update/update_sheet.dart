@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/app_info.dart';
 import '../../core/theme/app_theme.dart';
 import '../generate/widgets/common.dart' show hintSnack;
 import '../profile/widgets/settings_ui.dart';
@@ -39,8 +38,8 @@ class _UpdateRowState extends ConsumerState<UpdateRow> {
       setState(() => _result = check);
       if (check.hasUpdate) {
         await showUpdateSheet(context, check);
-      } else if (kGithubRepo.isEmpty || !installed.isKnown) {
-        // 没填仓库 / 拿不到本机版本 —— 不是错误,别报红
+      } else if (!installed.isKnown) {
+        // 拿不到本机版本 —— 不是错误,别报红
         hintSnack(context, context.l10n.noUpdateInfo, icon: Icons.info_outline);
       } else {
         hintSnack(
@@ -82,7 +81,8 @@ class _UpdateRowState extends ConsumerState<UpdateRow> {
   }
 }
 
-/// 新版本提示。只提示 + 跳转,**不下载不安装** —— 那两步交给浏览器和系统。
+/// 新版本提示。只提示 + 交给浏览器打开下载地址(最新正式版是安装包直链),
+/// **应用自己不下载不安装** —— 那两步交给浏览器和系统。
 Future<void> showUpdateSheet(BuildContext context, UpdateCheck check) {
   return showModalBottomSheet<void>(
     context: context,
@@ -100,7 +100,7 @@ class _UpdateSheet extends StatelessWidget {
 
   Future<void> _open(BuildContext context) async {
     final ok = await launchUrl(
-      Uri.parse(release.url),
+      Uri.parse(release.downloadUrl),
       mode: LaunchMode.externalApplication,
     );
     if (!context.mounted) return;
@@ -187,8 +187,8 @@ class _UpdateSheet extends StatelessWidget {
                     flex: 2,
                     child: FilledButton.icon(
                       onPressed: () => _open(context),
-                      icon: const Icon(Icons.open_in_new, size: 18),
-                      label: Text(context.l10n.downloadOnGithub),
+                      icon: const Icon(Icons.download, size: 18),
+                      label: Text(context.l10n.downloadUpdate),
                     ),
                   ),
                 ],

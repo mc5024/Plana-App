@@ -158,8 +158,7 @@ class AboutPage extends StatelessWidget {
           SettingsLabel(context.l10n.legal),
           SettingsCard(
             children: [
-              // 填了 kGithubRepo 才出现 —— 同一个常量也驱动「检查更新」,
-              // 一处配置点亮两个功能,不会出现"有源码入口但查不了更新"的错位
+              // 填了 kGithubRepo 才出现
               if (kGithubRepo.isNotEmpty)
                 SettingsRow(
                   icon: Icons.code,

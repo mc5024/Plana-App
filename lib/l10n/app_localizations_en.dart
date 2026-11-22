@@ -2524,10 +2524,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get downloadOnGithub => 'Download on GitHub';
-
-  @override
-  String get ghRateLimited => 'GitHub request limit reached; try again later';
+  String get downloadUpdate => 'Download update';
 
   @override
   String updateHttpFailed(int code) {
@@ -2542,8 +2539,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'Update check timed out; check your network and try again';
 
   @override
-  String get cantReachGithub =>
-      'Can\'t reach GitHub; check your network and try again';
+  String get cantReachUpdateServer =>
+      'Can\'t reach the server; check your network and try again';
 
   @override
   String get updateFailed => 'Update check failed; try again later';
@@ -4177,6 +4174,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String redrawStartMax(int w, int h, String model) {
+    return 'Starting Max enhance ≈$w×$h · $model';
+  }
+
   @override
   String upscaleStart(int w, int h) {
     return 'Starting V5 upscale $w×$h';
@@ -4187,9 +4187,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get savedToImg2ImgUpscale => 'Saved to img2img upscale';
-
-    return 'Starting Max enhance ≈$w×$h · $model';
-  }
 
   @override
   String redrawStart(String scale, int w, int h, String model) {

@@ -2323,10 +2323,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get downloadOnGithub => '去 GitHub 下载';
-
-  @override
-  String get ghRateLimited => 'GitHub 查询次数已达上限,请稍后再试';
+  String get downloadUpdate => '下载新版';
 
   @override
   String updateHttpFailed(int code) {
@@ -2340,7 +2337,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get updateTimeout => '检查更新超时,请检查网络后重试';
 
   @override
-  String get cantReachGithub => '连不上 GitHub,请检查网络后重试';
+  String get cantReachUpdateServer => '连不上服务器,请检查网络后重试';
 
   @override
   String get updateFailed => '检查更新失败,请稍后重试';
@@ -3826,6 +3823,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String redrawStartMax(int w, int h, String model) {
+    return '开始 Max 重绘 ≈$w×$h · $model';
+  }
+
   @override
   String upscaleStart(int w, int h) {
     return '开始 V5 超分 $w×$h';
@@ -3836,9 +3836,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get savedToImg2ImgUpscale => '已存入图生图放大';
-
-    return '开始 Max 重绘 ≈$w×$h · $model';
-  }
 
   @override
   String redrawStart(String scale, int w, int h, String model) {

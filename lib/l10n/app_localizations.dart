@@ -4174,17 +4174,11 @@ abstract class AppLocalizations {
   /// **'当前 {v}'**
   String currentVersion(String v);
 
-  /// No description provided for @downloadOnGithub.
+  /// No description provided for @downloadUpdate.
   ///
   /// In zh, this message translates to:
-  /// **'去 GitHub 下载'**
-  String get downloadOnGithub;
-
-  /// No description provided for @ghRateLimited.
-  ///
-  /// In zh, this message translates to:
-  /// **'GitHub 查询次数已达上限,请稍后再试'**
-  String get ghRateLimited;
+  /// **'下载新版'**
+  String get downloadUpdate;
 
   /// No description provided for @updateHttpFailed.
   ///
@@ -4204,11 +4198,11 @@ abstract class AppLocalizations {
   /// **'检查更新超时,请检查网络后重试'**
   String get updateTimeout;
 
-  /// No description provided for @cantReachGithub.
+  /// No description provided for @cantReachUpdateServer.
   ///
   /// In zh, this message translates to:
-  /// **'连不上 GitHub,请检查网络后重试'**
-  String get cantReachGithub;
+  /// **'连不上服务器,请检查网络后重试'**
+  String get cantReachUpdateServer;
 
   /// No description provided for @updateFailed.
   ///
@@ -6754,6 +6748,12 @@ abstract class AppLocalizations {
   /// **'缺少参数快照,无法重绘放大'**
   String get redrawNoSnapshotShort;
 
+  /// No description provided for @redrawStartMax.
+  ///
+  /// In zh, this message translates to:
+  /// **'开始 Max 重绘 ≈{w}×{h} · {model}'**
+  String redrawStartMax(int w, int h, String model);
+
   /// No description provided for @upscaleStart.
   ///
   /// In zh, this message translates to:
@@ -6771,12 +6771,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已存入图生图放大'**
   String get savedToImg2ImgUpscale;
-
-  /// No description provided for @redrawStartMax.
-  ///
-  /// In zh, this message translates to:
-  /// **'开始 Max 重绘 ≈{w}×{h} · {model}'**
-  String redrawStartMax(int w, int h, String model);
 
   /// No description provided for @redrawStart.
   ///
