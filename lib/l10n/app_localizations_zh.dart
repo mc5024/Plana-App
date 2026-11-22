@@ -2352,6 +2352,37 @@ class AppLocalizationsZh extends AppLocalizations {
   String get imageMetadata => '图片元数据';
 
   @override
+  String get compareImages => '图片比对';
+
+  @override
+  String get swapAB => '交换 A / B';
+
+  @override
+  String get onlyInA => '仅 A';
+
+  @override
+  String get onlyInB => '仅 B';
+
+  @override
+  String get weightChanged => '权重不同';
+
+  @override
+  String get orderChanged => '位置不同';
+
+  @override
+  String get identical => '相同';
+
+  @override
+  String identicalN(int n) {
+    return '$n 项相同';
+  }
+
+  @override
+  String differentN(int n) {
+    return '$n 项不同';
+  }
+
+  @override
   String get enterOverwritePrompt => '先填要覆写的提示词';
 
   @override

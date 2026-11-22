@@ -4228,6 +4228,60 @@ abstract class AppLocalizations {
   /// **'图片元数据'**
   String get imageMetadata;
 
+  /// No description provided for @compareImages.
+  ///
+  /// In zh, this message translates to:
+  /// **'图片比对'**
+  String get compareImages;
+
+  /// No description provided for @swapAB.
+  ///
+  /// In zh, this message translates to:
+  /// **'交换 A / B'**
+  String get swapAB;
+
+  /// No description provided for @onlyInA.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅 A'**
+  String get onlyInA;
+
+  /// No description provided for @onlyInB.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅 B'**
+  String get onlyInB;
+
+  /// No description provided for @weightChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'权重不同'**
+  String get weightChanged;
+
+  /// No description provided for @orderChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'位置不同'**
+  String get orderChanged;
+
+  /// No description provided for @identical.
+  ///
+  /// In zh, this message translates to:
+  /// **'相同'**
+  String get identical;
+
+  /// No description provided for @identicalN.
+  ///
+  /// In zh, this message translates to:
+  /// **'{n} 项相同'**
+  String identicalN(int n);
+
+  /// No description provided for @differentN.
+  ///
+  /// In zh, this message translates to:
+  /// **'{n} 项不同'**
+  String differentN(int n);
+
   /// No description provided for @enterOverwritePrompt.
   ///
   /// In zh, this message translates to:

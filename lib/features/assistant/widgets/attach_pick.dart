@@ -14,8 +14,11 @@ import '../../../l10n/l10n.dart';
 
 enum AttachSource { photos, gallery }
 
-/// 从哪儿挑(居中弹窗);关掉是 null。
-Future<AttachSource?> showAttachSourceDialog(BuildContext context) async {
+/// 从哪儿挑(居中弹窗);关掉是 null。[title] 缺省为「带图」。
+Future<AttachSource?> showAttachSourceDialog(
+  BuildContext context, {
+  String? title,
+}) async {
   final picked = await showDialog<AttachSource>(
     context: context,
     builder: (context) {
@@ -28,7 +31,7 @@ Future<AttachSource?> showAttachSourceDialog(BuildContext context) async {
         ),
       );
       return AlertDialog(
-        title: Text(context.l10n.attachImage),
+        title: Text(title ?? context.l10n.attachImage),
         contentPadding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
         content: Column(
           mainAxisSize: MainAxisSize.min,

@@ -2555,6 +2555,37 @@ class AppLocalizationsEn extends AppLocalizations {
   String get imageMetadata => 'Image Metadata';
 
   @override
+  String get compareImages => 'Compare';
+
+  @override
+  String get swapAB => 'Swap A / B';
+
+  @override
+  String get onlyInA => 'A only';
+
+  @override
+  String get onlyInB => 'B only';
+
+  @override
+  String get weightChanged => 'Weight';
+
+  @override
+  String get orderChanged => 'Moved';
+
+  @override
+  String get identical => 'Same';
+
+  @override
+  String identicalN(int n) {
+    return '$n same';
+  }
+
+  @override
+  String differentN(int n) {
+    return '$n different';
+  }
+
+  @override
   String get enterOverwritePrompt => 'Enter the prompt to write first';
 
   @override

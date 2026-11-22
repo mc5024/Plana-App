@@ -275,7 +275,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final line = tester.getSize(find.text('Toolbox')).height;
-    for (final tab in ['Convert Weights', 'Image Metadata']) {
+    for (final tab in ['Convert Weights', 'Image Metadata', 'Compare']) {
       expect(tester.getSize(find.text(tab)).height, lessThan(line));
       await tester.tap(find.text(tab));
       await tester.pumpAndSettle();
