@@ -170,7 +170,12 @@ class LiveProgress {
     }
     unawaited(ensurePermission());
     unawaited(
-      _quiet('start', {'title': _assistantTitle, 'text': '', 'total': 0}),
+      _quiet('start', {
+        'title': _assistantTitle,
+        'text': '',
+        'total': 0,
+        'short': _assistantShort,
+      }),
     );
     unawaited(_showAssistant());
   }
