@@ -183,7 +183,8 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
   bool _zipping = false;
   bool _organizing = false;
   // 保存 / 分享 / 打包共用这对计数(三件事不会同时跑,canAct 互斥)
-  int _saveDone = 0;
+  /// 存相册 / 分享的进度。走单独的通知,逐张更新时不重建整页网格。
+  final _saveDone = ValueNotifier<int>(0);
   int _saveTotal = 0;
 
   // ---- 检索/筛选(弹层内临时态,关弹层即重置) ----
@@ -341,6 +342,13 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
   /// 进度态的「准备 8/12」也长)。
   static Widget _fitLabel(String text) =>
       FittedBox(fit: BoxFit.scaleDown, child: Text(text));
+
+  /// 跟着 [_saveDone] 刷新的进度文案。
+  Widget _progressLabel(String Function(int done) text) =>
+      ValueListenableBuilder<int>(
+        valueListenable: _saveDone,
+        builder: (_, done, _) => _fitLabel(text(done)),
+      );
 
   @override
   void initState() {
@@ -604,9 +612,10 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
   void _sortMove(String from, String to) {
     final order = _sortOrder;
     if (order == null || from == to) return;
-    final i = order.indexOf(to);
-    if (i < 0 || !order.remove(from)) return;
-    setState(() => order.insert(i, from));
+    final next = [...order];
+    final i = next.indexOf(to);
+    if (i < 0 || !next.remove(from)) return;
+    setState(() => _sortOrder = next..insert(i, from));
   }
 
   Future<void> _saveSort() async {
@@ -768,6 +777,7 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
       _resumeAlbumId = _albumHome || _inTrash ? null : _activeAlbumId;
     }
     _remember();
+    _saveDone.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _dateTick.cancel();
     _edgeTicker?.dispose();
@@ -809,6 +819,129 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     if (state == AppLifecycleState.resumed && mounted && _dateFilter.active) {
       setState(() {});
     }
+  }
+
+  // build 的派生数据按输入缓存:勾选、拖选、捏合这些只改界面状态的重建不再整库重算
+  List<Object?>? _viewKey;
+  _GridView? _view;
+
+  _GridView _deriveView(
+    GalleryState state,
+    AlbumsData albumData,
+    Map<String, GallerySearchMeta> byId,
+    Map<String, List<GroupTag>> tags,
+    DateTime now,
+  ) {
+    final key = <Object?>[
+      state.results,
+      state.trash,
+      albumData,
+      byId,
+      tags,
+      _inTrash,
+      _albumHome,
+      _activeAlbumId,
+      _picking,
+      _sortOrder,
+      _groupBy,
+      _openKey,
+      _query,
+      _modelFilter,
+      _dateFilter,
+      allPhotosName,
+      // 相对日期筛选按分钟走,「今天 / 昨天」段头按天走
+      _dateFilter.active ? now.millisecondsSinceEpoch ~/ 60000 : 0,
+      now.year * 10000 + now.month * 100 + now.day,
+    ];
+    final last = _viewKey;
+    final cached = _view;
+    if (cached != null && last != null && _sameKey(last, key)) return cached;
+
+    final inTrash = _inTrash;
+    final results = state.results;
+    final trashed = [for (final t in state.trash) t.image];
+    final albumResults = inTrash
+        ? trashed
+        : _albumHome || _activeAlbumId == null
+        ? results
+        : results
+              .where((r) => albumData.contains(_activeAlbumId, r.id))
+              .toList();
+    // 筛选管线(先廉价的时间,再查表)
+    final terms = searchTerms(_query);
+    final inDate = _dateFilter.matcher(now);
+    // 回收站不筛选(筛选条在那一页不显示)
+    final filtered = inTrash
+        ? albumResults
+        : <ResultImage>[
+            for (final r in albumResults)
+              if (inDate(r.createdAt) &&
+                  _passModel(r, byId) &&
+                  _passQuery(r, byId, terms))
+                r,
+          ];
+    // 查表而不是逐个在列表里找:拖选贴边滚动时每帧都在重建
+    final visible = {for (final r in _picking ? results : filtered) r.id};
+    // 回收站按删除那天分段,段头报还剩几天
+    final deletedAt = {for (final t in state.trash) t.image.id: t.deletedAt};
+    final groups = !_albumHome && _groupBy.stacked
+        ? groupByTags(filtered, tags)
+        : inTrash
+        ? groupByDay(filtered, now, at: (r) => deletedAt[r.id] ?? 0)
+        : groupByDay(filtered, now);
+    // 相册墙只在相册首页用得上
+    final albums = !_albumHome
+        ? const <GalleryGroup>[]
+        : <GalleryGroup>[
+            (key: _allAlbumKey, label: allPhotosName, items: results),
+            for (final id
+                in _sortOrder == null
+                    ? albumData.order
+                    : albumData.reorder(_sortOrder!).order)
+              // 挑图不进回收站
+              if (!_picking || id != trashId)
+                if (id == trashId)
+                  (key: trashId, label: trashName, items: trashed)
+                else
+                  (
+                    key: id,
+                    label: albumData.name(id),
+                    items: results
+                        .where((r) => albumData.contains(id, r.id))
+                        .toList(),
+                  ),
+          ];
+    final open = _albumHome || _openKey == null
+        ? null
+        : groups.where((g) => g.key == _openKey).firstOrNull;
+    final order = _albumHome
+        ? const <String>[]
+        : [
+            if (open != null)
+              for (final r in open.items) r.id
+            else if (!_groupBy.stacked)
+              for (final g in groups)
+                for (final r in g.items) r.id,
+          ];
+    _viewKey = key;
+    return _view = (
+      albumResults: albumResults,
+      filtered: filtered,
+      visible: visible,
+      deletedAt: deletedAt,
+      groups: groups,
+      albums: albums,
+      open: open,
+      order: order,
+    );
+  }
+
+  static bool _sameKey(List<Object?> a, List<Object?> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!identical(a[i], b[i]) && a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   bool _passModel(ResultImage r, Map<String, GallerySearchMeta> byId) {
@@ -1693,11 +1826,11 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
               style: _mainActBtn,
               onPressed: canAct ? _saveAlbums : null,
               icon: const Icon(Icons.download, size: 19),
-              label: _fitLabel(
-                _saving
-                    ? context.l10n.savingProgress(_saveDone, _saveTotal)
-                    : context.l10n.save,
-              ),
+              label: _saving
+                  ? _progressLabel(
+                      (done) => context.l10n.savingProgress(done, _saveTotal),
+                    )
+                  : _fitLabel(context.l10n.save),
             ),
           ),
           const SizedBox(width: _actGap),
@@ -1835,14 +1968,25 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     final gallery = ref.read(galleryProvider.notifier);
     setState(() {
       _saving = true;
-      _saveDone = 0;
       _saveTotal = total;
     });
+    _saveDone.value = 0;
     var saved = 0, failed = 0;
+    // 已保存角标攒一批再打:逐张打要逐张整表复制、整页重建
+    final marks = <String>[];
+    void flushMarks() {
+      if (marks.isEmpty) return;
+      gallery.markSaved([...marks]);
+      marks.clear();
+    }
+
     for (final job in jobs) {
       var savedHere = 0;
       for (final r in job.items) {
-        if (!mounted) return null; // 弹层已关:中止剩余
+        if (!mounted) {
+          flushMarks();
+          return null; // 弹层已关:中止剩余
+        }
         try {
           final bytes = r.bytes ?? await store.readImage(r.id);
           if (bytes == null) {
@@ -1855,15 +1999,17 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
               format: settings.format,
               album: job.album,
             );
-            gallery.markSaved([r.id]);
+            marks.add(r.id);
+            if (marks.length >= 20) flushMarks();
             saved++;
             savedHere++;
           }
         } catch (_) {
           failed++;
         }
-        if (mounted) setState(() => _saveDone = saved + failed);
+        if (mounted) _saveDone.value = saved + failed;
       }
+      flushMarks();
       // 存成过才记进"最近用过"(全失败的名字记下来只会碍事)
       final album = job.album;
       if (album != null && savedHere > 0) {
@@ -2261,16 +2407,16 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     if (!mounted) return;
     setState(() {
       _sharing = true;
-      _saveDone = 0;
       _saveTotal = items.length;
     });
+    _saveDone.value = 0;
     final prep = await prepareShareFiles(
       items,
       store: ref.read(appStoresProvider).gallery,
       settings: settings,
       onEach: (done) {
         if (!mounted) return false; // 弹层已关:中止剩余
-        setState(() => _saveDone = done);
+        _saveDone.value = done;
         return true;
       },
     );
@@ -2458,41 +2604,8 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     }
     final inTrash = _inTrash;
     final results = state.results;
-    final trashed = [for (final t in state.trash) t.image];
-    final albumResults = inTrash
-        ? trashed
-        : _albumHome || _activeAlbumId == null
-        ? results
-        : results
-              .where((r) => albumData.contains(_activeAlbumId, r.id))
-              .toList();
     final search = ref.watch(gallerySearchProvider);
     final now = DateTime.now();
-
-    // 筛选管线(先廉价的时间,再查表)
-    final terms = searchTerms(_query);
-    final inDate = _dateFilter.matcher(now);
-    // 回收站不筛选(筛选条在那一页不显示)
-    final filtered = inTrash
-        ? albumResults
-        : <ResultImage>[
-            for (final r in albumResults)
-              if (inDate(r.createdAt) &&
-                  _passModel(r, search.byId) &&
-                  _passQuery(r, search.byId, terms))
-                r,
-          ];
-    final filtering =
-        !inTrash &&
-        (_query.isNotEmpty || _modelFilter != null || _dateFilter.active);
-
-    // 弹层开着期间条目可能被裁剪/删除/筛掉,勾选集随之收敛 ——
-    // 批量操作永远只作用于当前可见集合,不留筛选外的"隐形勾选"。
-    // 查表而不是逐个在列表里找:拖选贴边滚动时每帧都在重建,几百张已选 × 几千张
-    // 作品逐个比就是每帧上百万次比较。
-    // 挑图时换相册接着挑:只去掉已经不在图库里的
-    final visible = {for (final r in _picking ? results : filtered) r.id};
-    _picked.removeWhere((id) => !visible.contains(id));
 
     // 归属表只拉当前这个维度的 —— 另一个维度的 provider 不 watch 就不开算。
     // 还在算(冷启第一次点开)时先当空表:全落「未归类」,算完自然刷成正确的堆,
@@ -2507,13 +2620,29 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
     // 只有从没算出过结果时才提示。增量重算(每出一张新图)也会 isLoading 一帧,
     // 那一下闪字纯属噪音 —— 旧结果还在,画面根本没变。
     final grouping = tags.isLoading && !tags.hasValue;
-    // 回收站按删除那天分段,段头报还剩几天
-    final deletedAt = {for (final t in state.trash) t.image.id: t.deletedAt};
-    final groups = !_albumHome && _groupBy.stacked
-        ? groupByTags(filtered, tags.value ?? const {})
-        : inTrash
-        ? groupByDay(filtered, now, at: (r) => deletedAt[r.id] ?? 0)
-        : groupByDay(filtered, now);
+
+    final d = _deriveView(
+      state,
+      albumData,
+      search.byId,
+      tags.value ?? const {},
+      now,
+    );
+    final albumResults = d.albumResults;
+    final filtered = d.filtered;
+    final groups = d.groups;
+    final albums = d.albums;
+    final deletedAt = d.deletedAt;
+    final filtering =
+        !inTrash &&
+        (_query.isNotEmpty || _modelFilter != null || _dateFilter.active);
+
+    // 弹层开着期间条目可能被裁剪/删除/筛掉,勾选集随之收敛 ——
+    // 批量操作永远只作用于当前可见集合,不留筛选外的"隐形勾选"。
+    // 挑图时换相册接着挑:只去掉已经不在图库里的
+    final visible = d.visible;
+    _picked.removeWhere((id) => !visible.contains(id));
+
     String? trashNote(GalleryGroup g) {
       final at = deletedAt[g.items.first.id];
       if (at == null) return null;
@@ -2521,39 +2650,9 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
       return context.l10n.deletesInDays(math.max(left, 1));
     }
 
-    final albums = <GalleryGroup>[
-      (key: _allAlbumKey, label: allPhotosName, items: results),
-      for (final id
-          in _sortOrder == null
-              ? albumData.order
-              : albumData.reorder(_sortOrder!).order)
-        // 挑图不进回收站
-        if (!_picking || id != trashId)
-          if (id == trashId)
-            (key: trashId, label: trashName, items: trashed)
-          else
-            (
-              key: id,
-              label: albumData.name(id),
-              items: results
-                  .where((r) => albumData.contains(id, r.id))
-                  .toList(),
-            ),
-    ];
-
     // 点开的那一堆:筛选变了/图删了可能已经不在,不在就自动退回封面墙
-    final open = _albumHome || _openKey == null
-        ? null
-        : groups.where((g) => g.key == _openKey).firstOrNull;
-    _order = _albumHome
-        ? const []
-        : [
-            if (open != null)
-              for (final r in open.items) r.id
-            else if (!_groupBy.stacked)
-              for (final g in groups)
-                for (final r in g.items) r.id,
-          ];
+    final open = d.open;
+    _order = d.order;
 
     final scheme = context.scheme;
     final h = MediaQuery.of(context).size.height * 0.82;
@@ -3069,17 +3168,19 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                                 Icons.download,
                                                 size: 19,
                                               ),
-                                              label: _fitLabel(
-                                                _saving
-                                                    ? context.l10n
+                                              label: _saving
+                                                  ? _progressLabel(
+                                                      (done) => context.l10n
                                                           .savingProgress(
-                                                            _saveDone,
+                                                            done,
                                                             _saveTotal,
-                                                          )
-                                                    : context.l10n.saveN(
+                                                          ),
+                                                    )
+                                                  : _fitLabel(
+                                                      context.l10n.saveN(
                                                         _picked.length,
                                                       ),
-                                              ),
+                                                    ),
                                             ),
                                           ),
                                           const SizedBox(width: _actGap),
@@ -3155,15 +3256,17 @@ class _GalleryGridSheetState extends ConsumerState<_GalleryGridSheet>
                                                       Icons.ios_share,
                                                       size: 17,
                                                     ),
-                                              label: _fitLabel(
-                                                _sharing
-                                                    ? context.l10n
+                                              label: _sharing
+                                                  ? _progressLabel(
+                                                      (done) => context.l10n
                                                           .preparingProgress(
-                                                            _saveDone,
+                                                            done,
                                                             _saveTotal,
-                                                          )
-                                                    : context.l10n.share,
-                                              ),
+                                                          ),
+                                                    )
+                                                  : _fitLabel(
+                                                      context.l10n.share,
+                                                    ),
                                             ),
                                           ),
                                           const SizedBox(width: _actGap),
@@ -3871,3 +3974,15 @@ String _liftLabel(AppLocalizations l, String label) => switch (label) {
   '分享' => l.share,
   _ => label,
 };
+
+/// 网格页 build 用到的派生数据(见 `_deriveView`)。
+typedef _GridView = ({
+  List<ResultImage> albumResults,
+  List<ResultImage> filtered,
+  Set<String> visible,
+  Map<String, int> deletedAt,
+  List<GalleryGroup> groups,
+  List<GalleryGroup> albums,
+  GalleryGroup? open,
+  List<String> order,
+});

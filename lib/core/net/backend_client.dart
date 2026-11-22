@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1111,6 +1112,16 @@ class BackendClient {
       throw BackendException('无法连接后端,请检查地址与网络');
     }
 
+    // 大响应(整条 vibe、灵感库备份)在后台解析
+    if (resp.statusCode >= 200 &&
+        resp.statusCode < 300 &&
+        resp.bodyBytes.length > 256 * 1024) {
+      try {
+        final j = await _jsonOfBytesInIsolate(resp.bodyBytes);
+        if (j is Map<String, dynamic>) return j;
+      } catch (_) {}
+      throw BackendException('后端返回格式异常');
+    }
     return _decode(resp);
   }
 
@@ -1296,8 +1307,7 @@ class BackendClient {
     };
     Future<Map<String, dynamic>> submit() async {
       if (!_noMultipart.contains(baseUrl)) {
-        final parts = <String, Uint8List>{};
-        final mpBody = _extractParts(body, parts, {}) as Map<String, dynamic>;
+        final (mpBody, parts) = await _extractPartsInIsolate(body);
         if (parts.isNotEmpty) {
           try {
             return await _postMultipart(
@@ -2657,3 +2667,16 @@ final backendClientProvider = Provider<BackendClient>((ref) {
   final base = ref.watch(backendBaseProvider).value ?? '';
   return BackendClient(base);
 });
+
+/// 后台 isolate:抽出 [body] 里的长 base64 串(见 [BackendClient._extractParts])。
+Future<(Map<String, dynamic>, Map<String, Uint8List>)> _extractPartsInIsolate(
+  Map<String, dynamic> body,
+) => Isolate.run(() {
+  final parts = <String, Uint8List>{};
+  final mp =
+      BackendClient._extractParts(body, parts, {}) as Map<String, dynamic>;
+  return (mp, parts);
+});
+
+Future<Object?> _jsonOfBytesInIsolate(Uint8List bytes) =>
+    Isolate.run(() => jsonDecode(utf8.decode(bytes)));

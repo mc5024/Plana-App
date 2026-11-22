@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:archive/archive_io.dart';
@@ -105,6 +106,8 @@ class LocalBackup {
   final Ref ref;
 
   /// 打包,返回缓存目录里的 zip(交给系统保存对话框后即可丢弃)。
+  ///
+  /// 这里只收集要读哪些文件,读、编码、写 zip 都在后台 isolate 里做。
   Future<File> export({
     required bool inspiration,
     required bool vibes,
@@ -115,44 +118,72 @@ class LocalBackup {
     );
     await dir.create(recursive: true);
     final out = File('${dir.path}/plana_backup.zip');
-    final zip = ZipFileEncoder()..create(out.path);
     final manifest = <String, dynamic>{
       'identifier': kLocalBackupIdentifier,
       'version': kLocalBackupVersion,
       'createdAt': DateTime.now().toIso8601String(),
     };
-    try {
-      if (inspiration) {
-        manifest['inspiration'] = await _packInspiration(zip, onProgress);
+    final tags = inspiration ? await _inspirationSource(onProgress) : null;
+    if (tags != null) manifest['inspiration'] = tags.count;
+    final vibeSources = <VibeRawSource>[];
+    if (vibes) {
+      final list = await ref.read(vibeLibraryProvider.future);
+      final lib = ref.read(vibeLibraryProvider.notifier);
+      for (final e in list) {
+        vibeSources.add(await lib.rawSourceOf(e));
       }
-      if (vibes) manifest['vibes'] = await _packVibes(zip, onProgress);
-      _addBytes(zip, 'manifest.json', utf8.encode(jsonEncode(manifest)));
-      await zip.close();
+      manifest['vibes'] = list.length;
+    }
+    final port = ReceivePort();
+    port.listen((m) {
+      if (m case (final String label, final int done, final int total)) {
+        onProgress?.call(label, done, total);
+      }
+    });
+    try {
+      await _writeZipInIsolate((
+        out: out.path,
+        progress: port.sendPort,
+        manifest: manifest,
+        inspiration: tags?.json,
+        previews: tags?.previews ?? const [],
+        vibes: vibeSources,
+      ));
       return out;
     } catch (_) {
-      try {
-        await zip.close();
-      } catch (_) {}
       try {
         await out.delete();
       } catch (_) {}
       rethrow;
+    } finally {
+      port.close();
     }
   }
 
-  Future<int> _packInspiration(
-    ZipFileEncoder zip,
-    void Function(String, int, int)? onProgress,
-  ) async {
+  /// 灵感库要进包的内容:预览按内容哈希去重(哈希在后台 isolate 里算,有缓存),
+  /// 条目里的预览写成引用。
+  Future<
+    ({
+      int count,
+      Map<String, dynamic> json,
+      List<({String sha, String path})> previews,
+    })
+  >
+  _inspirationSource(void Function(String, int, int)? onProgress) async {
     final state = await ref.read(tagLibraryProvider.future);
     await ref.read(codexFavoritesProvider.future);
     final lib = ref.read(tagLibraryProvider.notifier);
     final files = lib.localPreviewFiles().toList();
     final hashes = await PreviewHashes.open();
+    await hashes.prime(
+      files,
+      onProgress: (d, t) => onProgress?.call('整理预览', d, t),
+    );
     final refs = <String, String>{};
-    final packed = <String>{};
+    final previews = <({String sha, String path})>[];
+    final seen = <String>{};
     for (var i = 0; i < files.length; i++) {
-      onProgress?.call('打包预览', i + 1, files.length);
+      onProgress?.call('整理预览', i + 1, files.length);
       final String? sha;
       try {
         sha = await hashes.shaOf(files[i]);
@@ -161,49 +192,21 @@ class LocalBackup {
       }
       if (sha == null) continue;
       refs[files[i]] = previewRef(sha);
-      if (packed.add(sha)) {
-        final input = InputFileStream(files[i]);
-        try {
-          zip.addArchiveFile(
-            _stored(ArchiveFile.stream('previews/$sha', input)),
-          );
-        } finally {
-          await input.close();
-        }
-      }
-      await Future<void>.delayed(Duration.zero);
+      if (seen.add(sha)) previews.add((sha: sha, path: files[i]));
     }
     await hashes.save();
-    _addBytes(
-      zip,
-      'inspiration.json',
-      utf8.encode(
-        jsonEncode({
-          'categories': lib.encodeBackup(refs: refs),
-          'custom': lib.encodeCustom(refs: refs),
-          'pools': lib.encodePools(),
-          'codex_favorites': ref
-              .read(codexFavoritesProvider.notifier)
-              .encodeBackup(),
-        }),
-      ),
+    return (
+      count: state.entries.length,
+      json: {
+        'categories': lib.encodeBackup(refs: refs),
+        'custom': lib.encodeCustom(refs: refs),
+        'pools': lib.encodePools(),
+        'codex_favorites': ref
+            .read(codexFavoritesProvider.notifier)
+            .encodeBackup(),
+      },
+      previews: previews,
     );
-    return state.entries.length;
-  }
-
-  Future<int> _packVibes(
-    ZipFileEncoder zip,
-    void Function(String, int, int)? onProgress,
-  ) async {
-    final list = await ref.read(vibeLibraryProvider.future);
-    final lib = ref.read(vibeLibraryProvider.notifier);
-    for (var i = 0; i < list.length; i++) {
-      onProgress?.call('打包 Vibe', i + 1, list.length);
-      final raw = await lib.rawForUpload(list[i]);
-      _addBytes(zip, 'vibes/$i.naiv4vibe', utf8.encode(jsonEncode(raw)));
-      await Future<void>.delayed(Duration.zero);
-    }
-    return list.length;
   }
 
   static ArchiveFile _stored(ArchiveFile f) =>
@@ -298,18 +301,84 @@ class LocalBackup {
     final lib = ref.read(vibeLibraryProvider.notifier);
     var n = 0;
     for (var i = 0; i < count; i += 20) {
-      final raws = <Map<String, dynamic>>[];
+      final files = <Uint8List>[];
       for (var k = i; k < count && k < i + 20; k++) {
         final bytes = await read(k);
         onProgress?.call(label, k + 1, count);
-        if (bytes == null) continue;
-        try {
-          final j = jsonDecode(utf8.decode(bytes));
-          if (j is Map<String, dynamic>) raws.add(j);
-        } catch (_) {} // 坏的那条跳过
+        if (bytes != null) files.add(bytes);
       }
-      n += (await lib.importVibeRaws(raws)).length;
+      // 解析与落盘都在后台;坏的那条跳过
+      n += (await lib.importVibeFiles(files)).length;
     }
     return n;
+  }
+}
+
+typedef _ZipJob = ({
+  String out,
+  SendPort progress,
+  Map<String, dynamic> manifest,
+  Map<String, dynamic>? inspiration,
+  List<({String sha, String path})> previews,
+  List<VibeRawSource> vibes,
+});
+
+Future<void> _writeZipInIsolate(_ZipJob job) =>
+    Isolate.run(() => _writeZip(job));
+
+/// 后台 isolate:按 [job] 写出备份包。进度最多约 10 次每秒报给主线程。
+Future<void> _writeZip(_ZipJob job) async {
+  final clock = Stopwatch()..start();
+  var reportedAt = -1000;
+  void report(String label, int done, int total) {
+    final ms = clock.elapsedMilliseconds;
+    if (done < total && ms - reportedAt < 100) return;
+    reportedAt = ms;
+    job.progress.send((label, done, total));
+  }
+
+  final zip = ZipFileEncoder()..create(job.out);
+  try {
+    final previews = job.previews;
+    for (var i = 0; i < previews.length; i++) {
+      report('打包预览', i + 1, previews.length);
+      final input = InputFileStream(previews[i].path);
+      try {
+        zip.addArchiveFile(
+          LocalBackup._stored(
+            ArchiveFile.stream('previews/${previews[i].sha}', input),
+          ),
+        );
+      } finally {
+        await input.close();
+      }
+    }
+    if (job.inspiration case final j?) {
+      LocalBackup._addBytes(
+        zip,
+        'inspiration.json',
+        utf8.encode(jsonEncode(j)),
+      );
+    }
+    final vibes = job.vibes;
+    for (var i = 0; i < vibes.length; i++) {
+      report('打包 Vibe', i + 1, vibes.length);
+      LocalBackup._addBytes(
+        zip,
+        'vibes/$i.naiv4vibe',
+        utf8.encode(jsonEncode(readRawMergedSync(vibes[i]))),
+      );
+    }
+    LocalBackup._addBytes(
+      zip,
+      'manifest.json',
+      utf8.encode(jsonEncode(job.manifest)),
+    );
+    await zip.close();
+  } catch (_) {
+    try {
+      await zip.close();
+    } catch (_) {}
+    rethrow;
   }
 }

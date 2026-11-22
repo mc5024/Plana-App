@@ -1,4 +1,3 @@
-import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -159,10 +158,7 @@ class VibeCloudSync {
 
       try {
         final file = await _client.getUserVibeFile(sid, c.filename);
-        final entries = await _lib.importVibeText(
-          jsonEncode(file),
-          fallbackName: c.name,
-        );
+        final entries = await _lib.importVibeJson(file, fallbackName: c.name);
         // 落库后把云端状态钉上,下次比对才跳得掉
         for (final e in entries) {
           await _lib.markCloudState(

@@ -45,16 +45,22 @@ ResultImage? albumCoverOf(
   return items.where((r) => r.id == pinned).firstOrNull ?? items.firstOrNull;
 }
 
+/// 当前浏览范围里的图。只跟着结果列表 / 范围 / 相册变,换选中不重算,
+/// 列表对象保持不变(胶片条按对象缓存排布)。
+final _galleryScopeImagesProvider = Provider<List<ResultImage>>((ref) {
+  final results = ref.watch(galleryProvider.select((s) => s.results));
+  final scope = ref.watch(galleryBrowseAlbumProvider);
+  if (scope == null) return results;
+  final albums = ref.watch(albumsProvider);
+  return results.where((r) => albums.contains(scope, r.id)).toList();
+});
+
 /// 全量结果留在 galleryProvider；这里只派生浏览集合。
 final galleryViewProvider = Provider<GalleryState>((ref) {
-  final all = ref.watch(galleryProvider);
-  final scope = ref.watch(galleryBrowseAlbumProvider);
-  final albums = ref.watch(albumsProvider);
-  final images = scope == null
-      ? all.results
-      : all.results.where((r) => albums.contains(scope, r.id)).toList();
-  final id = images.any((r) => r.id == all.selectedId)
-      ? all.selectedId
+  final selectedId = ref.watch(galleryProvider.select((s) => s.selectedId));
+  final images = ref.watch(_galleryScopeImagesProvider);
+  final id = images.any((r) => r.id == selectedId)
+      ? selectedId
       : images.firstOrNull?.id;
   return GalleryState(results: images, selectedId: id);
 });

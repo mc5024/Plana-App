@@ -174,6 +174,12 @@ class AlbumsData {
   AlbumsData removeImages(Set<String> ids) {
     bool removed(AlbumCover? cover) =>
         cover != null && ids.contains(cover.sourceImageId);
+    // 都不在任何相册里:返回自身,存储那边就不重写
+    if (!ids.any(memberships.containsKey) &&
+        !removed(allPhotosCover) &&
+        !albums.any((a) => removed(a.cover))) {
+      return this;
+    }
     return copyWith(
       memberships: {
         for (final e in memberships.entries)

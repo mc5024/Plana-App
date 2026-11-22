@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/store/atomic_file.dart';
 import '../../core/store/storage_settings.dart';
 import '../../core/util/image_ops.dart';
 
@@ -127,19 +128,23 @@ class CharLibrary extends AsyncNotifier<List<CharRefEntry>> {
     return null;
   }
 
-  Future<void> _setEntries(List<CharRefEntry> list) async {
+  Future<void> _setEntries(List<CharRefEntry> list) {
     state = AsyncData(List.unmodifiable(list));
-    try {
-      await _indexFile.writeAsString(
-        jsonEncode({
-          'version': 1,
-          'entries': [for (final e in list) e.toJson()],
-        }),
-      );
-    } catch (e) {
-      logd('[char-lib] 写索引失败: $e');
-    }
+    final text = jsonEncode({
+      'version': 1,
+      'entries': [for (final e in list) e.toJson()],
+    });
+    // 排队一次写一份,先写临时文件再改名
+    return _indexWrite = _indexWrite.then((_) async {
+      try {
+        await writeStringAtomic(_indexFile, text);
+      } catch (e) {
+        logd('[char-lib] 写索引失败: $e');
+      }
+    });
   }
+
+  Future<void> _indexWrite = Future.value();
 
   /// 索引丢失时从 files/ 全量重建(缩略图缺失则现算)。
   Future<List<CharRefEntry>> _rebuildFromFiles() async {

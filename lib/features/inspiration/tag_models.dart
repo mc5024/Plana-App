@@ -670,18 +670,30 @@ String appendTagNegatives(
 /// 编号自然序(A1 < A2 < A10,画风列表用):文本段不分大小写比较,
 /// 数字段按数值比较。
 int naturalCompare(String a, String b) {
-  final re = RegExp(r'(\d+|\D+)');
-  final xa = re.allMatches(a.toLowerCase()).map((m) => m[0]!).toList();
-  final xb = re.allMatches(b.toLowerCase()).map((m) => m[0]!).toList();
+  final xa = _naturalKey(a);
+  final xb = _naturalKey(b);
   for (var i = 0; i < xa.length && i < xb.length; i++) {
-    final na = int.tryParse(xa[i]);
-    final nb = int.tryParse(xb[i]);
-    final c = na != null && nb != null
-        ? na.compareTo(nb)
-        : xa[i].compareTo(xb[i]);
+    final (sa, na) = xa[i];
+    final (sb, nb) = xb[i];
+    final c = na != null && nb != null ? na.compareTo(nb) : sa.compareTo(sb);
     if (c != 0) return c;
   }
   return xa.length.compareTo(xb.length);
+}
+
+final _naturalRe = RegExp(r'(\d+|\D+)');
+
+/// 切好的比较键(排序时每个名字要比好多次,切一次记下来)。
+final _naturalKeys = <String, List<(String, int?)>>{};
+
+List<(String, int?)> _naturalKey(String s) {
+  final hit = _naturalKeys[s];
+  if (hit != null) return hit;
+  if (_naturalKeys.length > 20000) _naturalKeys.clear();
+  return _naturalKeys[s] = [
+    for (final m in _naturalRe.allMatches(s.toLowerCase()))
+      (m[0]!, int.tryParse(m[0]!)),
+  ];
 }
 
 /// 画师串「获取编号」:A1..A99 → B1..,取首个空位(gap-filling,

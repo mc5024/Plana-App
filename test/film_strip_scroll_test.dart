@@ -64,8 +64,9 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
   }
 
-  ScrollController controllerOf(WidgetTester tester) =>
-      tester.widget<ListView>(find.byType(ListView)).controller!;
+  ScrollController controllerOf(WidgetTester tester) => tester
+      .widget<CustomScrollView>(find.byType(CustomScrollView))
+      .controller!;
 
   double xOf(WidgetTester tester, String id) => tester
       .getTopLeft(

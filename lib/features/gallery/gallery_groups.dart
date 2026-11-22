@@ -96,8 +96,21 @@ List<GalleryGroup> groupByDay(
   int Function(ResultImage r)? at,
 }) {
   final by = <int, List<ResultImage>>{};
+  // 构造本地时间要查时区:落在上一张那天的 [lo, hi) 里就沿用,跨天才重算
+  var lo = 0, hi = 0, day = 0;
   for (final r in items) {
-    by.putIfAbsent(galleryDayKey(at?.call(r) ?? r.createdAt), () => []).add(r);
+    final t = at?.call(r) ?? r.createdAt;
+    if (t <= 0) {
+      by.putIfAbsent(0, () => []).add(r);
+      continue;
+    }
+    if (t < lo || t >= hi) {
+      final d = DateTime.fromMillisecondsSinceEpoch(t);
+      day = galleryDayKey(t);
+      lo = DateTime(d.year, d.month, d.day).millisecondsSinceEpoch;
+      hi = DateTime(d.year, d.month, d.day + 1).millisecondsSinceEpoch;
+    }
+    by.putIfAbsent(day, () => []).add(r);
   }
   return [
     for (final e in by.entries)
@@ -174,56 +187,47 @@ List<TagEntry> _entriesOf(Ref ref, TagCategory cat) => [
 /// 同名的只留一条:一个叫「甘雨」的条目,其正向里往往就带着 `ganyu_(genshin_impact)`,
 /// 两路都会命中,不去重就会分成两堆一样名字的。库条目优先 —— 那是用户自己起的名。
 ///
-/// **不做增量**:它依赖活的灵感库,用户改一次条目全库归属都要重算,留 memo 只会
-/// 给出过期答案。整轮成本 = 图数 × (分词 + 两次查表),几百张是毫秒级;条目里的词
-/// 要先去词库查一轮帖子数([LocalTagDb.postCountsOf]),查过的有缓存。
+/// 灵感库条目一变就整库重算;没变时只算新来的图(见 [_GroupTagsNotifier])。
+/// 条目里的词要先去词库查一轮帖子数([LocalTagDb.postCountsOf]),查过的有缓存。
 final galleryCharTagsProvider =
     AsyncNotifierProvider<GalleryCharTags, Map<String, List<GroupTag>>>(
       GalleryCharTags.new,
     );
 
-class GalleryCharTags extends AsyncNotifier<Map<String, List<GroupTag>>> {
-  /// 每算这么多张让一帧。分词是正则活,几百张连着跑够卡出一下 ——
-  /// 而这活儿发生在用户刚点开「全部作品」的那一刻,最不该卡的时候。
-  static const _sliceSize = 60;
-
+class GalleryCharTags extends _GroupTagsNotifier {
   @override
   Future<Map<String, List<GroupTag>>> build() async {
     final byId = ref.watch(gallerySearchProvider).byId;
     final db = ref.watch(localTagDbProvider);
-    if (byId.isEmpty) return const {};
-
     final entries = _entriesOf(ref, TagCategory.character);
-    final posts = await db.postCountsOf({
-      for (final e in entries) ...tokenizeSet(e.positive),
-    });
-    final matcher = OcMatcher(entries, postCount: (t) => posts[t] ?? 0);
-
-    final out = <String, List<GroupTag>>{};
-    var since = 0;
-    for (final e in byId.entries) {
-      final m = e.value;
-      final toks = tokenizeSet(m.text);
-      // 拷一份再往里加:一个 OC 条目都没有时 match 回的是常量空表,直接加会抛
-      final hits = [
-        ...matcher.match(
-          toks,
-          ids: m.ids.toSet(),
-          names: {...m.cards, ...m.folds},
-        ),
-      ];
-      final seen = {for (final h in hits) h.label};
-      for (final h in await db.charactersIn(toks)) {
-        final label = h.zh ?? h.tag.replaceAll('_', ' ');
-        if (seen.add(label)) hits.add((key: h.tag, label: label));
-      }
-      if (hits.isNotEmpty) out[e.key] = hits;
-      if (++since >= _sliceSize) {
-        since = 0;
-        await Future<void>.delayed(Duration.zero);
-      }
-    }
-    return Map.unmodifiable(out);
+    return _compute(
+      byId: byId,
+      entries: entries,
+      db: db,
+      prepare: () async {
+        final posts = await db.postCountsOf({
+          for (final e in entries) ...tokenizeSet(e.positive),
+        });
+        final matcher = OcMatcher(entries, postCount: (t) => posts[t] ?? 0);
+        return (m) async {
+          final toks = tokenizeSet(m.text);
+          // 拷一份再往里加:一个 OC 条目都没有时 match 回的是常量空表,直接加会抛
+          final hits = [
+            ...matcher.match(
+              toks,
+              ids: m.ids.toSet(),
+              names: {...m.cards, ...m.folds},
+            ),
+          ];
+          final seen = {for (final h in hits) h.label};
+          for (final h in await db.charactersIn(toks)) {
+            final label = h.zh ?? h.tag.replaceAll('_', ' ');
+            if (seen.add(label)) hits.add((key: h.tag, label: label));
+          }
+          return hits;
+        };
+      },
+    );
   }
 }
 
@@ -231,48 +235,103 @@ class GalleryCharTags extends AsyncNotifier<Map<String, List<GroupTag>>> {
 /// [StyleMatcher]:条目 id、折叠组名算来源;文本匹配只比对画师标签,不拿画师串里
 /// 夹带的质量词/构图词参与判定。
 ///
-/// **不做增量**:这里依赖的是活的灵感库,用户改一次条目全库归属都要重算,
-/// 留 memo 只会给出过期答案。
+/// 灵感库条目一变就整库重算;没变时只算新来的图(见 [_GroupTagsNotifier])。
 final galleryStyleTagsProvider =
     AsyncNotifierProvider<GalleryStyleTags, Map<String, List<GroupTag>>>(
       GalleryStyleTags.new,
     );
 
-class GalleryStyleTags extends AsyncNotifier<Map<String, List<GroupTag>>> {
-  static const _sliceSize = 60;
-
+class GalleryStyleTags extends _GroupTagsNotifier {
   @override
   Future<Map<String, List<GroupTag>>> build() async {
     final byId = ref.watch(gallerySearchProvider).byId;
     final db = ref.watch(localTagDbProvider);
-    if (byId.isEmpty) return const {};
-
     final entries = _entriesOf(ref, TagCategory.artist);
-    if (entries.isEmpty) return const {};
-    final posts = await db.postCountsOf({
-      for (final e in entries) ...tokenizeSet(e.positive),
-    });
-    final matcher = StyleMatcher(entries, postCount: (t) => posts[t] ?? 0);
-    if (matcher.isEmpty) return const {};
+    return _compute(
+      byId: entries.isEmpty ? const {} : byId,
+      entries: entries,
+      db: db,
+      prepare: () async {
+        final posts = await db.postCountsOf({
+          for (final e in entries) ...tokenizeSet(e.positive),
+        });
+        final matcher = StyleMatcher(entries, postCount: (t) => posts[t] ?? 0);
+        if (matcher.isEmpty) return (_) async => const <GroupTag>[];
+        return (m) async {
+          final toks = tokenizeSet(m.text);
+          return matcher.match(
+            toks,
+            artists: {...await db.artistsIn(toks), ...taggedArtists(m.text)},
+            ids: m.ids.toSet(),
+            names: m.folds.toSet(),
+          );
+        };
+      },
+    );
+  }
+}
 
+/// 归属表的增量计算:灵感库条目与词库都没变时只算新来的图,其余沿用上一轮;
+/// 新一轮开始后,没跑完的旧一轮就地作废。
+abstract class _GroupTagsNotifier
+    extends AsyncNotifier<Map<String, List<GroupTag>>> {
+  /// 每算这么多张让一帧。分词是正则活,几百张连着跑够卡出一下 ——
+  /// 而这活儿发生在用户刚点开「全部作品」的那一刻,最不该卡的时候。
+  static const _sliceSize = 60;
+
+  List<TagEntry>? _entries;
+  LocalTagDb? _db;
+  Map<String, GallerySearchMeta> _metaSeen = const {};
+  Map<String, List<GroupTag>> _hitsSeen = const {};
+  int _run = 0;
+
+  Future<Map<String, List<GroupTag>>> _compute({
+    required Map<String, GallerySearchMeta> byId,
+    required List<TagEntry> entries,
+    required LocalTagDb db,
+    required Future<Future<List<GroupTag>> Function(GallerySearchMeta)>
+    Function()
+    prepare,
+  }) async {
+    final run = ++_run;
+    if (byId.isEmpty) return const {};
+    final reuse = identical(db, _db) && _sameEntries(entries, _entries);
+    Future<List<GroupTag>> Function(GallerySearchMeta)? match;
     final out = <String, List<GroupTag>>{};
+    final seen = <String, GallerySearchMeta>{};
     var since = 0;
     for (final e in byId.entries) {
       final m = e.value;
-      final toks = tokenizeSet(m.text);
-      final hits = matcher.match(
-        toks,
-        artists: {...await db.artistsIn(toks), ...taggedArtists(m.text)},
-        ids: m.ids.toSet(),
-        names: m.folds.toSet(),
-      );
+      seen[e.key] = m;
+      if (reuse && identical(_metaSeen[e.key], m)) {
+        final h = _hitsSeen[e.key];
+        if (h != null) out[e.key] = h;
+        continue;
+      }
+      match ??= await prepare();
+      if (run != _run) return out;
+      final hits = await match(m);
+      if (run != _run) return out;
       if (hits.isNotEmpty) out[e.key] = hits;
       if (++since >= _sliceSize) {
         since = 0;
         await Future<void>.delayed(Duration.zero);
+        if (run != _run) return out;
       }
     }
+    _entries = entries;
+    _db = db;
+    _metaSeen = seen;
+    _hitsSeen = out;
     return Map.unmodifiable(out);
+  }
+
+  static bool _sameEntries(List<TagEntry> a, List<TagEntry>? b) {
+    if (b == null || a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!identical(a[i], b[i])) return false;
+    }
+    return true;
   }
 }
 

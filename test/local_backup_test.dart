@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive_io.dart';
@@ -8,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:plana_app/features/inspiration/tag_library.dart';
 import 'package:plana_app/features/inspiration/tag_models.dart';
 import 'package:plana_app/features/profile/local_backup.dart';
+import 'package:plana_app/features/vibe_library/naiv4vibe_codec.dart'
+    show vibeEncodingHashKey;
 
 class _Library extends TagLibrary {
   _Library(this.initial);
@@ -87,6 +90,53 @@ void main() {
     expect(File(e.previews.first).readAsBytesSync(), png);
     expect(e.previews.last, 'http://p/1.jpg');
     expect(s.poolOf(TagCategory.artist), ['厚涂']);
+  });
+
+  test('Vibe 导出成包:文件本体合并缓存里的编码', () async {
+    final files = Directory('${root.path}/vibe_library/files')
+      ..createSync(recursive: true);
+    File('${files.path}/v1.naiv4vibe').writeAsStringSync(
+      jsonEncode({
+        'identifier': 'novelai-vibe-transfer',
+        'id': 'v1',
+        'name': '晴空',
+      }),
+    );
+    File('${root.path}/vibe_library/index.json').writeAsStringSync(
+      jsonEncode({
+        'version': 1,
+        'entries': [
+          {
+            'id': 'v1',
+            'name': '晴空',
+            'fileName': 'v1.naiv4vibe',
+            'imageHash': 'abc',
+          },
+        ],
+      }),
+    );
+    Directory('${root.path}/vibe_encodings').createSync();
+    File(
+      '${root.path}/vibe_encodings/abc_v4-5full_1.enc',
+    ).writeAsStringSync('ENC');
+
+    final c = ProviderContainer();
+    addTearDown(c.dispose);
+    final zip = await c
+        .read(localBackupProvider)
+        .export(inspiration: false, vibes: true);
+
+    final file = LocalBackupFile.open(zip.path);
+    addTearDown(file.close);
+    expect(file.vibeCount, 1);
+    final raw =
+        jsonDecode(utf8.decode(file.vibeFiles().single.content))
+            as Map<String, dynamic>;
+    expect(raw['name'], '晴空');
+    expect(
+      raw['encodings']['v4-5full'][vibeEncodingHashKey(1)]['encoding'],
+      'ENC',
+    );
   });
 
   test('不是本 App 的包:给出能看懂的错误', () async {

@@ -15,9 +15,9 @@ String _baseName(String path) {
   return path.substring(i + 1);
 }
 
-/// 清选图器缓存垃圾:file_picker / image_picker 每次导入都往 cache 复制
-/// 一份(实测单次 1.7~20MB)且从不回收,越积越大。只删「UUID 命名」的
-/// 顶层条目 + 遗留的 .onnx 模型缓存 + image_picker 前缀文件,其余不碰;
+/// 清选图器缓存垃圾:file_picker 每次选文件都往 `cache/file_picker/<时间戳>/`
+/// 复制一份(LoRA、备份包动辄上百 MB)且从不回收,越积越大。只删这个目录、
+/// 「UUID 命名」的顶层条目、遗留的 .onnx 模型缓存与几种前缀文件,其余不碰;
 /// [minAge] 内的新鲜条目豁免(启动自动清扫默认 1 小时,防碰到本次会话
 /// 正在用的临时文件;存储管理手动清理传 Duration.zero 全清)。
 Future<void> sweepPickerCache({
@@ -34,6 +34,7 @@ Future<void> sweepPickerCache({
           name.endsWith('.onnx') ||
           name.startsWith('image_picker') ||
           name.startsWith('scaled_') ||
+          name == 'file_picker' ||
           name == kShareCacheDir;
       if (!junk) {
         kept++;

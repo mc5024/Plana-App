@@ -1,13 +1,18 @@
 import '../../core/util/log.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/store/atomic_file.dart';
 import '../../core/store/storage_settings.dart';
 import '../../core/util/image_ops.dart';
 import '../generate/vibe_cache.dart';
@@ -15,6 +20,323 @@ import 'naiv4vibe_codec.dart';
 
 /// 顶层函数:后台 isolate 算图片字节哈希(编码缓存的内容寻址键)。
 String sha256HexOfBytes(Uint8List bytes) => sha256.convert(bytes).toString();
+
+/// 一条 vibe 完整 JSON 的出处:.naiv4vibe 文件 + 缓存里该图各条编码从哪读
+/// (见 [VibeEncodeCache.sourceOf])。
+typedef VibeRawSource = ({
+  String file,
+  List<({String modelKey, double ie, String? path, String? encoding})>
+  encodings,
+});
+
+/// 按 [VibeRawSource] 读出文件本体并合并全部编码。同步 IO,在后台 isolate 里调。
+Map<String, dynamic> readRawMergedSync(VibeRawSource s) {
+  final raw =
+      jsonDecode(File(s.file).readAsStringSync()) as Map<String, dynamic>;
+  for (final e in s.encodings) {
+    var enc = e.encoding;
+    if (enc == null && e.path != null) {
+      try {
+        enc = File(e.path!).readAsStringSync();
+      } catch (_) {}
+    }
+    if (enc == null || enc.isEmpty) continue;
+    mergeEncodingIntoRaw(
+      raw,
+      modelKey: e.modelKey,
+      infoExtracted: e.ie,
+      encoding: enc,
+    );
+  }
+  return raw;
+}
+
+Future<Map<String, dynamic>> _readRawMergedIsolate(VibeRawSource s) =>
+    Isolate.run(() => readRawMergedSync(s));
+
+/// 重建索引时扫出的一条,不带原图。[newEncodings] 是编码缓存里还没有的那些。
+typedef _ScannedVibe = ({
+  String fileName,
+  String id,
+  String name,
+  String? imageHash,
+  bool hasImage,
+  double? defaultStrength,
+  double? defaultInfoExtracted,
+  List<String> supportedModels,
+  List<String> tags,
+  int createdAt,
+  int sizeBytes,
+  List<VibeEncodingItem> newEncodings,
+});
+
+/// [only] 非空时只扫这些文件名。
+typedef _ScanDirs = ({
+  String files,
+  String thumbs,
+  String encodings,
+  Set<String>? only,
+});
+
+Future<List<_ScannedVibe>> _scanVibeFilesInIsolate(_ScanDirs dirs) =>
+    Isolate.run(() => _scanVibeFiles(dirs));
+
+/// 后台 isolate:逐个解析 files/ 下的 .naiv4vibe,算原图哈希,缺的缩略图补上。
+List<_ScannedVibe> _scanVibeFiles(_ScanDirs dirs) {
+  final out = <_ScannedVibe>[];
+  for (final ent in Directory(dirs.files).listSync()) {
+    if (ent is! File || !ent.path.endsWith('.naiv4vibe')) continue;
+    if (dirs.only case final only?
+        when !only.contains(ent.uri.pathSegments.last)) {
+      continue;
+    }
+    try {
+      final text = ent.readAsStringSync();
+      final parsed = parseVibeFileText(text);
+      if (parsed.isEmpty) continue;
+      final p = parsed.first;
+      final id = VibeLibrary.idOfParsed(p);
+      final b64 = p.imageBase64;
+      final bytes = b64 == null ? null : base64Decode(b64);
+      final hash = bytes == null ? null : sha256HexOfBytes(bytes);
+      final thumb = File('${dirs.thumbs}/${VibeLibrary._safeName(id)}.png');
+      if (!thumb.existsSync()) {
+        try {
+          final png = bytes != null
+              ? _thumbPngSync(bytes)
+              : switch (p.thumbnailDataUrl) {
+                  final t? => base64Decode(t.split(',').last),
+                  null => null,
+                };
+          if (png != null) thumb.writeAsBytesSync(png);
+        } catch (_) {}
+      }
+      out.add((
+        fileName: ent.uri.pathSegments.last,
+        id: id,
+        name: p.name,
+        imageHash: hash,
+        hasImage: b64 != null,
+        defaultStrength: p.defaultStrength,
+        defaultInfoExtracted: p.defaultInfoExtracted,
+        supportedModels: p.supportedModelKeys,
+        tags: p.tags,
+        createdAt: p.createdAt,
+        sizeBytes: text.length,
+        newEncodings: [
+          if (hash != null)
+            for (final it in p.encodingItems)
+              if (it.infoExtracted case final ie?)
+                if (!File(
+                  '${dirs.encodings}/'
+                  '${VibeEncodeCache.fileNameOf(hash, it.modelKey, ie)}',
+                ).existsSync())
+                  it,
+        ],
+      ));
+    } catch (_) {} // 坏文件跳过
+  }
+  return out;
+}
+
+/// 导入落好盘的一条:文件写好、缩略图做好,主线程只组条目、灌编码。
+typedef _IngestedVibe = ({
+  String id,
+  String fileName,
+  int sizeBytes,
+  String? imageHash,
+  bool hasImage,
+  String name,
+  double? defaultStrength,
+  double? defaultInfoExtracted,
+  List<String> supportedModels,
+  List<String> tags,
+  int createdAt,
+  List<VibeEncodingItem> encodings,
+});
+
+/// [srcs] 每项是解析好的 vibe JSON(Map)或 .naiv4vibe 文件字节;[base] 是
+/// 第一项在整批里的序号(没 id 也没图的条目拿它拼 id)。
+typedef _IngestJob = ({
+  List<Object> srcs,
+  int base,
+  int stamp,
+  String files,
+  String thumbs,
+});
+
+Future<List<_IngestedVibe>> _ingestInIsolate(_IngestJob job) =>
+    Isolate.run(() => _ingestVibes(job));
+
+/// 后台 isolate:逐条落盘、算原图哈希、做缩略图。读不懂的跳过。
+List<_IngestedVibe> _ingestVibes(_IngestJob job) {
+  final out = <_IngestedVibe>[];
+  for (var k = 0; k < job.srcs.length; k++) {
+    try {
+      final src = job.srcs[k];
+      final j = src is Uint8List ? jsonDecode(utf8.decode(src)) : src;
+      if (j is! Map<String, dynamic>) continue;
+      final p = ParsedVibe(j);
+      final b64 = p.imageBase64;
+      final id = p.id.isNotEmpty
+          ? p.id
+          : (b64 != null
+                ? naiVibeIdOfBase64(b64)
+                : 'enc_${job.stamp}_${job.base + k}');
+      final fileName = '${VibeLibrary._safeName(id)}.naiv4vibe';
+      final text = jsonEncode(p.raw);
+      final tmp = File('${job.files}/$fileName.tmp')
+        ..writeAsStringSync(text, flush: true);
+      tmp.renameSync('${job.files}/$fileName');
+      final bytes = b64 == null ? null : base64Decode(b64);
+      // 有原图时缩略图一律从原图现做(导入文件的 thumbnail 可能是截断伪图)
+      try {
+        final png = bytes != null
+            ? _thumbPngSync(bytes)
+            : switch (p.thumbnailDataUrl) {
+                final t? => base64Decode(t.split(',').last),
+                null => null,
+              };
+        if (png != null) {
+          File(
+            '${job.thumbs}/${VibeLibrary._safeName(id)}.png',
+          ).writeAsBytesSync(png);
+        }
+      } catch (_) {}
+      out.add((
+        id: id,
+        fileName: fileName,
+        sizeBytes: text.length,
+        imageHash: bytes == null ? null : sha256HexOfBytes(bytes),
+        hasImage: b64 != null,
+        name: p.name,
+        defaultStrength: p.defaultStrength,
+        defaultInfoExtracted: p.defaultInfoExtracted,
+        supportedModels: p.supportedModelKeys,
+        tags: p.tags,
+        createdAt: p.createdAt,
+        encodings: p.encodingItems,
+      ));
+    } catch (_) {}
+  }
+  return out;
+}
+
+/// 改一条 vibe 文件里的字段。[strength] / [infoExtracted] 有值时补全 importInfo,
+/// 缺的项用 [model] / [fallbackStrength] / [fallbackIe]。
+typedef _VibeEdit = ({
+  String path,
+  List<String>? tags,
+  String? name,
+  double? strength,
+  double? infoExtracted,
+  String model,
+  double fallbackStrength,
+  double fallbackIe,
+});
+
+Future<List<int?>> _editVibeFilesInIsolate(List<_VibeEdit> edits) =>
+    Isolate.run(() => [for (final e in edits) _editVibeFile(e)]);
+
+/// 后台 isolate:读改写一条 vibe 文件(原子替换)。返回新文本长度,失败 null。
+int? _editVibeFile(_VibeEdit ed) {
+  try {
+    final raw =
+        jsonDecode(File(ed.path).readAsStringSync()) as Map<String, dynamic>;
+    if (ed.tags != null) raw['tags'] = ed.tags;
+    if (ed.name != null) raw['name'] = ed.name;
+    if (ed.strength != null || ed.infoExtracted != null) {
+      final info = raw['importInfo'] is Map
+          ? (raw['importInfo'] as Map).cast<String, dynamic>()
+          : <String, dynamic>{};
+      info['model'] ??= ed.model;
+      if (ed.strength != null) info['strength'] = ed.strength;
+      if (ed.infoExtracted != null) {
+        info['information_extracted'] = ed.infoExtracted;
+      }
+      info['strength'] ??= ed.fallbackStrength;
+      info['information_extracted'] ??= ed.fallbackIe;
+      raw['importInfo'] = info;
+    }
+    final text = jsonEncode(raw);
+    final tmp = File('${ed.path}.tmp')..writeAsStringSync(text, flush: true);
+    tmp.renameSync(ed.path);
+    return text.length;
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<Uint8List?> _vibeImageInIsolate(String path) =>
+    Isolate.run(() => _vibeImageOf(path));
+
+Uint8List? _vibeImageOf(String path) {
+  final raw = jsonDecode(File(path).readAsStringSync());
+  final img = raw is Map ? raw['image'] : null;
+  return img is String && img.isNotEmpty ? base64Decode(img) : null;
+}
+
+Future<VibeForGenerate?> _forGenerateInIsolate(
+  String path,
+  String? knownHash,
+  double? defaultIe,
+) => Isolate.run(() => _forGenerate(path, knownHash, defaultIe));
+
+/// 后台 isolate:有图 → 原图字节 + 哈希;纯编码 → 每模型键选一条编码
+/// (优先贴近默认 IE)+ 固定 IE。
+VibeForGenerate? _forGenerate(
+  String path,
+  String? knownHash,
+  double? defaultIe,
+) {
+  final raw = jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>;
+  final p = ParsedVibe(raw);
+  final img = p.imageBase64;
+  if (img != null) {
+    final bytes = base64Decode(img);
+    return (
+      image: bytes,
+      imageHash: knownHash ?? sha256HexOfBytes(bytes),
+      encodedByModel: null,
+      fixedInfoExtracted: defaultIe ?? 1.0,
+    );
+  }
+  final prefer = defaultIe ?? p.defaultInfoExtracted ?? 1.0;
+  final byModel = <String, String>{};
+  double? pickedIe;
+  for (final it in p.encodingItems) {
+    final cur = byModel[it.modelKey];
+    if (cur == null) {
+      byModel[it.modelKey] = it.encoding;
+      pickedIe ??= it.infoExtracted;
+    } else if (it.infoExtracted != null &&
+        (pickedIe == null ||
+            (it.infoExtracted! - prefer).abs() < (pickedIe - prefer).abs())) {
+      byModel[it.modelKey] = it.encoding;
+      pickedIe = it.infoExtracted;
+    }
+  }
+  if (byModel.isEmpty) return null;
+  return (
+    image: null,
+    imageHash: null,
+    encodedByModel: byModel,
+    fixedInfoExtracted: pickedIe ?? prefer,
+  );
+}
+
+/// 原图 cover 裁成 256 方图的 PNG(保留透明)。
+Uint8List? _thumbPngSync(Uint8List bytes) {
+  final src = img.decodeImage(bytes);
+  if (src == null) return null;
+  return img.encodePng(
+    img.copyResizeCropSquare(
+      src,
+      size: 256,
+      interpolation: img.Interpolation.average,
+    ),
+  );
+}
 
 /// 库索引条目(轻量,列表页只碰它和缩略图,不 parse 大 JSON)。
 class VibeEntry {
@@ -250,6 +572,12 @@ class VibeLibrary extends AsyncNotifier<List<VibeEntry>> {
                   if (t is String) t,
               ]);
           }
+          unawaited(
+            Future(() async {
+              await future;
+              await _adoptOrphans();
+            }),
+          );
           return [
             for (final e in j['entries'] as List)
               if (e is Map<String, dynamic>)
@@ -287,17 +615,25 @@ class VibeLibrary extends AsyncNotifier<List<VibeEntry>> {
 
   Future<void> _setEntries(List<VibeEntry> list) async {
     state = AsyncData(List.unmodifiable(list));
-    try {
-      await _indexFile.writeAsString(
-        jsonEncode({
-          'version': 1,
-          'entries': [for (final e in list) e.toJson()],
-          'tagRegistry': _registryTags.toList()..sort(),
-        }),
-      );
-    } catch (e) {
-      logd('[vibe-lib] 写索引失败: $e'); // 内存态仍可用,下次启动会重建
-    }
+    await _writeIndex(list);
+  }
+
+  Future<void> _indexWrite = Future.value();
+
+  /// 写索引:排队一次写一份,先写临时文件再改名。
+  Future<void> _writeIndex(List<VibeEntry> list) {
+    final text = jsonEncode({
+      'version': 1,
+      'entries': [for (final e in list) e.toJson()],
+      'tagRegistry': _registryTags.toList()..sort(),
+    });
+    return _indexWrite = _indexWrite.then((_) async {
+      try {
+        await writeStringAtomic(_indexFile, text);
+      } catch (e) {
+        logd('[vibe-lib] 写索引失败: $e'); // 内存态仍可用,下次启动会重建
+      }
+    });
   }
 
   Future<void> _writeThumb(String id, Uint8List pngBytes) async {
@@ -315,107 +651,122 @@ class VibeLibrary extends AsyncNotifier<List<VibeEntry>> {
             ? naiVibeIdOfBase64(p.imageBase64!)
             : 'enc_${DateTime.now().millisecondsSinceEpoch}');
 
-  /// 由解析结果组装索引条目并落缩略图。
-  /// 有原图时缩略图一律从原图现生成(导入文件的 thumbnail 可能是截断伪图)。
-  Future<VibeEntry> _entryFromParsed(
-    ParsedVibe p, {
-    required String id,
-    required String fileName,
-    required int sizeBytes,
+  /// 由后台落好盘的结果组装索引条目。
+  static VibeEntry _entryFromIngested(
+    _IngestedVibe g, {
     String fallbackName = '',
     String? originFilename,
     VibeEntry? existing,
-  }) async {
-    final img = p.imageBase64;
-    String? hash;
-    if (img != null) {
-      final bytes = base64Decode(img);
-      hash = await compute(sha256HexOfBytes, bytes);
-      try {
-        await _writeThumb(
-          id,
-          await coverResizePng(bytes, 256, 256, keepAlpha: true),
-        );
-      } catch (_) {}
-    } else {
-      final t = p.thumbnailDataUrl;
-      if (t != null) {
-        try {
-          await _writeThumb(id, base64Decode(t.split(',').last));
-        } catch (_) {}
-      }
-    }
-    final name = p.name.isNotEmpty
-        ? p.name
+  }) {
+    final name = g.name.isNotEmpty
+        ? g.name
         : (fallbackName.isNotEmpty ? fallbackName : '未命名 Vibe');
     return VibeEntry(
-      id: id,
+      id: g.id,
       name: name,
-      fileName: fileName,
-      imageHash: hash,
-      hasImage: img != null,
-      defaultStrength: p.defaultStrength ?? existing?.defaultStrength,
+      fileName: g.fileName,
+      imageHash: g.imageHash,
+      hasImage: g.hasImage,
+      defaultStrength: g.defaultStrength ?? existing?.defaultStrength,
       defaultInfoExtracted:
-          p.defaultInfoExtracted ?? existing?.defaultInfoExtracted,
-      supportedModels: p.supportedModelKeys,
-      tags: p.tags.isNotEmpty ? p.tags : (existing?.tags ?? const []),
+          g.defaultInfoExtracted ?? existing?.defaultInfoExtracted,
+      supportedModels: g.supportedModels,
+      tags: g.tags.isNotEmpty ? g.tags : (existing?.tags ?? const []),
       createdAt:
           existing?.createdAt ??
-          (p.createdAt > 0
-              ? p.createdAt
+          (g.createdAt > 0
+              ? g.createdAt
               : DateTime.now().millisecondsSinceEpoch),
       lastUsedAt: existing?.lastUsedAt ?? 0,
-      sizeBytes: sizeBytes,
+      sizeBytes: g.sizeBytes,
       originFilename: originFilename ?? existing?.originFilename,
     );
   }
 
   /// 把文件自带的编码灌进内容寻址缓存(有原图哈希才有键;无 params 的条目
   /// 定位不了 IE,留在文件里不进缓存,导出时仍保留)。
-  Future<void> _seedEncodings(ParsedVibe p, String? imageHash) async {
+  Future<void> _seedEncodings(
+    List<VibeEncodingItem> items,
+    String? imageHash,
+  ) async {
     if (imageHash == null) return;
     final cache = await ref.read(vibeCacheProvider.future);
-    for (final it in p.encodingItems) {
+    for (final it in items) {
       final ie = it.infoExtracted;
       if (ie == null) continue;
       await cache.put(imageHash, it.modelKey, ie, it.encoding);
     }
   }
 
+  /// 索引坏了 / 没了:读文件、算哈希、补缩略图都在后台 isolate 里做,
+  /// 这里只把结果组装成条目、补进缓存里没有的编码。
   Future<List<VibeEntry>> _rebuildFromFiles() async {
+    final out = await _scanEntries();
+    out.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    await _writeIndex(out);
+    return out;
+  }
+
+  /// 扫 files/ 组条目;[only] 非空时只扫这些文件名。
+  Future<List<VibeEntry>> _scanEntries({Set<String>? only}) async {
     final out = <VibeEntry>[];
     try {
-      await for (final ent in _filesDir.list()) {
-        if (ent is! File || !ent.path.endsWith('.naiv4vibe')) continue;
-        try {
-          final text = await ent.readAsString();
-          final parsed = parseVibeFileText(text);
-          if (parsed.isEmpty) continue;
-          final p = parsed.first;
-          final e = await _entryFromParsed(
-            p,
-            id: idOfParsed(p),
-            fileName: ent.uri.pathSegments.last,
-            sizeBytes: text.length,
-          );
-          await _seedEncodings(p, e.imageHash);
-          out.add(e);
-        } catch (err) {
-          logd('[vibe-lib] 重建跳过 ${ent.path}: $err');
+      final cache = await ref.read(vibeCacheProvider.future);
+      final scanned = await _scanVibeFilesInIsolate((
+        files: _filesDir.path,
+        thumbs: _thumbsDir.path,
+        encodings: cache.dirPath,
+        only: only,
+      ));
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (final s in scanned) {
+        if (s.imageHash case final h?) {
+          for (final it in s.newEncodings) {
+            await cache.put(h, it.modelKey, it.infoExtracted!, it.encoding);
+          }
         }
+        out.add(
+          VibeEntry(
+            id: s.id,
+            name: s.name.isNotEmpty ? s.name : '未命名 Vibe',
+            fileName: s.fileName,
+            imageHash: s.imageHash,
+            hasImage: s.hasImage,
+            defaultStrength: s.defaultStrength,
+            defaultInfoExtracted: s.defaultInfoExtracted,
+            supportedModels: s.supportedModels,
+            tags: s.tags,
+            createdAt: s.createdAt > 0 ? s.createdAt : now,
+            sizeBytes: s.sizeBytes,
+          ),
+        );
       }
-      out.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      await _indexFile.writeAsString(
-        jsonEncode({
-          'version': 1,
-          'entries': [for (final e in out) e.toJson()],
-          'tagRegistry': _registryTags.toList()..sort(),
-        }),
-      );
     } catch (e) {
-      logd('[vibe-lib] 重建失败: $e');
+      logd('[vibe-lib] 扫描文件失败: $e');
     }
     return out;
+  }
+
+  /// 导入到一半被杀:文件落了盘、索引没来得及写。启动后把这些文件收回来。
+  Future<void> _adoptOrphans() async {
+    final known = {for (final e in _entries) e.fileName};
+    final orphans = <String>{};
+    try {
+      await for (final ent in _filesDir.list()) {
+        final n = ent.uri.pathSegments.last;
+        if (ent is File && n.endsWith('.naiv4vibe') && !known.contains(n)) {
+          orphans.add(n);
+        }
+      }
+    } catch (_) {}
+    if (orphans.isEmpty) return;
+    final got = await _scanEntries(only: orphans);
+    final ids = {for (final e in _entries) e.id};
+    final add = [
+      for (final e in got)
+        if (!ids.contains(e.id)) e,
+    ];
+    if (add.isNotEmpty) await _setEntries([...add, ..._entries]);
   }
 
   Future<void> _upsert(VibeEntry e) async {
@@ -509,6 +860,25 @@ class VibeLibrary extends AsyncNotifier<List<VibeEntry>> {
     String fallbackName = '',
     String? originFilename,
     void Function(int done, int total)? onProgress,
+  }) => _ingest(
+    raws,
+    fallbackName: fallbackName,
+    originFilename: originFilename,
+    onProgress: onProgress,
+  );
+
+  /// 批量导入 .naiv4vibe 文件字节(备份恢复用):解析也在后台做。
+  Future<List<VibeEntry>> importVibeFiles(List<Uint8List> files) =>
+      _ingest(files);
+
+  /// 每批这么多条交给一个后台 isolate。
+  static const _ingestBatch = 10;
+
+  Future<List<VibeEntry>> _ingest(
+    List<Object> srcs, {
+    String fallbackName = '',
+    String? originFilename,
+    void Function(int done, int total)? onProgress,
   }) async {
     await future;
     final kept = [..._entries]; // 库里原有的,按 id 就地覆盖
@@ -516,41 +886,39 @@ class VibeLibrary extends AsyncNotifier<List<VibeEntry>> {
     final fresh = <VibeEntry>[]; // 本批新增的,最后整体插到最前
     final freshAt = <String, int>{};
     final out = <VibeEntry>[];
+    final stamp = DateTime.now().millisecondsSinceEpoch;
 
-    for (var n = 0; n < raws.length; n++) {
-      final p = ParsedVibe(raws[n]);
-      final id = p.id.isNotEmpty
-          ? p.id
-          : (p.imageBase64 != null
-                ? naiVibeIdOfBase64(p.imageBase64!)
-                : 'enc_${DateTime.now().millisecondsSinceEpoch}_$n');
-      final fileName = '${_safeName(id)}.naiv4vibe';
-      final singleText = jsonEncode(p.raw);
-      await File('${_filesDir.path}/$fileName').writeAsString(singleText);
-      final entry = await _entryFromParsed(
-        p,
-        id: id,
-        fileName: fileName,
-        sizeBytes: singleText.length,
-        fallbackName: fallbackName,
-        originFilename: originFilename,
-        existing: switch ((keptAt[id], freshAt[id])) {
-          (final int i, _) => kept[i],
-          (_, final int i) => fresh[i],
-          _ => null,
-        },
-      );
-      await _seedEncodings(p, entry.imageHash);
-      if (keptAt[id] case final int i) {
-        kept[i] = entry;
-      } else if (freshAt[id] case final int i) {
-        fresh[i] = entry; // 同一批里重复的 id,后一条覆盖前一条
-      } else {
-        freshAt[id] = fresh.length;
-        fresh.add(entry);
+    for (var i = 0; i < srcs.length; i += _ingestBatch) {
+      final got = await _ingestInIsolate((
+        srcs: srcs.sublist(i, math.min(i + _ingestBatch, srcs.length)),
+        base: i,
+        stamp: stamp,
+        files: _filesDir.path,
+        thumbs: _thumbsDir.path,
+      ));
+      for (final g in got) {
+        final entry = _entryFromIngested(
+          g,
+          fallbackName: fallbackName,
+          originFilename: originFilename,
+          existing: switch ((keptAt[g.id], freshAt[g.id])) {
+            (final int i, _) => kept[i],
+            (_, final int i) => fresh[i],
+            _ => null,
+          },
+        );
+        await _seedEncodings(g.encodings, entry.imageHash);
+        if (keptAt[g.id] case final int i) {
+          kept[i] = entry;
+        } else if (freshAt[g.id] case final int i) {
+          fresh[i] = entry; // 同一批里重复的 id,后一条覆盖前一条
+        } else {
+          freshAt[g.id] = fresh.length;
+          fresh.add(entry);
+        }
+        out.add(entry);
       }
-      out.add(entry);
-      onProgress?.call(n + 1, raws.length);
+      onProgress?.call(math.min(i + _ingestBatch, srcs.length), srcs.length);
     }
 
     // 与逐条 upsert 同序:新增的排在最前,后导入的更靠前
@@ -576,24 +944,28 @@ class VibeLibrary extends AsyncNotifier<List<VibeEntry>> {
     return buildBundleText(raws);
   }
 
-  Future<Map<String, dynamic>> _readRawMerged(VibeEntry e) async {
-    final raw =
-        jsonDecode(await fileOf(e).readAsString()) as Map<String, dynamic>;
+  Future<Map<String, dynamic>> _readRawMerged(VibeEntry e) async =>
+      _readRawMergedIsolate(await rawSourceOf(e));
+
+  /// [rawForUpload] 那份内容的出处,交给后台 isolate 用 [readRawMergedSync] 读。
+  Future<VibeRawSource> rawSourceOf(VibeEntry e) async {
+    final encs =
+        <({String modelKey, double ie, String? path, String? encoding})>[];
     final hash = e.imageHash;
     if (hash != null) {
       final cache = await ref.read(vibeCacheProvider.future);
       for (final it in cache.entriesForImage(hash)) {
-        final enc = await cache.get(hash, it.modelKey, it.ie);
-        if (enc == null) continue;
-        mergeEncodingIntoRaw(
-          raw,
+        final src = cache.sourceOf(hash, it.modelKey, it.ie);
+        if (src == null) continue;
+        encs.add((
           modelKey: it.modelKey,
-          infoExtracted: it.ie,
-          encoding: enc,
-        );
+          ie: it.ie,
+          path: src.path,
+          encoding: src.encoding,
+        ));
       }
     }
-    return raw;
+    return (file: fileOf(e).path, encodings: encs);
   }
 
   /// 云端备份要推的完整 vibe JSON:文件本体 + 缓存里该图的全部编码。
@@ -651,6 +1023,27 @@ class VibeLibrary extends AsyncNotifier<List<VibeEntry>> {
 
   // ---- 编辑 ----
 
+  /// 改文件用的编辑项(importInfo 缺项按这条的默认值补)。
+  _VibeEdit _editOf(
+    VibeEntry e, {
+    List<String>? tags,
+    String? name,
+    double? strength,
+    double? infoExtracted,
+  }) => (
+    path: fileOf(e).path,
+    tags: tags,
+    name: name,
+    strength: strength,
+    infoExtracted: infoExtracted,
+    model: e.supportedModels.isNotEmpty
+        ? (kEncodingKeyToModel[e.supportedModels.first] ??
+              e.supportedModels.first)
+        : 'nai-diffusion-4-5-full',
+    fallbackStrength: e.defaultStrength ?? 0.6,
+    fallbackIe: e.defaultInfoExtracted ?? 1.0,
+  );
+
   /// 改名 / 默认参数:同时回写文件(name / importInfo)与索引。
   Future<void> updateMeta(
     String id, {
@@ -661,64 +1054,57 @@ class VibeLibrary extends AsyncNotifier<List<VibeEntry>> {
     await future;
     final e = _byId(id);
     if (e == null) return;
-    try {
-      final raw =
-          jsonDecode(await fileOf(e).readAsString()) as Map<String, dynamic>;
-      if (name != null) raw['name'] = name;
-      if (defaultStrength != null || defaultInfoExtracted != null) {
-        final info = raw['importInfo'] is Map
-            ? (raw['importInfo'] as Map).cast<String, dynamic>()
-            : <String, dynamic>{};
-        info['model'] ??= e.supportedModels.isNotEmpty
-            ? (kEncodingKeyToModel[e.supportedModels.first] ??
-                  e.supportedModels.first)
-            : 'nai-diffusion-4-5-full';
-        if (defaultStrength != null) info['strength'] = defaultStrength;
-        if (defaultInfoExtracted != null) {
-          info['information_extracted'] = defaultInfoExtracted;
-        }
-        info['strength'] ??= e.defaultStrength ?? 0.6;
-        info['information_extracted'] ??= e.defaultInfoExtracted ?? 1.0;
-        raw['importInfo'] = info;
-      }
-      final text = jsonEncode(raw);
-      await fileOf(e).writeAsString(text);
-      await _upsert(
-        e.copyWith(
-          name: name,
-          defaultStrength: defaultStrength,
-          defaultInfoExtracted: defaultInfoExtracted,
-          sizeBytes: text.length,
-        ),
-      );
-    } catch (err) {
-      logd('[vibe-lib] 更新失败: $err');
+    final size = (await _editVibeFilesInIsolate([
+      _editOf(
+        e,
+        name: name,
+        strength: defaultStrength,
+        infoExtracted: defaultInfoExtracted,
+      ),
+    ])).single;
+    if (size == null) {
+      logd('[vibe-lib] 更新失败: ${e.id}');
+      return;
     }
+    await _upsert(
+      e.copyWith(
+        name: name,
+        defaultStrength: defaultStrength,
+        defaultInfoExtracted: defaultInfoExtracted,
+        sizeBytes: size,
+      ),
+    );
   }
 
   /// 设置某条标签(整表覆盖):回写文件 tags + 索引。
   Future<void> setTags(String id, List<String> tags) async {
     await future;
-    final e = _byId(id);
-    if (e == null) return;
-    try {
-      final raw =
-          jsonDecode(await fileOf(e).readAsString()) as Map<String, dynamic>;
-      raw['tags'] = tags;
-      await fileOf(e).writeAsString(jsonEncode(raw));
-    } catch (err) {
-      logd('[vibe-lib] 写标签失败: $err');
-    }
-    await _upsert(e.copyWith(tags: tags));
+    await _retag({id: tags});
+  }
+
+  /// 若干条换标签:文件在后台逐个改写,索引最后写一次。
+  Future<void> _retag(Map<String, List<String>> tagsById) async {
+    final edits = [
+      for (final en in tagsById.entries)
+        if (_byId(en.key) case final e?) _editOf(e, tags: en.value),
+    ];
+    if (edits.isEmpty) return;
+    final sizes = await _editVibeFilesInIsolate(edits);
+    if (sizes.contains(null)) logd('[vibe-lib] 部分标签没写进文件');
+    await _setEntries([
+      for (final e in _entries)
+        if (tagsById[e.id] case final t?) e.copyWith(tags: t) else e,
+    ]);
   }
 
   /// 批量给多条**追加**标签(已有则跳过)。
   Future<void> addTagToAll(Iterable<String> ids, String tag) async {
-    for (final id in ids) {
-      final e = _byId(id);
-      if (e == null || e.tags.contains(tag)) continue;
-      await setTags(id, [...e.tags, tag]);
-    }
+    await future;
+    await _retag({
+      for (final id in ids)
+        if (_byId(id) case final e? when !e.tags.contains(tag))
+          id: [...e.tags, tag],
+    });
   }
 
   /// 全部已知标签:条目在用的 ∪ 登记表里新建的空标签,升序。
@@ -746,15 +1132,13 @@ class VibeLibrary extends AsyncNotifier<List<VibeEntry>> {
     await future;
     final n = neu.trim();
     if (old == n || n.isEmpty) return;
-    for (final e in [..._entries]) {
-      if (!e.tags.contains(old)) continue;
-      final next = <String>[];
-      for (final t in e.tags) {
-        final r = t == old ? n : t;
-        if (!next.contains(r)) next.add(r);
-      }
-      await setTags(e.id, next);
-    }
+    await _retag({
+      for (final e in _entries)
+        if (e.tags.contains(old))
+          e.id: [
+            ...{for (final t in e.tags) t == old ? n : t},
+          ],
+    });
     if (_registryTags.remove(old)) _registryTags.add(n);
     await _setEntries([..._entries]);
   }
@@ -762,13 +1146,14 @@ class VibeLibrary extends AsyncNotifier<List<VibeEntry>> {
   /// 全局删除标签(从所有条目移除,并从登记表移除)。
   Future<void> removeTag(String tag) async {
     await future;
-    for (final e in [..._entries]) {
-      if (!e.tags.contains(tag)) continue;
-      await setTags(e.id, [
-        for (final t in e.tags)
-          if (t != tag) t,
-      ]);
-    }
+    await _retag({
+      for (final e in _entries)
+        if (e.tags.contains(tag))
+          e.id: [
+            for (final t in e.tags)
+              if (t != tag) t,
+          ],
+    });
     _registryTags.remove(tag);
     await _setEntries([..._entries]);
   }
@@ -786,18 +1171,19 @@ class VibeLibrary extends AsyncNotifier<List<VibeEntry>> {
     await _setEntries([..._entries]..removeWhere((x) => x.id == id));
   }
 
-  /// 清空整库(存储管理页):原图/缩略图/索引一并删净。
+  /// 清空整库(存储管理页):原图/缩略图/索引一并删净,不在索引里的残留也删。
   Future<void> clearAll() async {
     await future;
-    for (final e in [..._entries]) {
+    await _setEntries(const []);
+    for (final d in [_filesDir, _thumbsDir]) {
       try {
-        await fileOf(e).delete();
-      } catch (_) {}
-      try {
-        await thumbOf(e).delete();
+        await for (final ent in d.list()) {
+          try {
+            await ent.delete(recursive: true);
+          } catch (_) {}
+        }
       } catch (_) {}
     }
-    await _setEntries(const []);
   }
 
   /// 库上限裁剪:超出上限删「最久未用」的(用过看最近使用,
@@ -850,11 +1236,7 @@ class VibeLibrary extends AsyncNotifier<List<VibeEntry>> {
   Future<Uint8List?> loadImageBytes(VibeEntry e) async {
     if (!e.hasImage) return null;
     try {
-      final raw =
-          jsonDecode(await fileOf(e).readAsString()) as Map<String, dynamic>;
-      final img = raw['image'];
-      if (img is! String || img.isEmpty) return null;
-      return base64Decode(img);
+      return await _vibeImageInIsolate(fileOf(e).path);
     } catch (_) {
       return null;
     }
@@ -864,49 +1246,16 @@ class VibeLibrary extends AsyncNotifier<List<VibeEntry>> {
   /// 纯编码 → 每模型键选一条编码(优先贴近默认 IE)+ 固定 IE。
   Future<VibeForGenerate?> loadForGenerate(VibeEntry e) async {
     try {
-      final raw =
-          jsonDecode(await fileOf(e).readAsString()) as Map<String, dynamic>;
-      final p = ParsedVibe(raw);
-      final img = p.imageBase64;
-      if (img != null) {
-        final bytes = base64Decode(img);
-        final hash = e.imageHash ?? await compute(sha256HexOfBytes, bytes);
-        return (
-          image: bytes,
-          imageHash: hash,
-          encodedByModel: null,
-          fixedInfoExtracted: e.defaultInfoExtracted ?? 1.0,
-        );
-      }
-      final prefer = e.defaultInfoExtracted ?? p.defaultInfoExtracted ?? 1.0;
-      final byModel = <String, String>{};
-      double? pickedIe;
-      for (final it in p.encodingItems) {
-        final cur = byModel[it.modelKey];
-        if (cur == null) {
-          byModel[it.modelKey] = it.encoding;
-          pickedIe ??= it.infoExtracted;
-        } else if (it.infoExtracted != null &&
-            (pickedIe == null ||
-                (it.infoExtracted! - prefer).abs() <
-                    (pickedIe - prefer).abs())) {
-          byModel[it.modelKey] = it.encoding;
-          pickedIe = it.infoExtracted;
-        }
-      }
-      if (byModel.isEmpty) return null;
-      return (
-        image: null,
-        imageHash: null,
-        encodedByModel: byModel,
-        fixedInfoExtracted: pickedIe ?? prefer,
+      return await _forGenerateInIsolate(
+        fileOf(e).path,
+        e.imageHash,
+        e.defaultInfoExtracted,
       );
     } catch (_) {
       return null;
     }
   }
 
-  /// 详情页编码清单:文件自带 + 缓存新增,按 (modelKey, IE) 去重。
   Future<List<({String modelKey, double? ie})>> encodingList(
     VibeEntry e,
   ) async {

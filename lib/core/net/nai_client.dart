@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -41,12 +42,10 @@ final _shortIdleIo = IOClient(_shortIdleHttp);
   Map<String, dynamic> body, {
   required bool multipart,
 }) {
-  final asJson = (
-    contentType: 'application/json',
-    bytes: utf8.encode(jsonEncode(body)),
-  );
+  ({String contentType, Uint8List bytes}) asJson() =>
+      (contentType: 'application/json', bytes: utf8.encode(jsonEncode(body)));
   final p = body['parameters'];
-  if (!multipart || p is! Map) return asJson;
+  if (!multipart || p is! Map) return asJson();
   final params = Map<String, dynamic>.from(p);
   final parts = <String, Uint8List>{};
   final seen = <String, String>{};
@@ -78,9 +77,9 @@ final _shortIdleIo = IOClient(_shortIdleHttp);
       }
     }
   } on FormatException {
-    return asJson;
+    return asJson();
   }
-  if (parts.isEmpty) return asJson;
+  if (parts.isEmpty) return asJson();
   final boundary =
       '----PlanaFormBoundary${Random().nextInt(1 << 32).toRadixString(16)}'
       '${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
@@ -340,9 +339,10 @@ class NaiClient {
   /// 第三方站点不一定认,照旧发 JSON。
   bool get _multipart => _host == kNaiOfficialBase || _host == kNaiProxyBase;
 
-  ({String contentType, Uint8List bytes}) _encodeBody(
+  /// 请求体在后台 isolate 里编码(几 MB 的 base64 图解码、拼分片都不占主线程)。
+  Future<({String contentType, Uint8List bytes})> _encodeBody(
     Map<String, dynamic> body,
-  ) => encodeNaiBody(body, multipart: _multipart);
+  ) => _encodeNaiBodyInIsolate(body, _multipart);
 
   /// 流式端点头:NAI 前端每请求都带 x-correlation-id(6 hex)+ x-initiated-at。
   Map<String, String> _streamHeaders(String token) => {
@@ -404,7 +404,7 @@ class NaiClient {
     var yielded = 0;
 
     try {
-      final payload = _encodeBody(body);
+      final payload = await _encodeBody(body);
       final r = req = await (_longIdle ? _longIdleHttp : _shortIdleHttp)
           .postUrl(uri);
       if (abort?.aborted ?? false) throw NaiException(l10nNow.genCancelled);
@@ -425,7 +425,9 @@ class NaiClient {
         );
       }
 
-      final buf = <int>[];
+      // 收到还没拆完的字节:buf[0, size)
+      var buf = Uint8List(64 << 10);
+      var size = 0;
       // 帧间隔超 90s 视为断流(出图步间通常 1~3s)
       final it = chunks = StreamIterator(
         resp.timeout(const Duration(seconds: 90)),
@@ -433,9 +435,15 @@ class NaiClient {
       while (await it.moveNext()) {
         final chunk = it.current;
         received += chunk.length;
-        buf.addAll(chunk);
+        if (size + chunk.length > buf.length) {
+          final grown = Uint8List(max(buf.length * 2, size + chunk.length));
+          grown.setRange(0, size, buf);
+          buf = grown;
+        }
+        buf.setRange(size, size + chunk.length, chunk);
+        size += chunk.length;
         var off = 0;
-        while (buf.length - off >= 4) {
+        while (size - off >= 4) {
           final len =
               (buf[off] << 24) |
               (buf[off + 1] << 16) |
@@ -444,10 +452,8 @@ class NaiClient {
           if (len < 0 || len > (64 << 20)) {
             throw NaiException(l10nNow.streamBadFrame('$len'));
           }
-          if (buf.length - off < 4 + len) break;
-          final msgBytes = Uint8List.fromList(
-            buf.sublist(off + 4, off + 4 + len),
-          );
+          if (size - off < 4 + len) break;
+          final msgBytes = buf.sublist(off + 4, off + 4 + len);
           off += 4 + len;
 
           dynamic msg;
@@ -489,7 +495,10 @@ class NaiClient {
             if (isFinal) return;
           }
         }
-        if (off > 0) buf.removeRange(0, off);
+        if (off > 0) {
+          buf.setRange(0, size - off, buf, off);
+          size -= off;
+        }
       }
 
       if (abort?.aborted ?? false) throw NaiException(l10nNow.genCancelled);
@@ -558,7 +567,7 @@ class NaiClient {
     }
 
     abort?.whenAbort(stopNow);
-    final payload = _encodeBody(body);
+    final payload = await _encodeBody(body);
     final req = http.AbortableRequest('POST', uri, abortTrigger: stop.future)
       ..headers.addAll(_genHeaders(token))
       ..headers['Content-Type'] = payload.contentType
@@ -811,3 +820,8 @@ class NaiClient {
     };
   }
 }
+
+Future<({String contentType, Uint8List bytes})> _encodeNaiBodyInIsolate(
+  Map<String, dynamic> body,
+  bool multipart,
+) => Isolate.run(() => encodeNaiBody(body, multipart: multipart));

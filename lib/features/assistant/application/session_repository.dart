@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import '../../../core/store/atomic_file.dart';
@@ -80,7 +81,8 @@ class SessionRepository {
     initialTraces = await _loadTraces();
     try {
       if (!await _file.exists()) return;
-      final raw = jsonDecode(await _file.readAsString());
+      final path = _file.path;
+      final raw = await _decodeFileInIsolate(path);
       if (raw is! Map<String, dynamic>) return;
       final j = migrate(raw);
       initialCurrent = [
@@ -198,14 +200,21 @@ class SessionRepository {
   Future<Set<String>> liveRefs() async {
     try {
       if (!await _file.exists()) return {};
-      final j = jsonDecode(await _file.readAsString());
-      if (j is Map && j['refs'] is List) {
-        return {
-          for (final r in j['refs'] as List)
-            if (r is String) r,
-        };
-      }
+      final path = _file.path;
+      return await _refsInIsolate(path);
     } catch (_) {}
     return {};
   }
 }
+
+Future<Object?> _decodeFileInIsolate(String path) =>
+    Isolate.run(() => jsonDecode(File(path).readAsStringSync()));
+
+Future<Set<String>> _refsInIsolate(String path) => Isolate.run(() {
+  final j = jsonDecode(File(path).readAsStringSync());
+  return <String>{
+    if (j is Map && j['refs'] is List)
+      for (final r in j['refs'] as List)
+        if (r is String) r,
+  };
+});

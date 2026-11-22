@@ -200,6 +200,10 @@ class DriveBackup {
           .localPreviewFiles()
           .toList();
       final hashes = await PreviewHashes.open();
+      await hashes.prime(
+        paths,
+        onProgress: (d, t) => onProgress?.call('整理预览', d, t),
+      );
       final shaOf = <String, String>{};
       final toSend = <String, ({String path, int size})>{};
       for (var i = 0; i < paths.length; i++) {

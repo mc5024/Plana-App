@@ -1561,14 +1561,27 @@ class GenerationNotifier extends Notifier<GenPool> {
 
   /// 角色参考:每张启用且有图的 contain 处理成 PNG base64(无编码调用、免 Anlas)。
   /// 是否真正下发由载荷层按模型 gate(仅 4.5)。
+  /// 角色参考图处理后的 base64,按原图字节对象记(循环出图时同一张不重复缩放编码)。
+  static final _crMemo = Expando<Future<String>>();
+
   Future<List<CharRefPayload>> _processCharRefs(GenerateState s) async {
     final refs = s.charRefs.where((r) => r.enabled && r.image != null).toList();
     if (refs.isEmpty) return const [];
     final out = <CharRefPayload>[];
     for (final r in refs) {
-      final png = await crResizePng(r.image!);
+      final src = r.image!;
+      final Future<String> b64 = _crMemo[src] ??= crResizePng(
+        src,
+      ).then(base64Encode);
+      final String image;
+      try {
+        image = await b64;
+      } catch (_) {
+        _crMemo[src] = null;
+        rethrow;
+      }
       out.add((
-        image: base64Encode(png),
+        image: image,
         mode: r.mode.api,
         strength: r.strength,
         fidelity: r.infoExtracted,

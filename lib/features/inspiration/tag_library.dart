@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/store/atomic_file.dart';
 import '../migrate/web_backup.dart' show decodeDataUrl;
 import 'tag_models.dart';
 
@@ -151,11 +154,23 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
         if (j is Map<String, dynamic>) {
           final s = _decode(j);
           syncCustomTagCategories(s.customDefs, labels: s.labels);
+          unawaited(
+            Future<void>.delayed(
+              const Duration(seconds: 10),
+              _sweepOrphanPreviews,
+            ),
+          );
           return s;
         }
       }
     } catch (_) {
-      // 损坏 → 空库(条目无二进制本体,无从重建)
+      // 损坏 → 空库(条目无二进制本体,无从重建)。坏文件留一份,别让下一次
+      // 保存把它覆盖掉
+      try {
+        await _file.copy(
+          '${_file.path}.bad-${DateTime.now().millisecondsSinceEpoch}',
+        );
+      } catch (_) {}
     }
     return const TagLibraryState();
   }
@@ -216,11 +231,24 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
 
   TagLibraryState get _s => state.value ?? const TagLibraryState();
 
-  Future<void> _set(TagLibraryState next) async {
+  Future<void> _set(TagLibraryState next) {
     syncCustomTagCategories(next.customDefs, labels: next.labels);
     state = AsyncData(next);
+    _pending = next;
+    return _writing = _writing.then((_) => _flush());
+  }
+
+  // 落盘排队:一次写一份;排队期间又改了几次的,只写最新那份
+  Future<void> _writing = Future.value();
+  TagLibraryState? _pending;
+
+  Future<void> _flush() async {
+    final next = _pending;
+    if (next == null) return;
+    _pending = null;
     try {
-      await _file.writeAsString(
+      await writeStringAtomic(
+        _file,
         jsonEncode({
           'version': 1,
           'entries': [for (final e in next.entries) e.toJson()],
@@ -250,7 +278,7 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
     final list = [..._s.entries];
     final i = list.indexWhere((x) => x.id == e.id);
     if (i >= 0) {
-      _gcPreviewFiles(list[i].previews, keep: e.previews);
+      unawaited(_gcPreviewFiles(list[i].previews, keep: e.previews));
       list[i] = e;
     } else {
       list.add(e);
@@ -260,7 +288,7 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
 
   Future<void> remove(String id) async {
     for (final e in _s.entries) {
-      if (e.id == id) _gcPreviewFiles(e.previews);
+      if (e.id == id) unawaited(_gcPreviewFiles(e.previews));
     }
     await _set(
       _s.copyWith(
@@ -294,7 +322,7 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
   /// 收藏公共条目带来的远端 URL(http 开头)不动,那不是本机产物。
   Future<void> clearLocalPreviews() async {
     final next = <TagEntry>[];
-    var touched = false;
+    final doomed = <String>[];
     for (final e in _s.entries) {
       final remote = [
         for (final p in e.previews)
@@ -304,20 +332,42 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
         next.add(e);
         continue;
       }
-      _gcPreviewFiles(e.previews);
-      touched = true;
+      doomed.addAll(e.previews);
       next.add(e.copyWith(previews: remote));
     }
-    if (touched) await _set(_s.copyWith(entries: next));
+    if (doomed.isEmpty) return;
+    await _set(_s.copyWith(entries: next));
+    await _gcPreviewFiles(doomed);
   }
 
-  void _gcPreviewFiles(List<String> old, {List<String> keep = const []}) {
-    for (final p in old) {
-      if (p.startsWith('http') || keep.contains(p)) continue;
-      try {
-        File(p).deleteSync();
-      } catch (_) {}
-    }
+  Future<void> _gcPreviewFiles(
+    List<String> old, {
+    List<String> keep = const [],
+  }) async {
+    final doomed = [
+      for (final p in old)
+        if (!p.startsWith('http') && !keep.contains(p)) p,
+    ];
+    if (doomed.isNotEmpty) await _deleteFilesInIsolate(doomed);
+  }
+
+  /// 没有条目引用、放了一天以上的预览文件(恢复到一半被杀的残留)删掉。
+  /// 一天内的不动:编辑器里刚生成、条目还没保存的也在这个目录。
+  Future<void> _sweepOrphanPreviews() async {
+    if (!ref.mounted) return;
+    try {
+      final sup = await getApplicationSupportDirectory();
+      final dir = Directory('${sup.path}/tag_previews');
+      if (!await dir.exists()) return;
+      final used = localPreviewFiles();
+      final cutoff = DateTime.now().subtract(const Duration(days: 1));
+      final doomed = <String>[];
+      await for (final ent in dir.list()) {
+        if (ent is! File || used.contains(ent.path)) continue;
+        if ((await ent.stat()).modified.isBefore(cutoff)) doomed.add(ent.path);
+      }
+      if (doomed.isNotEmpty) await _deleteFilesInIsolate(doomed);
+    } catch (_) {}
   }
 
   /// 分类内唯一名:重名依次试「x (副本)」「x (副本 2)」…(对齐 web fork)。
@@ -417,7 +467,7 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
   /// 删类别,连同它的条目、标签池与最近使用。
   Future<void> removeCategory(TagCategory c) async {
     for (final e in _s.entries) {
-      if (e.category == c) _gcPreviewFiles(e.previews);
+      if (e.category == c) unawaited(_gcPreviewFiles(e.previews));
     }
     await _set(
       _s.copyWith(
@@ -461,7 +511,7 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
     final key = tagCategoryDef(c).webId;
     if (!kRemovableBuiltins.contains(key)) return;
     for (final e in _s.entries) {
-      if (e.category == c) _gcPreviewFiles(e.previews);
+      if (e.category == c) unawaited(_gcPreviewFiles(e.previews));
     }
     await _set(
       _s.copyWith(
@@ -726,9 +776,11 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
       next = next.copyWith(pools: merged);
     }
     await _set(next);
-    _gcPreviewFiles(
-      replaced,
-      keep: [for (final e in next.entries) ...e.previews],
+    unawaited(
+      _gcPreviewFiles(
+        replaced,
+        keep: [for (final e in next.entries) ...e.previews],
+      ),
     );
     return stat;
   }
@@ -783,3 +835,12 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
     ];
   }
 }
+
+/// 后台删一批文件(预览图),删不掉的跳过。
+Future<void> _deleteFilesInIsolate(List<String> paths) => Isolate.run(() {
+  for (final p in paths) {
+    try {
+      File(p).deleteSync();
+    } catch (_) {}
+  }
+});

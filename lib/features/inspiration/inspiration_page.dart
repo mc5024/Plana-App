@@ -685,6 +685,9 @@ class _CategoryPageState extends ConsumerState<_CategoryPage>
 
   String _search = '';
 
+  /// 搜索框停手一小会儿再筛:逐键整表筛选 + 排序,条目一多打字就跟不上。
+  Timer? _searchDebounce;
+
   /// 筛选:null=全部;[_kFavFilter]=收藏;其余为标签名。
   String? _filter;
   static const _kFavFilter = TagFilterChips.favorites;
@@ -724,6 +727,7 @@ class _CategoryPageState extends ConsumerState<_CategoryPage>
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _tab.dispose();
     _mineScroll.dispose();
     _pubScroll.dispose();
@@ -784,14 +788,20 @@ class _CategoryPageState extends ConsumerState<_CategoryPage>
 
   // ---- 数据 ----
 
+  /// 条目的小写检索串(名字、正向、别名、标签),按条目对象记。
+  static final _hay = Expando<String>();
+
   bool _matches(TagEntry e, String q) {
     if (q.isEmpty) return true;
     bool has(String s) => s.toLowerCase().contains(q);
     final author = e.createdBy?.trim();
-    return has(e.name) ||
-        has(e.positive) ||
-        e.aliases.any(has) ||
-        e.tags.any(has) ||
+    final hay = _hay[e] ??= [
+      e.name,
+      e.positive,
+      ...e.aliases,
+      ...e.tags,
+    ].join('\u0000').toLowerCase();
+    return hay.contains(q) ||
         // 作者:昵称和 QQ 号都算命中,搜索框里输哪个都能找到他发的东西。
         // ⚠ QQ 号要 5 位起才比 —— 画风名本身就是 A1..Z99 这种编号,再让「5」
         //   去撞每个作者的号码,一搜就是满屏不相干的串。
@@ -820,13 +830,29 @@ class _CategoryPageState extends ConsumerState<_CategoryPage>
 
   /// 「我的」的完整来源 = 本地条目 + 公共库里我发布的(本地没副本的补进来,
   /// 标 created;对齐 web mineAll)。归属判定优先 owner_id,与服务端一致。
-  List<TagEntry> _mineAll(TagLibraryState lib) => _def.hasPublic
-      ? mergeMineTags(
-          lib.of(_cat),
-          ref.watch(botSessionProvider).value?.botUserId,
-          ref.watch(publicTagsProvider(_cat)).value,
-        )
-      : lib.of(_cat);
+  List<TagEntry> _mineAll(TagLibraryState lib) {
+    if (!_def.hasPublic) return lib.of(_cat);
+    final uid = ref.watch(botSessionProvider).value?.botUserId;
+    final pub = ref.watch(publicTagsProvider(_cat)).value;
+    final key = (lib, uid, pub, _cat);
+    final hit = _mineMemo;
+    if (hit != null &&
+        identical(hit.key.$1, lib) &&
+        hit.key.$2 == uid &&
+        identical(hit.key.$3, pub) &&
+        hit.key.$4 == _cat) {
+      return hit.list;
+    }
+    final list = mergeMineTags(lib.of(_cat), uid, pub);
+    _mineMemo = (key: key, list: list);
+    return list;
+  }
+
+  ({
+    (TagLibraryState, String?, List<TagEntry>?, TagCategory) key,
+    List<TagEntry> list,
+  })?
+  _mineMemo;
 
   List<TagEntry> _mineList(TagLibraryState lib) {
     final q = _search.trim().toLowerCase();
@@ -901,7 +927,15 @@ class _CategoryPageState extends ConsumerState<_CategoryPage>
                   height: 40,
                   child: TextField(
                     key: ValueKey('tag-search-${def.webId}'),
-                    onChanged: (v) => setState(() => _search = v),
+                    onChanged: (v) {
+                      _searchDebounce?.cancel();
+                      _searchDebounce = Timer(
+                        const Duration(milliseconds: 150),
+                        () {
+                          if (mounted) setState(() => _search = v);
+                        },
+                      );
+                    },
                     textAlignVertical: TextAlignVertical.center,
                     decoration: InputDecoration(
                       isDense: true,

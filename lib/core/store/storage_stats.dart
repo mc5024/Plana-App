@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:path_provider/path_provider.dart';
 
@@ -36,44 +37,8 @@ class StorageReport {
   }
 }
 
-Future<int> _sizeOf(FileSystemEntity ent) async {
-  try {
-    if (ent is File) {
-      return await ent.exists() ? await ent.length() : 0;
-    }
-    if (ent is Directory) {
-      if (!await ent.exists()) return 0;
-      var sum = 0;
-      await for (final e in ent.list(recursive: true, followLinks: false)) {
-        if (e is File) {
-          try {
-            sum += await e.length();
-          } catch (_) {}
-        }
-      }
-      return sum;
-    }
-  } catch (_) {}
-  return 0;
-}
-
-Future<int?> _countIn(
-  Directory d, {
-  String? suffix,
-  List<String>? suffixes,
-}) async {
-  final ends = suffixes ?? [?suffix];
-  try {
-    if (!await d.exists()) return 0;
-    var n = 0;
-    await for (final e in d.list(followLinks: false)) {
-      if (ends.isEmpty || ends.any(e.path.endsWith)) n++;
-    }
-    return n;
-  } catch (_) {
-    return null;
-  }
-}
+/// 上一次扫描的结果(本次运行内):再进存储页先摆它,新的扫完再换。
+StorageReport? lastStorageReport;
 
 /// 全量扫描。key 清单:gallery / blobs / vibeLib / vibeEnc / charLib /
 /// imgCache / codexCache / tagPrev / models / temp。
@@ -81,88 +46,79 @@ Future<int?> _countIn(
 /// 分类要跟着新目录一起加 —— 漏一个,那块占用就只能沉进 [StorageReport.otherBytes]
 /// 里,用户看着「其他」莫名涨几十 MB 又找不到清理入口(法典缓存单部最大 ~11 MB,
 /// 就这么隐身过一阵)。
+///
+/// 在后台 isolate 里同步遍历,每个文件只 stat 一次;总量 = 各目录之和。
 Future<StorageReport> scanStorage() async {
-  final sup = await getApplicationSupportDirectory();
-  final tmp = await getTemporaryDirectory();
-  Directory? docs;
+  final sup = (await getApplicationSupportDirectory()).path;
+  final tmp = (await getTemporaryDirectory()).path;
+  String? docs;
   try {
-    docs = await getApplicationDocumentsDirectory();
+    docs = (await getApplicationDocumentsDirectory()).path;
   } catch (_) {}
+  final rep = await _scanInIsolate(sup, tmp, docs);
+  return lastStorageReport = rep;
+}
 
-  Directory sub(String p) => Directory('${sup.path}/$p');
+Future<StorageReport> _scanInIsolate(String sup, String tmp, String? docs) =>
+    Isolate.run(() => _scanSync(sup, tmp, docs));
 
+/// 目录 → 支持目录下的分类 key(条目数按哪个子目录、哪些后缀数)。
+const _supDirs = <String, ({String key, String? countIn, List<String> ends})>{
+  'gallery': (key: 'gallery', countIn: 'images', ends: ['.png', '.webp']),
+  'blobs': (key: 'blobs', countIn: '', ends: []),
+  'vibe_library': (key: 'vibeLib', countIn: 'files', ends: []),
+  'vibe_encodings': (key: 'vibeEnc', countIn: '', ends: ['.enc']),
+  'charref_library': (key: 'charLib', countIn: 'files', ends: []),
+  'img_cache': (key: 'imgCache', countIn: '', ends: []),
+  'codex_cache': (key: 'codexCache', countIn: '', ends: ['.json']),
+  'tag_previews': (key: 'tagPrev', countIn: '', ends: ['.jpg']),
+};
+
+StorageReport _scanSync(String sup, String tmp, String? docs) {
+  final bytes = <String, int>{};
+  final counts = <String, int?>{};
+  var supTotal = 0;
   // 超分模型:支持目录顶层的 .bin/.param。
   // 本地超分已于 2026-08-24 整条下线,这些文件现在是**纯遗留垃圾** —— 但仍然
   // 单独成组、由用户点一下才删:悄悄删掉用户机器上的文件不是我们该做的事。
-  var modelBytes = 0;
-  var modelCount = 0;
+  var modelBytes = 0, modelCount = 0;
   try {
-    await for (final e in sup.list(followLinks: false)) {
-      if (e is File && (e.path.endsWith('.bin') || e.path.endsWith('.param'))) {
-        try {
-          modelBytes += await e.length();
+    for (final e in Directory(sup).listSync(followLinks: false)) {
+      final name = _baseName(e.path);
+      if (e is File) {
+        final n = _lengthOf(e);
+        supTotal += n;
+        if (name.endsWith('.bin') || name.endsWith('.param')) {
+          modelBytes += n;
           modelCount++;
-        } catch (_) {}
+        }
+      } else if (e is Directory) {
+        final n = _treeSize(e);
+        supTotal += n;
+        final spec = _supDirs[name];
+        if (spec != null) {
+          bytes[spec.key] = n;
+          counts[spec.key] = _countIn(
+            spec.countIn!.isEmpty ? e.path : '${e.path}/${spec.countIn}',
+            spec.ends,
+          );
+        }
       }
     }
   } catch (_) {}
-
+  final tmpBytes = _treeSize(Directory(tmp));
   final categories = <StorageCategory>[
-    StorageCategory(
-      key: 'gallery',
-      bytes: await _sizeOf(sub('gallery')),
-      count: await _countIn(
-        Directory('${sup.path}/gallery/images'),
-        suffixes: const ['.png', '.webp'],
+    for (final spec in _supDirs.values)
+      StorageCategory(
+        key: spec.key,
+        bytes: bytes[spec.key] ?? 0,
+        count: counts.containsKey(spec.key) ? counts[spec.key] : 0,
       ),
-    ),
-    StorageCategory(
-      key: 'blobs',
-      bytes: await _sizeOf(sub('blobs')),
-      count: await _countIn(sub('blobs')),
-    ),
-    StorageCategory(
-      key: 'vibeLib',
-      bytes: await _sizeOf(sub('vibe_library')),
-      count: await _countIn(Directory('${sup.path}/vibe_library/files')),
-    ),
-    StorageCategory(
-      key: 'vibeEnc',
-      bytes: await _sizeOf(sub('vibe_encodings')),
-      count: await _countIn(sub('vibe_encodings'), suffix: '.enc'),
-    ),
-    StorageCategory(
-      key: 'charLib',
-      bytes: await _sizeOf(sub('charref_library')),
-      count: await _countIn(Directory('${sup.path}/charref_library/files')),
-    ),
-    StorageCategory(
-      key: 'imgCache',
-      bytes: await _sizeOf(sub('img_cache')),
-      count: await _countIn(sub('img_cache')),
-    ),
-    StorageCategory(
-      key: 'codexCache',
-      bytes: await _sizeOf(sub('codex_cache')),
-      count: await _countIn(sub('codex_cache'), suffix: '.json'),
-    ),
-    StorageCategory(
-      key: 'tagPrev',
-      bytes: await _sizeOf(sub('tag_previews')),
-      count: await _countIn(sub('tag_previews'), suffix: '.jpg'),
-    ),
     StorageCategory(key: 'models', bytes: modelBytes, count: modelCount),
-    StorageCategory(
-      key: 'temp',
-      bytes: await _sizeOf(tmp),
-      count: await _countIn(tmp),
-    ),
+    StorageCategory(key: 'temp', bytes: tmpBytes, count: _countIn(tmp, [])),
   ];
-
   final total =
-      await _sizeOf(sup) +
-      await _sizeOf(tmp) +
-      (docs == null ? 0 : await _sizeOf(docs));
+      supTotal + tmpBytes + (docs == null ? 0 : _treeSize(Directory(docs)));
   var categorized = 0;
   for (final c in categories) {
     categorized += c.bytes;
@@ -172,6 +128,43 @@ Future<StorageReport> scanStorage() async {
     categories: categories,
     otherBytes: (total - categorized).clamp(0, total),
   );
+}
+
+String _baseName(String path) {
+  final i = path.lastIndexOf(RegExp(r'[/\\]'));
+  return path.substring(i + 1);
+}
+
+int _lengthOf(File f) {
+  try {
+    return f.lengthSync();
+  } catch (_) {
+    return 0;
+  }
+}
+
+int _treeSize(Directory d) {
+  var sum = 0;
+  try {
+    for (final e in d.listSync(recursive: true, followLinks: false)) {
+      if (e is File) sum += _lengthOf(e);
+    }
+  } catch (_) {}
+  return sum;
+}
+
+int? _countIn(String dir, List<String> ends) {
+  try {
+    final d = Directory(dir);
+    if (!d.existsSync()) return 0;
+    var n = 0;
+    for (final e in d.listSync(followLinks: false)) {
+      if (ends.isEmpty || ends.any(e.path.endsWith)) n++;
+    }
+    return n;
+  } catch (_) {
+    return null;
+  }
 }
 
 /// 删除遗留的角色库缓存 `role_tag_mapping.json`(~6.5MB)。

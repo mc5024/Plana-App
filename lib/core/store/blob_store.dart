@@ -53,7 +53,9 @@ class BlobStore {
     try {
       final f = _fileOf(hash);
       if (!await f.exists()) return null;
-      return await f.readAsBytes();
+      final bytes = await f.readAsBytes();
+      _hashMemo[bytes] = hash;
+      return bytes;
     } catch (_) {
       return null;
     }

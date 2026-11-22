@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -56,6 +57,39 @@ class PreviewHashes {
     return sha;
   }
 
+  /// 一批文件里没算过的,在后台 isolate 里一次算完(之后 [shaOf] 直接命中)。
+  Future<void> prime(
+    List<String> paths, {
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final miss = <String>[];
+    final stats = <String, (int, int)>{};
+    for (final p in paths) {
+      try {
+        final st = await File(p).stat();
+        if (st.type != FileSystemEntityType.file) continue;
+        final ms = st.modified.millisecondsSinceEpoch;
+        final hit = _map[p];
+        if (hit != null && hit.$1 == st.size && hit.$2 == ms) continue;
+        miss.add(p);
+        stats[p] = (st.size, ms);
+      } catch (_) {}
+    }
+    const chunk = 64;
+    for (var i = 0; i < miss.length; i += chunk) {
+      final part = miss.sublist(i, math.min(i + chunk, miss.length));
+      final shas = await _shaOfFilesInIsolate(part);
+      for (var k = 0; k < part.length; k++) {
+        final sha = shas[k];
+        if (sha == null) continue;
+        final st = stats[part[k]]!;
+        _map[part[k]] = (st.$1, st.$2, sha);
+        _dirty = true;
+      }
+      onProgress?.call(math.min(i + chunk, miss.length), miss.length);
+    }
+  }
+
   /// 记下刚落盘的文件(内容已知是 [sha])。
   Future<void> remember(String path, String sha) async {
     final st = await File(path).stat();
@@ -73,10 +107,7 @@ class PreviewHashes {
 
   /// 落盘,顺手去掉已经不在的文件。
   Future<void> save() async {
-    final gone = [
-      for (final p in _map.keys)
-        if (!File(p).existsSync()) p,
-    ];
+    final gone = await _missingInIsolate(_map.keys.toList());
     if (!_dirty && gone.isEmpty) return;
     gone.forEach(_map.remove);
     try {
@@ -91,6 +122,26 @@ class PreviewHashes {
     } catch (_) {} // 下次重算,不影响备份本身
   }
 }
+
+Future<List<String?>> _shaOfFilesInIsolate(List<String> paths) => Isolate.run(
+  () => [
+    for (final p in paths)
+      () {
+        try {
+          return sha256.convert(File(p).readAsBytesSync()).toString();
+        } catch (_) {
+          return null;
+        }
+      }(),
+  ],
+);
+
+Future<List<String>> _missingInIsolate(List<String> paths) => Isolate.run(
+  () => [
+    for (final p in paths)
+      if (!File(p).existsSync()) p,
+  ],
+);
 
 final tagCloudBackupProvider = Provider<TagCloudBackup>(TagCloudBackup.new);
 
@@ -133,6 +184,10 @@ class TagCloudBackup {
 
     final files = lib.localPreviewFiles().toList();
     final hashes = await PreviewHashes.open();
+    await hashes.prime(
+      files,
+      onProgress: (d, t) => onProgress?.call('整理预览', d, t),
+    );
     final shaOf = <String, String>{};
     for (var i = 0; i < files.length; i++) {
       onProgress?.call('整理预览', i + 1, files.length);

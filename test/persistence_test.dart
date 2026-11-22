@@ -443,4 +443,47 @@ void main() {
     expect(stores.workspace.initial, isNull);
     expect(stores.gallery.initialResults, isEmpty);
   });
+
+  test('只换选中不重写索引;重绘源图 id 重启后还在', () async {
+    final root = Directory.systemTemp.createTempSync('plana_select');
+    addTearDown(() async {
+      for (var i = 0; i < 10; i++) {
+        try {
+          root.deleteSync(recursive: true);
+          return;
+        } catch (_) {
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        }
+      }
+    });
+    final stores = await AppStores.open(rootOverride: root);
+    final c = ProviderContainer(
+      overrides: [appStoresProvider.overrideWithValue(stores)],
+    );
+    addTearDown(c.dispose);
+
+    final gal = c.read(galleryProvider.notifier);
+    final a = gal.addResult(bytes: _png, width: 8, height: 8, seed: 1);
+    final b = gal.addResult(
+      bytes: _png,
+      width: 8,
+      height: 8,
+      seed: 2,
+      inpaintFrom: a.id,
+    );
+    stores.flushNow();
+    await stores.gallery.idle;
+    final index = File('${root.path}/gallery/index.json');
+    final before = index.readAsStringSync();
+
+    gal.select(a.id);
+    stores.flushNow();
+    await stores.gallery.idle;
+    expect(index.readAsStringSync(), before);
+
+    final stores2 = await AppStores.open(rootOverride: root);
+    expect(stores2.gallery.initialSelectedId, a.id);
+    final b2 = stores2.gallery.initialResults.firstWhere((r) => r.id == b.id);
+    expect(b2.inpaintFrom, a.id);
+  });
 }

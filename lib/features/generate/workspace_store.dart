@@ -48,7 +48,9 @@ class WorkspaceStore {
     try {
       if (!await _presetsFile.exists()) return null;
       final j = jsonDecode(await _presetsFile.readAsString());
-      return j is Map && j['activeId'] is String ? j['activeId'] as String : null;
+      return j is Map && j['activeId'] is String
+          ? j['activeId'] as String
+          : null;
     } catch (_) {
       return null;
     }
@@ -63,11 +65,18 @@ class WorkspaceStore {
       final legacyPreset = await _legacyPresetId();
       // 有没有哪份没记预设、按 1.1.1 那一档补上的:补了就得存回去
       var presetFilled = false;
-      bool lacksPreset(Object? m) =>
-          m is Map && m['promptPresetId'] is! String;
+      bool lacksPreset(Object? m) => m is Map && m['promptPresetId'] is! String;
       if (lacksPreset(j['state'])) presetFilled = true;
       // 同一张图在几张画布里各读一次也只留一份字节
       final images = <String, Future<Uint8List?>>{};
+      // 各画布引用的图一起开读,别一张张排着等
+      if (j['refs'] is List) {
+        for (final r in j['refs'] as List) {
+          if (r is String && r.isNotEmpty) {
+            images.putIfAbsent(r, () => _blobs.get(r));
+          }
+        }
+      }
       var full = j['state'] is Map<String, dynamic>
           ? await decodeGenerateState(
               j['state'] as Map<String, dynamic>,
