@@ -636,7 +636,9 @@ class _RelayRowState extends ConsumerState<_RelayRow> {
           ),
           if (q.relayAvailable)
             Text(
-              q.relayPrice == q.relayPriceLegacy
+              q.relayPriceLegacy <= 0
+                  ? 'V5 每张从钱包扣 ${yuan(q.relayPrice)} · V4.5 及更早免费'
+                  : q.relayPrice == q.relayPriceLegacy
                   ? '每张从钱包扣 ${yuan(q.relayPrice)}'
                   : '每张从钱包扣 V5 ${yuan(q.relayPrice)} · '
                         'V4.5 及更早 ${yuan(q.relayPriceLegacy)}',
