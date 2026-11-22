@@ -387,11 +387,16 @@ class NaiClient {
       return;
     }
     final uri = Uri.parse('$_host/ai/generate-image-stream');
-    // 取消:中止这一个请求,进行中的流随即断开抛错(对齐 web abort fetch)。
-    // 连接池是共用的,不能整个关掉。
+    // 取消:中止这一个请求,进行中的流随即断开(对齐 web abort fetch)。
+    // 连接池是共用的,不能整个关掉。响应头到了之后 req.abort() 不再生效,
+    // 得取消响应流,连接随之拆掉。
     HttpClientRequest? req;
+    StreamIterator<List<int>>? chunks;
     var finished = false;
-    abort?.whenAbort(() => req?.abort());
+    abort?.whenAbort(() {
+      req?.abort();
+      if (!finished) unawaited(chunks?.cancel());
+    });
 
     var received = 0; // 诊断:累计字节
     var parseFails = 0; // 诊断:解析失败帧数
@@ -422,9 +427,11 @@ class NaiClient {
 
       final buf = <int>[];
       // 帧间隔超 90s 视为断流(出图步间通常 1~3s)
-      final chunks = StreamIterator(resp.timeout(const Duration(seconds: 90)));
-      while (await chunks.moveNext()) {
-        final chunk = chunks.current;
+      final it = chunks = StreamIterator(
+        resp.timeout(const Duration(seconds: 90)),
+      );
+      while (await it.moveNext()) {
+        final chunk = it.current;
         received += chunk.length;
         buf.addAll(chunk);
         var off = 0;
@@ -472,7 +479,7 @@ class NaiClient {
             if (isFinal) {
               // 下游拿到成图就停止收流:剩下的响应交给后台读完,连接才能回池
               finished = true;
-              unawaited(_drain(chunks));
+              unawaited(_drain(it));
             }
             yield (
               step: stepIx is int ? stepIx + 1 : null,
@@ -485,6 +492,7 @@ class NaiClient {
         if (off > 0) buf.removeRange(0, off);
       }
 
+      if (abort?.aborted ?? false) throw NaiException(l10nNow.genCancelled);
       if (yielded == 0) {
         throw NaiException(
           parseFails > 0
@@ -509,7 +517,10 @@ class NaiClient {
       throw NaiException(l10nNow.streamGenFailed('$e'));
     } finally {
       // 没正常读完(出错、超时、取消、下游不再收)就拆掉这条连接,别放回池里
-      if (!finished) req?.abort();
+      if (!finished) {
+        req?.abort();
+        unawaited(chunks?.cancel());
+      }
     }
   }
 
