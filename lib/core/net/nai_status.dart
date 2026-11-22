@@ -17,7 +17,11 @@ import 'backend_client.dart';
 const kNaiStatusOk = 100;
 
 class NaiStatusComponent {
-  const NaiStatusComponent({required this.name, required this.status, this.code});
+  const NaiStatusComponent({
+    required this.name,
+    required this.status,
+    this.code,
+  });
 
   final String name;
   final String status;

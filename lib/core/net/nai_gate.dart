@@ -30,12 +30,11 @@ typedef NaiFreeOn = Future<bool?> Function(NaiKey k);
 NaiFreeOn naiFreeOnPerKey({
   required bool Function() buttonFree,
   required NaiFreeOn onKey,
-}) =>
-    (k) async {
-      if (k.isThirdParty) return buttonFree();
-      final free = await onKey(k);
-      return free ?? (k.primary ? buttonFree() : null);
-    };
+}) => (k) async {
+  if (k.isThirdParty) return buttonFree();
+  final free = await onKey(k);
+  return free ?? (k.primary ? buttonFree() : null);
+};
 
 /// 直连 NAI 的并发闸门 —— **全 app 共用一份**。
 ///
@@ -110,10 +109,14 @@ class NaiGate {
     NaiFreeOn? freeOn,
   }) async {
     final primary = naiPrimaryKey(all);
-    final free = await _freeMap([
-      ...keys,
-      if (primary != null && !keys.any((k) => k.id == primary.id)) primary,
-    ], paid: paid, freeOn: freeOn);
+    final free = await _freeMap(
+      [
+        ...keys,
+        if (primary != null && !keys.any((k) => k.id == primary.id)) primary,
+      ],
+      paid: paid,
+      freeOn: freeOn,
+    );
     final paidJob = primary == null ? paid : free[primary.id] != true;
     return naiKeysForJob(keys, (k) => free[k.id], paidJob: paidJob);
   }

@@ -250,7 +250,11 @@ class BotSocket {
       case 1:
         s._onBinary(Uint8List.sublistView(b, 24));
       case 2:
-        s._onResult?.call((b[2] << 8) | b[3], (b[4] << 8) | b[5], b.sublist(24));
+        s._onResult?.call(
+          (b[2] << 8) | b[3],
+          (b[4] << 8) | b[5],
+          b.sublist(24),
+        );
     }
   }
 
