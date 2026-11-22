@@ -197,33 +197,35 @@ CodexData applyArtistStyles(CodexData d, ArtistStyles s) {
     return order.length;
   }
 
-  final keyed = [
-    for (var i = 0; i < entries.length; i++)
-      (
-        e: entries[i],
-        i: i,
-        rank: rankOf(entries[i].path),
-        spec: specimens[entries[i].id],
-      ),
-  ];
-  keyed.sort((a, b) {
-    var c = a.rank.compareTo(b.rank);
-    if (c != 0) return c;
-    final sa = a.spec, sb = b.spec;
-    if (sa != null && sb != null) {
-      c = (s.artists[sb.artist].post ?? -1).compareTo(
-        s.artists[sa.artist].post ?? -1,
-      );
-      if (c != 0) return c;
-      c = sa.artist.compareTo(sb.artist);
-      if (c != 0) return c;
+  // 排序键先算成整数数组,比较器里只比整数(artist = -1 表示不是画师例图)
+  final n = entries.length;
+  final rank = List<int>.filled(n, 0);
+  final artist = List<int>.filled(n, -1);
+  final post = List<int>.filled(n, -1);
+  for (var i = 0; i < n; i++) {
+    rank[i] = rankOf(entries[i].path);
+    final sp = specimens[entries[i].id];
+    if (sp != null) {
+      artist[i] = sp.artist;
+      post[i] = s.artists[sp.artist].post ?? -1;
     }
-    return a.i.compareTo(b.i);
-  });
+  }
+  final sorted = List<int>.generate(n, (i) => i)
+    ..sort((a, b) {
+      var c = rank[a].compareTo(rank[b]);
+      if (c != 0) return c;
+      if (artist[a] >= 0 && artist[b] >= 0) {
+        c = post[b].compareTo(post[a]);
+        if (c != 0) return c;
+        c = artist[a].compareTo(artist[b]);
+        if (c != 0) return c;
+      }
+      return a.compareTo(b);
+    });
 
   return CodexData(
     meta: d.meta,
-    entries: [for (final k in keyed) k.e],
+    entries: [for (final i in sorted) entries[i]],
     tree: tree,
     specimens: specimens,
   );

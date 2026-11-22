@@ -66,6 +66,11 @@ class _Session extends BotSessionNotifier {
       const BotSession(sessionId: 'test', botUserId: 'me');
 }
 
+class _CodexIndex extends CodexIndexNotifier {
+  @override
+  Future<List<CodexMeta>> build() async => const [];
+}
+
 class _Favorites extends CodexFavoritesNotifier {
   @override
   Future<List<CodexFavorite>> build() async => [_fav];
@@ -85,7 +90,7 @@ Future<({ProviderContainer c, LibraryPicks? Function() result})> _open(
         publicTagsProvider(cat).overrideWith((_) async => const []),
       tagAuthorNamesProvider.overrideWith((_) async => const {}),
       codexFavoritesProvider.overrideWith(_Favorites.new),
-      codexIndexProvider.overrideWith((_) async => const []),
+      codexIndexProvider.overrideWith(_CodexIndex.new),
       codexMediaProvider.overrideWith((_) async => CodexMedia.fallback),
       tagTranslationServiceProvider.overrideWith((ref) {
         final service = TagTranslationService(enabled: false, baseUrl: '');

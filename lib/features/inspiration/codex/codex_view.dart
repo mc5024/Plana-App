@@ -217,7 +217,10 @@ class _CodexViewState extends ConsumerState<CodexView>
 
   Widget _body(List<CodexMeta> index, CodexMeta meta) {
     final dataAsync = ref.watch(codexDataProvider(meta.id));
+    // 索引后台刷新出新版本时,新数据到手前继续显示旧的
     return dataAsync.when(
+      skipLoadingOnReload: true,
+      skipError: true,
       loading: () => Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

@@ -116,6 +116,36 @@ void main() {
       expect(RemoteImageStore.versionOf(url), before + 1);
     });
 
+    test('immutable 记进旁文件;没给 etag 也有验证器', () async {
+      await RemoteImageStore.write(
+        url,
+        _bytes(8),
+        etag: '"i"',
+        immutable: true,
+      );
+      final v = await RemoteImageStore.validator(url);
+      expect(v!.immutable, isTrue);
+      expect(v.etag, '"i"');
+
+      await RemoteImageStore.write(
+        'https://x/noetag',
+        _bytes(8),
+        immutable: true,
+      );
+      final w = await RemoteImageStore.validator('https://x/noetag');
+      expect(w!.immutable, isTrue);
+      expect(w.etag, isEmpty);
+    });
+
+    test('304 带 immutable:老验证器补记,etag 保留', () async {
+      await RemoteImageStore.write(url, _bytes(8), etag: '"old"');
+      expect((await RemoteImageStore.validator(url))!.immutable, isFalse);
+      await RemoteImageStore.touchValidator(url, immutable: true);
+      final v = await RemoteImageStore.validator(url);
+      expect(v!.immutable, isTrue);
+      expect(v.etag, '"old"');
+    });
+
     test('trim 删主文件时验证器跟着走,不留孤儿', () async {
       await RemoteImageStore.write('https://x/old', _bytes(3000), etag: '"o"');
       // mtime 拉开,保证 old 先被淘汰
