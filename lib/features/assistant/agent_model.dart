@@ -29,12 +29,16 @@ import 'llm/plana_channel_provider.dart' show kChannelCapabilities;
 /// label 里括号那段(线路/渠道说明)。中英文括号都收。
 final _paren = RegExp(r'[（(].*?[)）]');
 
+/// 渠道近况:后端按最近 10 分钟的真实请求算(`health`)。老后端不带、窗口内没人用都是 unknown。
+enum ModelHealth { unknown, ok, degraded, down }
+
 class AgentModelChoice {
   const AgentModelChoice({
     required this.key,
     required this.name,
     this.recommended = false,
     this.free = false,
+    this.health = ModelHealth.unknown,
   });
 
   /// 发给后端的 `model`(MODEL_CHOICES 的 key)。
@@ -49,6 +53,8 @@ class AgentModelChoice {
 
   /// 后端标了免费:没有 Bot 授权也能用。
   final bool free;
+
+  final ModelHealth health;
 }
 
 class AgentModelList {
@@ -115,7 +121,7 @@ String modelDisplayName(String key, Map<String, dynamic> choice) {
 /// `GET /api/agent/models` 的响应 → 选项列表。
 ///
 /// 后端那张表是给 bot 和 web 一起用的,字段比 app 需要的多(别名、registry key、
-/// 预设变体),这里只挑四样。缺字段一律 fail-soft:少一条选项好过整页打不开。
+/// 预设变体),这里只挑五样。缺字段一律 fail-soft:少一条选项好过整页打不开。
 AgentModelList parseAgentModels(Map<String, dynamic> j) {
   final raw = j['choices'];
   if (raw is! Map) return const AgentModelList();
@@ -140,6 +146,9 @@ List<AgentModelChoice> _parseChoices(Map raw, {bool free = false}) {
         name: modelDisplayName(key, choice),
         recommended: choice['recommended'] == true,
         free: free || choice['free'] == true,
+        health:
+            ModelHealth.values.asNameMap()[choice['health']] ??
+            ModelHealth.unknown,
       ),
     );
   });

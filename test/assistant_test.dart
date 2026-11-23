@@ -3987,6 +3987,23 @@ void main() {
       expect(parseAgentModels(live()).active, 'deepseek');
     });
 
+    test('渠道近况:认得的照读,没有或认不出都是 unknown', () {
+      final l = parseAgentModels(const {
+        'choices': {
+          'a': {'name': 'A', 'health': 'down'},
+          'b': {'name': 'B', 'health': 'flaky'},
+          'c': {'name': 'C'},
+        },
+        'free_choices': {
+          'a': {'name': 'A', 'health': 'ok'},
+        },
+      });
+      expect(l.byKey('a')!.health, ModelHealth.down);
+      expect(l.byKey('b')!.health, ModelHealth.unknown);
+      expect(l.byKey('c')!.health, ModelHealth.unknown);
+      expect(l.free.single.health, ModelHealth.ok);
+    });
+
     // 给 [free] 里那几条标上 free。live() 里有的条目推断成 Map<String, String>,
     // 塞不进 bool,所以整份重建
     Map<String, dynamic> withFree(Set<String> free) {

@@ -9,10 +9,14 @@
 /// 「推荐」是后端标的([AgentModelChoice.recommended]),不在 app 里写死 ——
 /// 哪个渠道当下稳、当下便宜只有后端知道,写死就得跟着发版。
 ///
-/// **选中态放在左边**(图标换成对勾 + 整行染色),右边空出来给「编辑」。两样都挤在
-/// 右边的话,想选中却点到编辑是迟早的事 —— 而这个弹层九成时候是来选的,
-/// 不是来改配置的。
+/// **选中态是整行染色**,右边空出来给「编辑」。选中标记挤在右边的话,想选中却点到
+/// 编辑是迟早的事 —— 而这个弹层九成时候是来选的,不是来改配置的。
+///
+/// 后端渠道的闪电图标按渠道近况([ModelHealth])上色,没有数据照常;
+/// 弹层打开时重取一次列表,开着时定时再取。
 library;
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,12 +46,41 @@ Future<void> showModelSheet(BuildContext context) async {
   dropFocusSoon();
 }
 
-class _ModelSheet extends ConsumerWidget {
+class _ModelSheet extends ConsumerStatefulWidget {
   const _ModelSheet();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ModelSheet> createState() => _ModelSheetState();
+}
+
+class _ModelSheetState extends ConsumerState<_ModelSheet> {
+  /// 开着时隔多久重取一次列表。
+  static const _refreshEvery = Duration(seconds: 30);
+
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_refresh);
+    _timer = Timer.periodic(_refreshEvery, (_) => _refresh());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) ref.invalidate(agentModelsProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final async = ref.watch(agentModelsProvider);
+    // 重取失败时列表照旧显示,近况不再可信,颜色撤掉
+    final live = !async.hasError;
     final currentKey = ref.watch(assistantModelProvider)?.key ?? '';
     final endpoints = ref.watch(customEndpointsProvider).value ?? const [];
     // 没有 Bot 授权时只列免费的;后端一条免费的都没有就整组不列
@@ -81,8 +114,9 @@ class _ModelSheet extends ConsumerWidget {
             context,
             authorized ? context.l10n.planaBackend : context.l10n.freeModels,
           ),
+          // 重取期间沿用上一份,不闪转圈
           switch (async) {
-            AsyncData(:final value) when shown(value).isNotEmpty => Column(
+            AsyncValue(:final value?) when shown(value).isNotEmpty => Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 for (final c in shown(value))
@@ -91,6 +125,7 @@ class _ModelSheet extends ConsumerWidget {
                     icon: Icons.bolt_outlined,
                     title: c.name,
                     badge: c.recommended ? '推荐' : null,
+                    health: live ? c.health : ModelHealth.unknown,
                     selected: c.key == currentKey,
                     onTap: () => _pick(context, ref, c.key),
                   ),
@@ -101,7 +136,7 @@ class _ModelSheet extends ConsumerWidget {
               '拿不到渠道列表:$error',
               onRetry: () => ref.invalidate(agentModelsProvider),
             ),
-            AsyncData() => _note(
+            AsyncValue(hasValue: true) => _note(
               context,
               '后端没配可选渠道。',
               onRetry: () => ref.invalidate(agentModelsProvider),
@@ -158,8 +193,7 @@ class _ModelSheet extends ConsumerWidget {
     Navigator.pop(context);
   }
 
-  /// 一行。选中时左边图标换成对勾并整行染色 —— 一列小对勾要挨个找,
-  /// 染色那行扫一眼就看见。
+  /// 一行。选中时整行染色、标题加粗,图标不换。
   Widget _row(
     BuildContext context, {
     required IconData icon,
@@ -167,6 +201,7 @@ class _ModelSheet extends ConsumerWidget {
     required VoidCallback onTap,
     String? subtitle,
     String? badge,
+    ModelHealth health = ModelHealth.unknown,
     bool selected = false,
     bool dim = false,
     bool accent = false,
@@ -187,9 +222,14 @@ class _ModelSheet extends ConsumerWidget {
           : scheme.primaryContainer.withValues(alpha: .35),
       contentPadding: const EdgeInsets.only(left: 20, right: 8),
       leading: Icon(
-        selected ? Icons.check_circle : icon,
+        icon,
         size: 21,
-        color: selected ? fg : (dim ? scheme.outline : fg),
+        color: switch (health) {
+          ModelHealth.ok => const Color(0xFF22C55E),
+          ModelHealth.degraded => const Color(0xFFF59E0B),
+          ModelHealth.down => scheme.error,
+          ModelHealth.unknown => selected ? fg : (dim ? scheme.outline : fg),
+        },
       ),
       title: Row(
         children: [
