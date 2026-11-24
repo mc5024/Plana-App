@@ -2524,6 +2524,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get downloadOnGithub => 'Download on GitHub';
+
+  @override
   String get downloadUpdate => 'Download update';
 
   @override

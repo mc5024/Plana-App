@@ -98,9 +98,9 @@ class _UpdateSheet extends StatelessWidget {
   final GithubRelease release;
   final InstalledInfo installed;
 
-  Future<void> _open(BuildContext context) async {
+  Future<void> _open(BuildContext context, String url) async {
     final ok = await launchUrl(
-      Uri.parse(release.downloadUrl),
+      Uri.parse(url),
       mode: LaunchMode.externalApplication,
     );
     if (!context.mounted) return;
@@ -186,13 +186,24 @@ class _UpdateSheet extends StatelessWidget {
                   Expanded(
                     flex: 2,
                     child: FilledButton.icon(
-                      onPressed: () => _open(context),
+                      onPressed: () => _open(context, release.downloadUrl),
                       icon: const Icon(Icons.download, size: 18),
                       label: Text(context.l10n.downloadUpdate),
                     ),
                   ),
                 ],
               ),
+              // 主按钮是后端直链时,留一个去 GitHub Release 页的入口
+              if (release.downloadUrl != release.url) ...[
+                const SizedBox(height: 4),
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () => _open(context, release.url),
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: Text(context.l10n.downloadOnGithub),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

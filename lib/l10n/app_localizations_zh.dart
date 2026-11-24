@@ -2323,6 +2323,9 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get downloadOnGithub => '去 GitHub 下载';
+
+  @override
   String get downloadUpdate => '下载新版';
 
   @override

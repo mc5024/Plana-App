@@ -838,6 +838,7 @@
   "checkUpdates": "检查更新",
   "currentVersion": "当前 {v}",
   "@currentVersion": {"placeholders": {"v": {"type": "String"}}},
+  "downloadOnGithub": "去 GitHub 下载",
   "downloadUpdate": "下载新版",
   "updateHttpFailed": "检查更新失败(HTTP {code})",
   "@updateHttpFailed": {"placeholders": {"code": {"type": "int"}}},

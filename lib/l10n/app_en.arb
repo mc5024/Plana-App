@@ -700,6 +700,7 @@
   "upToDate": "Up to date",
   "checkUpdates": "Check for Updates",
   "currentVersion": "Current {v}",
+  "downloadOnGithub": "Download on GitHub",
   "downloadUpdate": "Download update",
   "updateHttpFailed": "Update check failed (HTTP {code})",
   "updateBadFormat": "Unexpected update info format",

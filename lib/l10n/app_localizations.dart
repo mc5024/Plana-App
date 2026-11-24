@@ -4174,6 +4174,12 @@ abstract class AppLocalizations {
   /// **'当前 {v}'**
   String currentVersion(String v);
 
+  /// No description provided for @downloadOnGithub.
+  ///
+  /// In zh, this message translates to:
+  /// **'去 GitHub 下载'**
+  String get downloadOnGithub;
+
   /// No description provided for @downloadUpdate.
   ///
   /// In zh, this message translates to:
