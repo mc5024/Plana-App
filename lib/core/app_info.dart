@@ -9,8 +9,8 @@ import '../l10n/l10n.dart';
 /// 显示名。改这里要连 `android/app/src/main/AndroidManifest.xml` 的
 /// `android:label` 一起改 —— 那个是桌面图标下的名字,读不到 Dart 常量。
 const kAppName = 'Plana App';
-const kAppVersion = '1.2.4';
-const kAppBuild = '24';
+const kAppVersion = '1.2.5';
+const kAppBuild = '25';
 
 /// 预发布版(版号带 `-`):关于页加内测标,免得测试反馈回来分不清版本。
 bool get kIsPrerelease => kAppVersion.contains('-');
