@@ -826,6 +826,7 @@ class _Header extends StatelessWidget {
                           decoration: tok.disabled
                               ? TextDecoration.lineThrough
                               : null,
+                          decorationThickness: 2,
                         ),
                       ),
                     ),

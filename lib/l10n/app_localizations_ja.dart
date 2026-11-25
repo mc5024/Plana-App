@@ -213,6 +213,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get refCharacterStyle => 'キャラクター&絵柄';
 
   @override
+  String get refOutfit => '衣装';
+
+  @override
+  String get preferSameOutfit => '同じ衣装を優先';
+
+  @override
   String get characters => 'キャラクター';
 
   @override
@@ -779,7 +785,19 @@ class AppLocalizationsJa extends AppLocalizations {
   String get importCharRef => '导入角色参考图';
 
   @override
-  String get charRefOnly45 => '角色参考仅 4.5 模型支持,当前模型生成时不会发送。';
+  String get charRefOnly45 => '現在のモデルは精密参照に対応していないため、生成時に送信されません。';
+
+  @override
+  String get charRefOutfitSkipped =>
+      '現在のモデルは「衣装」参照に対応していないため、有効な衣装参照は生成時にスキップされます。';
+
+  @override
+  String get charRefIgnoredInpaint => 'このモデルのインペイントでは精密参照に対応していません。';
+
+  @override
+  String charRefMaxExceeded(int max) {
+    return '精密参照は最大 $max 枚まで有効です。超過分はスキップされます。';
+  }
 
   @override
   String filesImportFailed(int n) {

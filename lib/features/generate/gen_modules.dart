@@ -250,6 +250,7 @@ GenerateState stripHiddenModules(GenerateState s, GenModuleSettings ms) {
     if (out.inpaint != null) out = out.copyWith(inpaint: null);
   }
   out = withoutInpaintVibes(out);
+  out = withoutInpaintCharRefs(out);
   // LoRA 挂载列表两个父类共用一份,但启用位分两个 key —— 按当前模型那个判。
   if (!on(loraModuleOf(model)) && out.loras.isNotEmpty) {
     out = out.copyWith(loras: const []);
@@ -293,11 +294,21 @@ GenerateState stripHiddenModules(GenerateState s, GenModuleSettings ms) {
 GenerateState withoutInpaintVibes(GenerateState s) =>
     s.inpaint != null && s.vibes.isNotEmpty ? s.copyWith(vibes: const []) : s;
 
+/// 重绘不支持角色参考的模型(如 V5)剥离快照中的角色参考。
+/// 画布里的角色参考原样留着,去掉遮罩就照常发。
+GenerateState withoutInpaintCharRefs(GenerateState s) =>
+    s.inpaint != null &&
+        !crSupportsInpainting(s.params.model) &&
+        s.charRefs.isNotEmpty
+    ? s.copyWith(charRefs: const [])
+    : s;
+
 /// 把快照适配到**另一个模型**:只按型号能力剥,不看用户的模块显隐。
 ///
 /// 换模型重跑会碰到这件事(图库的「重绘放大」用创作页当前的模型跑一张老图):
-/// 4.5 的快照带着 Vibe / 角色参考,换到 V5 就得整组去掉 —— V5 不支持它们,
-/// 发过去是未定义行为,费用还会白算一笔。角色数上限同理(V5 32 / 其余 6)。
+/// 4.5 的快照带着 Vibe,换到 V5 就得整组去掉;4.5 切到 Medium 等不支持角色参考
+/// 的型号则剥掉角色参考 —— 发过去是未定义行为,费用还会白算一笔。角色数上限同理
+/// (V5 32 / 其余 6)。
 ///
 /// **刻意不复用 [stripHiddenModules]**:那个还会按用户当前的模块显隐剥,而快照
 /// 该忠实执行自己的内容;更要命的是它会把 img2img 一起剥掉 —— 重绘放大的底图
@@ -310,6 +321,7 @@ GenerateState retargetModel(GenerateState s, String model) {
   if (!crSupportsModel(model) && out.charRefs.isNotEmpty) {
     out = out.copyWith(charRefs: const []);
   }
+  out = withoutInpaintCharRefs(out);
   final capped = _withinCharCap(out.characters, model);
   if (!identical(capped, out.characters)) {
     out = out.copyWith(characters: capped);

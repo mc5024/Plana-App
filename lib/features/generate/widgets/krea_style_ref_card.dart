@@ -190,6 +190,7 @@ class _KreaStyleRefCardState extends ConsumerState<KreaStyleRefCard> {
             RefDetailHeader(
               index: refs.indexOf(selected) + 1,
               name: selected.name,
+              enabled: selected.enabled,
               onRemove: () => _remove(selected!.id),
               enableToggle: RefEnableToggle(
                 enabled: selected.enabled,

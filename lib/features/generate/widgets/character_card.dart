@@ -326,6 +326,9 @@ class _CharacterTile extends ConsumerWidget {
           style: context.texts.bodyLarge!.copyWith(
             fontWeight: FontWeight.w700,
             color: enabled ? scheme.onSurface : scheme.outline,
+            decoration: enabled ? null : TextDecoration.lineThrough,
+            decorationColor: scheme.outline,
+            decorationThickness: 2,
           ),
         ),
       ),

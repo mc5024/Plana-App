@@ -160,6 +160,7 @@ class _EntryRow extends StatelessWidget {
             style: context.texts.bodySmall!.copyWith(
               color: lora.enabled ? scheme.onSurface : scheme.outline,
               decoration: lora.enabled ? null : TextDecoration.lineThrough,
+              decorationThickness: 2,
             ),
           ),
         ),
@@ -366,6 +367,7 @@ class _EntryChip extends StatelessWidget {
               style: context.texts.labelSmall!.copyWith(
                 color: fg,
                 decoration: off ? TextDecoration.lineThrough : null,
+                decorationThickness: 2,
               ),
             ),
           ),

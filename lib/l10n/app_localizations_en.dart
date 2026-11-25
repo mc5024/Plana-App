@@ -213,6 +213,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get refCharacterStyle => 'Char & Style';
 
   @override
+  String get refOutfit => 'Outfit';
+
+  @override
+  String get preferSameOutfit => 'Prefer same outfit';
+
+  @override
   String get characters => 'Characters';
 
   @override
@@ -822,7 +828,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get charRefOnly45 =>
-      'Precise Reference only works with 4.5 models and won\'t be sent with the current model.';
+      'Precise Reference isn\'t supported by the current model and won\'t be sent.';
+
+  @override
+  String get charRefOutfitSkipped =>
+      'The current model doesn\'t support Outfit references; enabled Outfit images will be skipped.';
+
+  @override
+  String get charRefIgnoredInpaint =>
+      'Precise Reference isn\'t supported when inpainting with this model.';
+
+  @override
+  String charRefMaxExceeded(int max) {
+    return 'Up to $max reference images can be used at once; extra ones will be skipped.';
+  }
 
   @override
   String filesImportFailed(int n) {

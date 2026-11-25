@@ -498,6 +498,7 @@ class _MetadataCompareViewState extends ConsumerState<MetadataCompareView> {
                       ? TextDecoration.lineThrough
                       : null,
                   decorationColor: c,
+                  decorationThickness: 2,
                 ),
         ),
       );

@@ -138,6 +138,8 @@ class ParamSlider extends StatelessWidget {
     this.dense = false,
     this.help,
     this.snapTo,
+    this.toSlider,
+    this.fromSlider,
   });
 
   final String label;
@@ -163,6 +165,10 @@ class ParamSlider extends StatelessWidget {
 
   /// 拖动吸附点:离它不到一格就落在它上面。
   final double? snapTo;
+
+  /// 可选非线性映射:同时传入时 Slider 物理范围走 `0..1`,读数与手输弹窗仍走 `[min, max]`。
+  final double Function(double)? toSlider;
+  final double Function(double)? fromSlider;
 
   double _snap(double v) {
     final s = snapTo;
@@ -226,14 +232,26 @@ class ParamSlider extends StatelessWidget {
               thumbSize: WidgetStatePropertyAll(Size.fromRadius(dense ? 7 : 9)),
               overlayShape: SliderComponentShape.noOverlay,
             ),
-            child: Slider(
-              value: value.clamp(min, max),
-              min: min,
-              max: max,
-              onChanged: onChanged == null ? null : (v) => onChanged!(_snap(v)),
-              onChangeEnd: onChangeEnd == null
-                  ? null
-                  : (v) => onChangeEnd!(_snap(v)),
+            child: Builder(
+              builder: (_) {
+                final nonLinear = toSlider != null && fromSlider != null;
+                final sliderVal = nonLinear
+                    ? toSlider!(value.clamp(min, max)).clamp(0.0, 1.0)
+                    : value.clamp(min, max);
+                double decode(double raw) =>
+                    _snap(nonLinear ? fromSlider!(raw) : raw);
+                return Slider(
+                  value: sliderVal,
+                  min: nonLinear ? 0.0 : min,
+                  max: nonLinear ? 1.0 : max,
+                  onChanged: onChanged == null
+                      ? null
+                      : (v) => onChanged!(decode(v)),
+                  onChangeEnd: onChangeEnd == null
+                      ? null
+                      : (v) => onChangeEnd!(decode(v)),
+                );
+              },
             ),
           ),
         ),
@@ -265,6 +283,8 @@ class LiveParamSlider extends StatefulWidget {
     this.help,
     this.valueTextOf,
     this.enabled = true,
+    this.toSlider,
+    this.fromSlider,
   });
 
   final String label;
@@ -284,6 +304,10 @@ class LiveParamSlider extends StatefulWidget {
   /// 读数格式化;拿到的是**拖动中的实时值**(未量化)。null = 默认两位小数。
   /// [ParamSlider.valueText] 是死串,这里必须是函数——拖动时读数得跟着走。
   final String Function(double)? valueTextOf;
+
+  /// 可选非线性映射(透传给 [ParamSlider])。
+  final double Function(double)? toSlider;
+  final double Function(double)? fromSlider;
 
   @override
   State<LiveParamSlider> createState() => _LiveParamSliderState();
@@ -307,6 +331,8 @@ class _LiveParamSliderState extends State<LiveParamSlider> {
       caption: widget.caption,
       dense: widget.dense,
       help: widget.help,
+      toSlider: widget.toSlider,
+      fromSlider: widget.fromSlider,
       onChanged: widget.enabled ? (v) => setState(() => _drag = v) : null,
       onChangeEnd: widget.enabled
           ? (v) {
@@ -669,6 +695,7 @@ class RefDetailHeader extends StatelessWidget {
     required this.index,
     required this.name,
     required this.onRemove,
+    this.enabled = true,
     this.enableToggle,
     this.leadingAction,
     this.leadingActionWidth = 0,
@@ -677,6 +704,9 @@ class RefDetailHeader extends StatelessWidget {
   final int index;
   final String name;
   final VoidCallback onRemove;
+
+  /// 停用时标题与名称灰掉并加删除线,一眼看出这一张不进载荷。
+  final bool enabled;
 
   /// 行首的启用/停用开关
   final Widget? enableToggle;
@@ -697,6 +727,10 @@ class RefDetailHeader extends StatelessWidget {
     final title = l.refIndex(index);
     final titleStyle = context.texts.bodyLarge!.copyWith(
       fontWeight: FontWeight.w700,
+      color: enabled ? null : scheme.outline,
+      decoration: enabled ? null : TextDecoration.lineThrough,
+      decorationColor: scheme.outline,
+      decorationThickness: 2,
     );
     final removeStyle = context.texts.bodyMedium!.copyWith(
       color: scheme.onSurface,
@@ -746,7 +780,10 @@ class RefDetailHeader extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: context.texts.bodySmall!.copyWith(
-              color: scheme.onSurfaceVariant,
+              color: enabled ? scheme.onSurfaceVariant : scheme.outline,
+              decoration: enabled ? null : TextDecoration.lineThrough,
+              decorationColor: scheme.outline,
+              decorationThickness: 2,
             ),
           ),
         ),

@@ -2512,6 +2512,7 @@ class _ImportImagePanelState extends ConsumerState<ImportImagePanel> {
                             decoration: blocked
                                 ? TextDecoration.lineThrough
                                 : null,
+                            decorationThickness: 2,
                           ),
                     ),
                     // 只废掉这一格并说明原因,不牵连整组其它字段

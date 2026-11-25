@@ -17,7 +17,7 @@ import '../../l10n/l10n.dart';
 ///
 /// 尺寸基准取自灵感页:大按钮 48 高、24 圆角,底色 surfaceContainer。
 /// 没有任何选中时整条收起([visible] = false),把屏幕还给列表。
-class SelectionBar extends StatelessWidget {
+class SelectionBar extends StatefulWidget {
   const SelectionBar({
     super.key,
     required this.visible,
@@ -53,10 +53,17 @@ class SelectionBar extends StatelessWidget {
   final bool compact;
 
   @override
-  Widget build(BuildContext context) {
+  State<SelectionBar> createState() => _SelectionBarState();
+}
+
+class _SelectionBarState extends State<SelectionBar> {
+  /// 收起动画期间冻结上一帧可见内容,避免按钮消失/文字跳变后再收拢。
+  Widget? _lastVisible;
+
+  Widget _buildBar(BuildContext context) {
     final scheme = context.scheme;
-    final firstRow = actions.isNotEmpty || destructive != null;
-    Widget content = compact
+    final firstRow = widget.actions.isNotEmpty || widget.destructive != null;
+    Widget content = widget.compact
         ? Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             child: Row(
@@ -64,14 +71,14 @@ class SelectionBar extends StatelessWidget {
                 SelectionIconButton(
                   icon: Icons.close,
                   tooltip: context.l10n.clearSelection,
-                  onTap: onClear,
+                  onTap: widget.onClear,
                 ),
-                for (final a in [...actions, ?destructive]) ...[
+                for (final a in [...widget.actions, ?widget.destructive]) ...[
                   const SizedBox(width: 8),
                   a,
                 ],
                 const SizedBox(width: 10),
-                Expanded(child: primary),
+                Expanded(child: widget.primary),
               ],
             ),
           )
@@ -83,12 +90,12 @@ class SelectionBar extends StatelessWidget {
                 if (firstRow) ...[
                   Row(
                     children: [
-                      for (var i = 0; i < actions.length; i++) ...[
+                      for (var i = 0; i < widget.actions.length; i++) ...[
                         if (i > 0) const SizedBox(width: 8),
-                        actions[i],
+                        widget.actions[i],
                       ],
                       const Spacer(),
-                      ?destructive,
+                      ?widget.destructive,
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -96,7 +103,7 @@ class SelectionBar extends StatelessWidget {
                 Row(
                   children: [
                     OutlinedButton(
-                      onPressed: onClear,
+                      onPressed: widget.onClear,
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(112, kSelectionActionHeight),
                         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -109,21 +116,33 @@ class SelectionBar extends StatelessWidget {
                       child: Text(context.l10n.clearSelection),
                     ),
                     const SizedBox(width: 10),
-                    Expanded(child: primary),
+                    Expanded(child: widget.primary),
                   ],
                 ),
               ],
             ),
           );
-    if (safeArea) content = SafeArea(top: false, child: content);
-    return ExpandBody(
-      expanded: visible,
-      child: Docked(
-        child: Material(
-          color: context.raisedFill(scheme.surfaceContainer),
-          child: content,
-        ),
+    if (widget.safeArea) content = SafeArea(top: false, child: content);
+    return Docked(
+      child: Material(
+        color: context.raisedFill(scheme.surfaceContainer),
+        child: content,
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget bar;
+    if (widget.visible) {
+      bar = _buildBar(context);
+      _lastVisible = bar;
+    } else {
+      bar = _lastVisible ?? _buildBar(context);
+    }
+    return ExpandBody(
+      expanded: widget.visible,
+      child: IgnorePointer(ignoring: !widget.visible, child: bar),
     );
   }
 }

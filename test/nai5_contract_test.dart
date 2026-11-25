@@ -3,12 +3,18 @@
 // 三条都是**静默错**:发错了不崩、不报错,只是元数据写进去是错的、或者字段被
 // 服务端悄悄丢掉。人工点一遍 UI 一个都看不出来 —— 只能靠测试钉住。
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
+import 'package:plana_app/core/store/app_stores.dart';
+import 'package:plana_app/core/util/image_ops.dart';
 import 'package:plana_app/features/generate/bot_request.dart';
 import 'package:plana_app/features/generate/char_position.dart';
 import 'package:plana_app/features/generate/cost.dart';
 import 'package:plana_app/features/generate/gen_modules.dart';
+import 'package:plana_app/features/generate/generate_state.dart';
 import 'package:plana_app/features/generate/models.dart';
 import 'package:plana_app/features/generate/nai_request.dart';
 import 'package:plana_app/features/generate/prompt_presets.dart';
@@ -805,5 +811,447 @@ void main() {
     expect(shortModelName('Anima Turbo'), 'Anima Turbo');
     expect(shortModelName('Krea 2 Raw'), 'Krea 2 Raw');
     expect(shortModelName(''), '');
+  });
+
+  group('V5 Precise Reference (PR) 协议与能力契约', () {
+    final allSixPayloads = <CharRefPayload>[
+      for (final m in CharRefMode.values)
+        (image: 'IMG_${m.name}', mode: m.api, strength: 2.5, fidelity: 0.3),
+    ];
+
+    test('V5 Full/Curated 直连:6 种 mode 全部下发,strength=2.5,secondary 恒为 0', () {
+      for (final model in ['NAI 5.0 Full', 'NAI 5.0 Curated']) {
+        final p =
+            buildNaiPayload(
+                  _state(model),
+                  presetId: 'none',
+                  charRefs: allSixPayloads,
+                ).body['parameters']
+                as Map<String, dynamic>;
+        expect(p['director_reference_images'], hasLength(6), reason: model);
+        final descs = p['director_reference_descriptions'] as List;
+        expect(
+          [
+            for (final d in descs)
+              ((d as Map)['caption'] as Map)['base_caption'],
+          ],
+          [
+            'character',
+            'character_mainoutfit',
+            'style',
+            'character&style',
+            'character&style_anyoutfit',
+            'costume',
+          ],
+          reason: model,
+        );
+        expect(
+          p['director_reference_strength_values'],
+          List.filled(6, 2.5),
+          reason: model,
+        );
+        expect(
+          p['director_reference_secondary_strength_values'],
+          List.filled(6, 0),
+          reason: model,
+        );
+        expect(
+          p['director_reference_information_extracted'],
+          List.filled(6, 1),
+          reason: model,
+        );
+      }
+    });
+
+    test(
+      'V5 Full/Curated bot 线:6 种 mode 全部下发,strength=2.5,informationExtracted 恒为 1.0',
+      () {
+        final p = buildBotParams(
+          _state('NAI 5.0 Full'),
+          seed: 1,
+          presetId: 'none',
+          charRefs: allSixPayloads,
+        );
+        final refs = p['preciseReferences'] as List;
+        expect(refs, hasLength(6));
+        expect([for (final r in refs) (r as Map)['mode']], [
+          'character',
+          'character_mainoutfit',
+          'style',
+          'character&style',
+          'character&style_anyoutfit',
+          'costume',
+        ]);
+        expect(
+          [for (final r in refs) (r as Map)['strength']],
+          List.filled(6, 2.5),
+        );
+        expect(
+          [for (final r in refs) (r as Map)['informationExtracted']],
+          List.filled(6, 1.0),
+        );
+      },
+    );
+
+    test('V5 Full Medium 与 V5 重绘:直连与 bot 均不发 PR', () {
+      final medDirect =
+          buildNaiPayload(
+                _state('NAI 5.0 Full Medium'),
+                presetId: 'none',
+                charRefs: allSixPayloads,
+              ).body['parameters']
+              as Map<String, dynamic>;
+      expect(medDirect.containsKey('director_reference_images'), isFalse);
+      final medBot = buildBotParams(
+        _state('NAI 5.0 Full Medium'),
+        seed: 1,
+        presetId: 'none',
+        charRefs: allSixPayloads,
+      );
+      expect(medBot.containsKey('preciseReferences'), isFalse);
+
+      final bytes = Uint8List.fromList([1, 2, 3]);
+      final v5Inpaint = _state('NAI 5.0 Full').copyWith(
+        inpaint: InpaintJob(image: bytes, mask: bytes, strength: 0.7),
+      );
+      final inpDirect =
+          buildNaiPayload(
+                v5Inpaint,
+                presetId: 'none',
+                charRefs: allSixPayloads,
+              ).body['parameters']
+              as Map<String, dynamic>;
+      expect(inpDirect.containsKey('director_reference_images'), isFalse);
+      final inpBot = buildBotParams(
+        v5Inpaint,
+        seed: 1,
+        presetId: 'none',
+        charRefs: allSixPayloads,
+      );
+      expect(inpBot.containsKey('preciseReferences'), isFalse);
+    });
+
+    test('V5 上限 16 张截断', () {
+      final many = [
+        for (var i = 0; i < 18; i++)
+          (image: 'IMG_$i', mode: 'character', strength: 1.0, fidelity: 1.0),
+      ];
+      final p =
+          buildNaiPayload(
+                _state('NAI 5.0 Full'),
+                presetId: 'none',
+                charRefs: many,
+              ).body['parameters']
+              as Map<String, dynamic>;
+      expect(p['director_reference_images'], hasLength(kMaxCrRefsV5));
+    });
+
+    test('V4.5 降级与过滤:跳过 outfit,降级主/任意服装,钳制 strength<=1.0,保留 fidelity', () {
+      final p =
+          buildNaiPayload(
+                _state('NAI 4.5 Full'),
+                presetId: 'none',
+                charRefs: allSixPayloads,
+              ).body['parameters']
+              as Map<String, dynamic>;
+      // 6 种滤掉 costume 剩 5 张
+      expect(p['director_reference_images'], hasLength(5));
+      final descs = p['director_reference_descriptions'] as List;
+      expect(
+        [
+          for (final d in descs)
+            ((d as Map)['caption'] as Map)['base_caption'],
+        ],
+        [
+          'character',
+          'character',
+          'style',
+          'character&style',
+          'character&style',
+        ],
+      );
+      expect(p['director_reference_strength_values'], List.filled(5, 1.0));
+      final sec = p['director_reference_secondary_strength_values'] as List;
+      for (final v in sec) {
+        expect(v, closeTo(0.7, 1e-9));
+      }
+
+      // effectiveCrRefs 同步校验
+      final items = [
+        for (final m in CharRefMode.values)
+          CharRefItem(
+            id: m.name,
+            mode: m,
+            strength: 2.5,
+            infoExtracted: 0.4,
+          ),
+      ];
+      final eff45 = effectiveCrRefs(items, 'NAI 4.5 Full');
+      expect(eff45.map((e) => e.mode).toList(), [
+        CharRefMode.character,
+        CharRefMode.character,
+        CharRefMode.style,
+        CharRefMode.both,
+        CharRefMode.both,
+      ]);
+      expect(eff45.every((e) => e.strength == 1.0), isTrue);
+      expect(eff45.every((e) => e.infoExtracted == 0.4), isTrue);
+
+      final effV5 = effectiveCrRefs(items, 'NAI 5.0 Curated');
+      expect(effV5.map((e) => e.mode).toList(), CharRefMode.values);
+      expect(effV5.every((e) => e.strength == 2.5), isTrue);
+      expect(effV5.every((e) => e.infoExtracted == 1.0), isTrue);
+    });
+
+    test('CharRefMode 主模式默认与同款切换 / 反序列化兼容', () {
+      expect(
+        CharRefMode.fromBaseMode(CharRefBaseMode.both),
+        CharRefMode.both,
+      );
+      expect(CharRefMode.both.preferSameOutfit, isTrue);
+      expect(
+        CharRefMode.both.withPreferSameOutfit(false),
+        CharRefMode.bothAnyOutfit,
+      );
+      expect(
+        CharRefMode.bothAnyOutfit.withPreferSameOutfit(true),
+        CharRefMode.both,
+      );
+
+      expect(
+        CharRefMode.fromBaseMode(CharRefBaseMode.character),
+        CharRefMode.character,
+      );
+      expect(CharRefMode.character.preferSameOutfit, isFalse);
+      expect(
+        CharRefMode.character.withPreferSameOutfit(true),
+        CharRefMode.characterMainOutfit,
+      );
+      expect(
+        CharRefMode.characterMainOutfit.withPreferSameOutfit(false),
+        CharRefMode.character,
+      );
+
+      expect(CharRefMode.tryParse('both'), CharRefMode.both);
+      expect(CharRefMode.tryParse('character&style'), CharRefMode.both);
+      expect(CharRefMode.tryParse('costume'), CharRefMode.outfit);
+      expect(CharRefMode.tryParse('outfit'), CharRefMode.outfit);
+      expect(
+        CharRefMode.tryParse('character_mainoutfit'),
+        CharRefMode.characterMainOutfit,
+      );
+      expect(
+        CharRefMode.tryParse('character&style_anyoutfit'),
+        CharRefMode.bothAnyOutfit,
+      );
+    });
+
+    test('V5 强度滑块中点 1.0 非线性映射及逆映射', () {
+      const pairs = [
+        (0.0, 0.0),
+        (0.25, 0.5),
+        (0.5, 1.0),
+        (0.75, 3.0),
+        (1.0, 5.0),
+      ];
+      for (final (t, v) in pairs) {
+        expect(crV5StrengthFromSlider(t), closeTo(v, 1e-9));
+        expect(crV5StrengthToSlider(v), closeTo(t, 1e-9));
+      }
+      for (final v in [0.15, 0.87, 1.0, 1.5, 2.5, 4.25]) {
+        expect(
+          crV5StrengthFromSlider(crV5StrengthToSlider(v)),
+          closeTo(v, 1e-9),
+        );
+      }
+    });
+  });
+
+  group('V5 PR 97 档桶表与 Cover 裁切', () {
+    test('桶表长度 97、全 64 倍数、关于 1024×1024 对称', () {
+      expect(kV5CrBuckets, hasLength(97));
+      expect(kV5CrBuckets[48], (1024, 1024));
+      for (var i = 0; i < kV5CrBuckets.length; i++) {
+        final (w, h) = kV5CrBuckets[i];
+        expect(w % 64, 0);
+        expect(h % 64, 0);
+        final (rw, rh) = kV5CrBuckets[kV5CrBuckets.length - 1 - i];
+        expect((w, h), (rh, rw));
+      }
+    });
+
+    test('选桶与 Cover 布局计算准确', () {
+      expect(pickV5CrBucket(1024, 1024), (w: 1024, h: 1024));
+      expect(pickV5CrBucket(832, 1216), (w: 832, h: 1216));
+      expect(pickV5CrBucket(1920, 1080), (w: 1344, h: 768));
+      expect(pickV5CrBucket(100, 3000), (w: 256, h: 4096));
+      expect(pickV5CrBucket(3000, 100), (w: 4096, h: 256));
+
+      final exact = v5CrBucketLayout(832, 1216);
+      expect(exact, (
+        bucketW: 832,
+        bucketH: 1216,
+        resizeW: 832,
+        resizeH: 1216,
+        left: 0,
+        top: 0,
+      ));
+
+      // 1920×1080 → 桶 1344×768:scale=768/1080,resizeW=floor(1365.333+0.5)=1365,left=(1365-1344)~/2=10
+      final hd = v5CrBucketLayout(1920, 1080);
+      expect(hd, (
+        bucketW: 1344,
+        bucketH: 768,
+        resizeW: 1365,
+        resizeH: 768,
+        left: 10,
+        top: 0,
+      ));
+    });
+
+    test('crBucketResizePng:命中桶原样返回 PNG,非桶尺寸 Cover 裁切且保留透明通道', () async {
+      // 1. 恰好命中 1024×1024 桶的 PNG:直接原样返回(零重绘)
+      final exactImg = img.Image(width: 1024, height: 1024, numChannels: 4);
+      final exactSrc = Uint8List.fromList(img.encodePng(exactImg));
+      final exactOut = await crBucketResizePng(exactSrc);
+      expect(identical(exactOut, exactSrc), isTrue);
+
+      // 2. 非桶尺寸 320×180 (16:9 → 1344×768),左上透明、中央红色不透明
+      final srcImg = img.Image(width: 320, height: 180, numChannels: 4);
+      // 默认全透明(alpha=0),在中心涂一块不透明红色
+      img.fillRect(
+        srcImg,
+        x1: 120,
+        y1: 60,
+        x2: 200,
+        y2: 120,
+        color: img.ColorRgba8(255, 0, 0, 255),
+      );
+      final srcPng = Uint8List.fromList(img.encodePng(srcImg));
+      final outPng = await crBucketResizePng(srcPng);
+
+      expect(pngSizeOf(outPng), (1344, 768));
+      final codec = await ui.instantiateImageCodec(outPng);
+      final frame = await codec.getNextFrame();
+      final decoded = frame.image;
+      try {
+        final raw = (await decoded.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        ))!;
+        final bytes = raw.buffer.asUint8List();
+        // 左上角 (0, 0) 必须保持透明(alpha == 0,说明没有垫黑底)
+        expect(bytes[3], 0);
+        // 中心点 (672, 384) 应为红色不透明
+        final centerIdx = (384 * 1344 + 672) * 4;
+        expect(bytes[centerIdx], greaterThan(200));
+        expect(bytes[centerIdx + 3], 255);
+      } finally {
+        decoded.dispose();
+      }
+    });
+  });
+
+  group('V5 重绘与角色参考冲突策略', () {
+    InpaintJob fakeInpaint() => InpaintJob(
+      image: Uint8List.fromList(const [1, 2, 3]),
+      mask: Uint8List.fromList(const [4, 5, 6]),
+      strength: 0.7,
+    );
+
+    test('进入重绘强制禁用 V5 全部角色参考,点击启用被拒,新增默认禁用,退出重绘可重新启用', () {
+      final container = ProviderContainer(
+        overrides: [appStoresProvider.overrideWithValue(AppStores.ephemeral())],
+      );
+      addTearDown(container.dispose);
+      final n = container.read(generateProvider.notifier);
+
+      n.setModel('NAI 5.0 Full');
+      final id1 = n.addCharRef(
+        image: Uint8List.fromList(const [10]),
+        name: 'ref1.png',
+      );
+      final id2 = n.addCharRef(
+        image: Uint8List.fromList(const [20]),
+        name: 'ref2.png',
+      );
+      expect(
+        container.read(generateProvider).charRefs.every((r) => r.enabled),
+        isTrue,
+      );
+
+      // 1. 进入重绘:强制将全部角色参考设为禁用
+      n.setInpaint(fakeInpaint());
+      expect(
+        container.read(generateProvider).charRefs.every((r) => !r.enabled),
+        isTrue,
+      );
+
+      // 2. 重绘态下尝试启用:拒绝返回 false,保持禁用
+      expect(n.setCharRefEnabled(id1, true), isFalse);
+      expect(
+        container
+            .read(generateProvider)
+            .charRefs
+            .firstWhere((r) => r.id == id1)
+            .enabled,
+        isFalse,
+      );
+
+      // 3. 重绘态下新加参考图:默认禁用
+      final id3 = n.addCharRef(
+        image: Uint8List.fromList(const [30]),
+        name: 'ref3.png',
+      );
+      expect(
+        container
+            .read(generateProvider)
+            .charRefs
+            .firstWhere((r) => r.id == id3)
+            .enabled,
+        isFalse,
+      );
+
+      // 4. 移除重绘遮罩后,允许重新启用
+      n.clearInpaint();
+      expect(n.setCharRefEnabled(id2, true), isTrue);
+      expect(
+        container
+            .read(generateProvider)
+            .charRefs
+            .firstWhere((r) => r.id == id2)
+            .enabled,
+        isTrue,
+      );
+    });
+
+    test('V4.5 重绘允许启用角色参考,切到 V5 后强制全部禁用', () {
+      final container = ProviderContainer(
+        overrides: [appStoresProvider.overrideWithValue(AppStores.ephemeral())],
+      );
+      addTearDown(container.dispose);
+      final n = container.read(generateProvider.notifier);
+
+      n.setModel('NAI 4.5 Full');
+      final id = n.addCharRef(
+        image: Uint8List.fromList(const [10]),
+        name: 'ref45.png',
+      );
+      n.setInpaint(fakeInpaint());
+      expect(
+        container
+            .read(generateProvider)
+            .charRefs
+            .firstWhere((r) => r.id == id)
+            .enabled,
+        isTrue,
+      );
+
+      // 切到 V5 Full:重绘态仍存在,强制全部禁用
+      n.setModel('NAI 5.0 Full');
+      expect(
+        container.read(generateProvider).charRefs.every((r) => !r.enabled),
+        isTrue,
+      );
+    });
   });
 }

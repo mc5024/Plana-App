@@ -213,6 +213,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get refCharacterStyle => '角色&风格';
 
   @override
+  String get refOutfit => '服装';
+
+  @override
+  String get preferSameOutfit => '优先相同服装';
+
+  @override
   String get characters => '角色';
 
   @override
@@ -779,7 +785,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get importCharRef => '导入角色参考图';
 
   @override
-  String get charRefOnly45 => '角色参考仅 4.5 模型支持,当前模型生成时不会发送。';
+  String get charRefOnly45 => '当前模型不支持角色参考，生成时不会发送。';
+
+  @override
+  String get charRefOutfitSkipped => '当前模型不支持「服装」参考，已选的服装参考图在生成时将被跳过。';
+
+  @override
+  String get charRefIgnoredInpaint => '当前模型重绘时不支持角色参考';
+
+  @override
+  String charRefMaxExceeded(int max) {
+    return '最多同时生效 $max 张角色参考图，超出的将在生成时被跳过。';
+  }
 
   @override
   String filesImportFailed(int n) {

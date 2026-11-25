@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:plana_app/features/generate/cost.dart';
 import 'package:plana_app/features/generate/models.dart';
@@ -78,14 +80,98 @@ void main() {
       );
     });
 
-    test('角色参考每张 +5,且只在 4.5 系模型上计', () {
+    test('角色参考每张 +5:仅 4.5 与 V5 Full/Curated 计费,Medium/4.0 不计', () {
       final refs = [CharRefItem(id: 'r0'), CharRefItem(id: 'r1')];
       expect(estimateCost(_s(charRefs: refs), isOpus: true), 10);
-      // 非 4.5 模型不会下发角色参考,故不计费
+      expect(
+        estimateCost(_s(model: 'NAI 4.5 Curated', charRefs: refs), isOpus: true),
+        10,
+      );
+      expect(
+        estimateCost(_s(model: 'NAI 5.0 Full', charRefs: refs), isOpus: true),
+        10,
+      );
+      expect(
+        estimateCost(_s(model: 'NAI 5.0 Curated', charRefs: refs), isOpus: true),
+        10,
+      );
+      expect(
+        estimateCost(
+          _s(model: 'NAI 5.0 Full Medium', charRefs: refs),
+          isOpus: true,
+        ),
+        0,
+      );
       expect(
         estimateCost(_s(model: 'NAI 4.0 Full', charRefs: refs), isOpus: true),
         0,
       );
+    });
+
+    test('角色参考规则一致性:4.5 跳过服装项、V5 上限 16 张、V5 重绘不计费', () {
+      final mixed = [
+        const CharRefItem(id: 'r0', mode: CharRefMode.characterMainOutfit),
+        const CharRefItem(id: 'r1', mode: CharRefMode.outfit),
+        const CharRefItem(id: 'r2', mode: CharRefMode.bothAnyOutfit),
+      ];
+      // 4.5 跳过 outfit,仅计 2 张 = 10 点;V5 计全部 3 张 = 15 点
+      expect(
+        estimateCost(_s(model: 'NAI 4.5 Full', charRefs: mixed), isOpus: true),
+        10,
+      );
+      expect(
+        estimateCost(_s(model: 'NAI 5.0 Full', charRefs: mixed), isOpus: true),
+        15,
+      );
+
+      // V5 上限 16 张:18 张启用仅按 16 张计费(80 点)
+      final twenty = [
+        for (var i = 0; i < 18; i++) CharRefItem(id: 'r$i'),
+      ];
+      expect(
+        estimateCost(_s(model: 'NAI 5.0 Full', charRefs: twenty), isOpus: true),
+        80,
+      );
+
+      // 重绘计费:4.5 照收有效 PR(跳过 outfit → 10 点),V5 不支持 PR 重绘 → 0 点
+      expect(
+        estimateInpaintCost(
+          _s(model: 'NAI 4.5 Full', charRefs: mixed),
+          isOpus: true,
+          sendW: 832,
+          sendH: 1216,
+          strength: 1,
+        ),
+        10,
+      );
+      expect(
+        estimateInpaintCost(
+          _s(model: 'NAI 5.0 Full', charRefs: mixed),
+          isOpus: true,
+          sendW: 832,
+          sendH: 1216,
+          strength: 1,
+        ),
+        0,
+      );
+      // 图生图放大(inpaint: false)在 V5 下仍携带 PR → 照计 15 点
+      expect(
+        estimateInpaintCost(
+          _s(model: 'NAI 5.0 Full', charRefs: mixed),
+          isOpus: true,
+          sendW: 832,
+          sendH: 1216,
+          strength: 0.5,
+          inpaint: false,
+        ),
+        15,
+      );
+      // estimateCost 带 inpaint 时同样对 V5 不计 PR 费
+      final bytes = Uint8List.fromList([1, 2, 3]);
+      final v5Inpaint = _s(model: 'NAI 5.0 Full', charRefs: mixed).copyWith(
+        inpaint: InpaintJob(image: bytes, mask: bytes, strength: 1),
+      );
+      expect(estimateCost(v5Inpaint, isOpus: true), 0);
     });
   });
 

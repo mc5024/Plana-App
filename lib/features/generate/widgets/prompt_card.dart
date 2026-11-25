@@ -945,6 +945,7 @@ class _Preview extends StatelessWidget {
       color: enabled ? scheme.onSurfaceVariant : scheme.outline,
       decoration: enabled ? null : TextDecoration.lineThrough,
       decorationColor: scheme.outline,
+      decorationThickness: 2,
     );
     final pieces = previewPieces(draft);
     if (pieces.isEmpty) {

@@ -206,14 +206,66 @@ class VibeItem {
       );
 }
 
+/// 角色参考主模式(用于 UI 选择器;「优先相同服装」开关叠加在 character / both 上)。
+enum CharRefBaseMode { character, style, both, outfit }
+
 /// 角色参考迁移模式。api 直接进载荷 base_caption(对齐 web)。
+/// 保留旧枚举名 `character` / `style` / `both` 以兼容既有存档 JSON。
 enum CharRefMode {
   character('character'),
+  characterMainOutfit('character_mainoutfit'),
   style('style'),
-  both('character&style');
+  both('character&style'),
+  bothAnyOutfit('character&style_anyoutfit'),
+  outfit('costume');
 
   const CharRefMode(this.api);
   final String api;
+
+  /// 对应的 UI 主模式。
+  CharRefBaseMode get baseMode => switch (this) {
+    CharRefMode.character ||
+    CharRefMode.characterMainOutfit => CharRefBaseMode.character,
+    CharRefMode.style => CharRefBaseMode.style,
+    CharRefMode.both || CharRefMode.bothAnyOutfit => CharRefBaseMode.both,
+    CharRefMode.outfit => CharRefBaseMode.outfit,
+  };
+
+  /// 是否支持「优先相同服装」开关(仅 character / both 主模式)。
+  bool get supportsPreferSameOutfit =>
+      baseMode == CharRefBaseMode.character || baseMode == CharRefBaseMode.both;
+
+  /// 当前是否开启「优先相同服装」。
+  /// character 默认不优先同款(`character`),开启为 `character_mainoutfit`;
+  /// both 默认优先同款(`character&style`),关闭为 `character&style_anyoutfit`。
+  bool get preferSameOutfit =>
+      this == CharRefMode.characterMainOutfit || this == CharRefMode.both;
+
+  /// 切换「优先相同服装」开关后的迁移模式。
+  CharRefMode withPreferSameOutfit(bool prefer) => switch (baseMode) {
+    CharRefBaseMode.character =>
+      prefer ? CharRefMode.characterMainOutfit : CharRefMode.character,
+    CharRefBaseMode.both =>
+      prefer ? CharRefMode.both : CharRefMode.bothAnyOutfit,
+    CharRefBaseMode.style || CharRefBaseMode.outfit => this,
+  };
+
+  /// 从主模式构造默认迁移模式:切到「角色&风格」默认勾同款,切到「角色」默认不勾。
+  static CharRefMode fromBaseMode(CharRefBaseMode base) => switch (base) {
+    CharRefBaseMode.character => CharRefMode.character,
+    CharRefBaseMode.style => CharRefMode.style,
+    CharRefBaseMode.both => CharRefMode.both,
+    CharRefBaseMode.outfit => CharRefMode.outfit,
+  };
+
+  /// 同时兼容既有存档枚举名(`character` / `both`…)与 API 串(`costume` / `character_mainoutfit`…)。
+  static CharRefMode? tryParse(Object? raw) {
+    if (raw is! String) return null;
+    for (final v in values) {
+      if (v.name == raw || v.api == raw) return v;
+    }
+    return null;
+  }
 }
 
 class CharRefItem {
@@ -515,10 +567,92 @@ bool isNai5MediumModel(String displayModel) =>
 const kNai5MediumSteps = 14;
 const kNai5MediumSampler = 'Euler Ancestral';
 
-/// 角色参考(Director/Precise Reference)仅 4.5 系模型支持(对齐 web 门槛)。
-/// 载荷构造 / 成本预估 / 卡片提示共用此判定,入参为 UI 展示名。
-/// NAI 5 是否支持官方未公布,预载期按不支持处理(startsWith 天然排除)。
-bool crSupportsModel(String displayModel) => displayModel.startsWith('NAI 4.5');
+/// V5 精确参考单次请求张数上限。
+const kMaxCrRefsV5 = 16;
+
+/// 角色参考(Director/Precise Reference)支持门槛:
+/// 仅 NAI 4.5 Full / Curated 与 NAI 5.0 Full / Curated 支持;
+/// NAI 5.0 Full Medium、NAI 4.0、Anima / Krea 均不支持。
+/// 载荷构造 / 成本预估 / 模块可见性共用此判定,入参为 UI 展示名。
+bool crSupportsModel(String displayModel) => switch (displayModel) {
+  'NAI 4.5 Full' ||
+  'NAI 4.5 Curated' ||
+  'NAI 5.0 Full' ||
+  'NAI 5.0 Curated' => true,
+  _ => false,
+};
+
+/// 局部重绘下是否支持角色参考:仅 4.5 系支持,V5 重绘不支持(不发、不计费)。
+bool crSupportsInpainting(String displayModel) =>
+    displayModel == 'NAI 4.5 Full' || displayModel == 'NAI 4.5 Curated';
+
+/// 是否支持「服装」模式与「优先相同服装」开关(仅 V5 Full / Curated)。
+bool crSupportsOutfit(String displayModel) =>
+    displayModel == 'NAI 5.0 Full' || displayModel == 'NAI 5.0 Curated';
+
+/// 是否支持 Fidelity 保真度滑块(仅 4.5 系;V5 隐藏滑块,发送时强制 fidelity=1.0 → secondary=0)。
+bool crSupportsFidelity(String displayModel) =>
+    displayModel == 'NAI 4.5 Full' || displayModel == 'NAI 4.5 Curated';
+
+/// 参考强度上限:V5 为 5.0,V4.5 为 1.0。
+double crStrengthMax(String displayModel) =>
+    crSupportsOutfit(displayModel) ? 5.0 : 1.0;
+
+/// 参考图预处理是否走 V5 97 档桶表 Cover 裁切(否则走 4.5 三档黑边 contain)。
+bool crUsesBucketResize(String displayModel) => crSupportsOutfit(displayModel);
+
+/// V5 精确参考强度滑块非线性映射:物理位置 t ∈ [0.0, 1.0] → 强度 v ∈ [0.0, 5.0],
+/// 中点 t = 0.5 精确对应常用默认强度 1.0。
+double crV5StrengthFromSlider(double t) {
+  final x = t.clamp(0.0, 1.0);
+  return x <= 0.5 ? x * 2.0 : 1.0 + (x - 0.5) * 8.0;
+}
+
+/// V5 精确参考强度滑块逆映射:强度 v ∈ [0.0, 5.0] → 物理位置 t ∈ [0.0, 1.0]。
+double crV5StrengthToSlider(double v) {
+  final x = v.clamp(0.0, 5.0);
+  return x <= 1.0 ? x / 2.0 : 0.5 + (x - 1.0) / 8.0;
+}
+
+/// 返回在 [displayModel] 与 [inpaint] 下真正会生效并参与发送/计费的精确参考列表:
+/// - 不支持的模型或重绘不支持时返回空;
+/// - 仅保留启用项;
+/// - V4.5 下跳过 `outfit`,并将 `characterMainOutfit -> character`、`bothAnyOutfit -> both`;
+/// - 按模型能力收口 `strength`(V4.5 `0..1`,V5 `0..5`)与 `infoExtracted`(V5 恒 `1.0`);
+/// - V5 截断至上限 [kMaxCrRefsV5] 张。
+List<CharRefItem> effectiveCrRefs(
+  List<CharRefItem> refs,
+  String displayModel, {
+  bool inpaint = false,
+}) {
+  if (!crSupportsModel(displayModel)) return const [];
+  if (inpaint && !crSupportsInpainting(displayModel)) return const [];
+  final outfitOk = crSupportsOutfit(displayModel);
+  final fidelityOk = crSupportsFidelity(displayModel);
+  final maxStrength = crStrengthMax(displayModel);
+  final cap = isNai5Model(displayModel) ? kMaxCrRefsV5 : null;
+  final out = <CharRefItem>[];
+  for (final r in refs) {
+    if (!r.enabled) continue;
+    if (!outfitOk && r.mode == CharRefMode.outfit) continue;
+    final mode = outfitOk
+        ? r.mode
+        : switch (r.mode) {
+            CharRefMode.characterMainOutfit => CharRefMode.character,
+            CharRefMode.bothAnyOutfit => CharRefMode.both,
+            _ => r.mode,
+          };
+    final strength = r.strength.clamp(0.0, maxStrength);
+    final fidelity = fidelityOk ? r.infoExtracted.clamp(0.0, 1.0) : 1.0;
+    out.add(
+      mode == r.mode && strength == r.strength && fidelity == r.infoExtracted
+          ? r
+          : r.copyWith(mode: mode, strength: strength, infoExtracted: fidelity),
+    );
+    if (cap != null && out.length >= cap) break;
+  }
+  return out;
+}
 
 /// Vibe Transfer 门槛:NAI 5 官方未确认支持(编码接口是否兼容也未知),
 /// 预载期整卡屏蔽 —— 渲染与载荷剥离都走模块可见性,这里一处管住。

@@ -76,6 +76,12 @@
   "refCharacter": "キャラクター",
   "refStyle": "絵柄",
   "refCharacterStyle": "キャラクター&絵柄",
+  "refOutfit": "衣装",
+  "preferSameOutfit": "同じ衣装を優先",
+  "charRefOnly45": "現在のモデルは精密参照に対応していないため、生成時に送信されません。",
+  "charRefOutfitSkipped": "現在のモデルは「衣装」参照に対応していないため、有効な衣装参照は生成時にスキップされます。",
+  "charRefIgnoredInpaint": "このモデルのインペイントでは精密参照に対応していません。",
+  "charRefMaxExceeded": "精密参照は最大 {max} 枚まで有効です。超過分はスキップされます。",
 
   "characters": "キャラクター",
   "addCharacter": "キャラクターを追加",

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_skin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/fast_scroll_handle.dart';
+import '../../core/ui/lift_menu.dart';
 import '../../core/ui/selection_bar.dart';
 import '../../core/util/image_pick.dart';
 import '../generate/generate_state.dart';
@@ -17,9 +18,9 @@ import '../../l10n/l10n.dart';
 import 'char_library.dart';
 import '../../core/util/haptics.dart';
 
-/// 角色参考图库(仅「我的」本地库)。交互对齐 Vibe 管理器:
-/// 点卡 = 加入/移出生成面板(勾选态),底栏「删除 / 清空 / 取消 / 确认选择」,
-/// 卡片右上菜单 = 重命名 / 删除。生成页导入的参考图会自动收藏在此。
+/// 角色参考图库(仅「我的」本地库)。纯图片预览网格:
+/// 点卡 = 加入/移出生成面板(选中后左上角显示勾标),长按抬起菜单 = 重命名 / 删除,
+/// 底部一行多选栏 = 清除 / 删除 / 确认选择。生成页导入的参考图会自动收藏在此。
 class CharLibraryPage extends ConsumerStatefulWidget {
   const CharLibraryPage({super.key});
 
@@ -67,11 +68,21 @@ class _CharLibraryPageState extends ConsumerState<CharLibraryPage> {
       return;
     }
     Haptics.selection();
-    final hadVibes = ref.read(generateProvider).enabledVibes > 0;
+    final stBefore = ref.read(generateProvider);
+    final hadVibes = stBefore.enabledVibes > 0;
+    final inpaintBlocked =
+        stBefore.inpaint != null &&
+        !crSupportsInpainting(stBefore.params.model);
     ref
         .read(generateProvider.notifier)
         .addCharRef(image: bytes, name: e.name, imageHash: e.id);
-    if (hadVibes) {
+    if (inpaintBlocked) {
+      hintSnack(
+        context,
+        context.l10n.charRefIgnoredInpaint,
+        icon: Icons.block,
+      );
+    } else if (hadVibes) {
       hintSnack(
         context,
         context.l10n.refMutexVibePaused,
@@ -126,7 +137,33 @@ class _CharLibraryPageState extends ConsumerState<CharLibraryPage> {
   /// 确认选择:点卡时已实时加入生成面板,这里直接返回。
   void _confirm() => Navigator.of(context).pop();
 
-  // ---- 单卡菜单 ----
+  // ---- 单卡长按菜单 ----
+
+  Future<void> _lift(CharRefEntry e, Rect from) async {
+    Haptics.medium();
+    final l = context.l10n;
+    final action = await showLiftMenu<String>(
+      context,
+      from: from,
+      aspect: from.height > 0 ? from.width / from.height : 1.0,
+      preview: _CharThumb(thumb: _lib.thumbOf(e)),
+      actions: [
+        (
+          icon: Icons.drive_file_rename_outline,
+          label: l.rename,
+          value: 'rename',
+        ),
+      ],
+      danger: (icon: Icons.delete_outline, label: l.delete, value: 'delete'),
+    );
+    if (!mounted) return;
+    switch (action) {
+      case 'rename':
+        await _rename(e);
+      case 'delete':
+        await _deleteOne(e);
+    }
+  }
 
   Future<void> _rename(CharRefEntry e) async {
     final l = context.l10n;
@@ -333,18 +370,16 @@ class _CharLibraryPageState extends ConsumerState<CharLibraryPage> {
           crossAxisCount: 2,
           mainAxisSpacing: 10,
           crossAxisSpacing: 10,
-          childAspectRatio: 0.82,
+          childAspectRatio: 1.0,
         ),
         itemCount: list.length,
         itemBuilder: (context, i) {
           final e = list[i];
           return _CharCard(
-            entry: e,
             checked: _activeItemId(e) != null,
             thumb: _lib.thumbOf(e),
             onTap: () => _toggle(e),
-            onRename: () => _rename(e),
-            onDelete: () => _deleteOne(e),
+            onLift: (rect) => _lift(e, rect),
           );
         },
       ),
@@ -361,15 +396,14 @@ class _CharLibraryPageState extends ConsumerState<CharLibraryPage> {
       // 全部移出后底栏也要留着:此时唯一的出口是返回键,而返回=还原快照,
       // 刚做的移出会被一并撤销 —— 没有「确认」就没法把移出落地。
       visible: n > 0 || _changedFromSnapshot(refs),
+      compact: true,
       onClear: n == 0 ? null : _clearActive,
-      destructive: checked.isEmpty
-          ? null
-          : SelectionPill(
-              icon: Icons.delete_outline,
-              label: context.l10n.delete,
-              color: scheme.error,
-              onTap: () => _deleteChecked(checked),
-            ),
+      destructive: SelectionIconButton(
+        icon: Icons.delete_outline,
+        tooltip: context.l10n.delete,
+        color: scheme.error,
+        onTap: checked.isEmpty ? null : () => _deleteChecked(checked),
+      ),
       primary: FilledButton.icon(
         onPressed: _confirm,
         style: selectionPrimaryStyle(),
@@ -393,23 +427,19 @@ class _CharLibraryPageState extends ConsumerState<CharLibraryPage> {
   }
 }
 
-/// 本地卡片:点卡 = 加入/移出生成;右上菜单 = 重命名 / 删除。外观对齐 Vibe 卡。
+/// 纯图片预览卡片:点卡 = 加入/移出生成;选中后左上角显示勾标;长按抬起菜单 = 重命名 / 删除。
 class _CharCard extends StatelessWidget {
   const _CharCard({
-    required this.entry,
     required this.checked,
     required this.thumb,
     required this.onTap,
-    required this.onRename,
-    required this.onDelete,
+    required this.onLift,
   });
 
-  final CharRefEntry entry;
   final bool checked;
   final File thumb;
   final VoidCallback onTap;
-  final VoidCallback onRename;
-  final VoidCallback onDelete;
+  final ValueChanged<Rect> onLift;
 
   @override
   Widget build(BuildContext context) {
@@ -418,9 +448,7 @@ class _CharCard extends StatelessWidget {
       radius: BorderRadius.circular(16),
       child: Container(
         decoration: BoxDecoration(
-          color: checked
-              ? scheme.primaryContainer.withValues(alpha: .28)
-              : scheme.surfaceContainerLow,
+          color: scheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(16),
         ),
         // 边框放前景层:选中态加粗高亮只是绘制,不占布局。
@@ -428,66 +456,29 @@ class _CharCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: checked
-                ? scheme.primary.withValues(alpha: .7)
+                ? scheme.primary.withValues(alpha: .85)
                 : scheme.outlineVariant.withValues(alpha: .3),
-            width: checked ? 1.8 : 1,
+            width: checked ? 2 : 1,
           ),
         ),
         clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 缩略图区(占卡片上部剩余空间)
-              Expanded(
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.file(
-                      thumb,
-                      fit: BoxFit.cover,
-                      gaplessPlayback: true,
-                      errorBuilder: (_, _, _) => ColoredBox(
-                        color: scheme.surfaceContainerHigh,
-                        child: Icon(
-                          Icons.broken_image_outlined,
-                          color: scheme.outline,
-                        ),
-                      ),
-                    ),
-                    if (checked)
-                      Container(color: scheme.primary.withValues(alpha: .18)),
-                    Positioned(top: 8, left: 8, child: _checkbox(scheme)),
-                  ],
-                ),
-              ),
-              // 卡片体:名称 + 右侧更多菜单
-              Padding(
-                padding: const EdgeInsets.fromLTRB(10, 6, 6, 9),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        refDisplayName(context.l10n, entry.name),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.texts.bodyMedium!.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: checked ? scheme.primary : null,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    _CharMenuButton(
-                      onSelected: (v) =>
-                          v == 'rename' ? onRename() : onDelete(),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            onLongPress: () {
+              if (globalRectOf(context) case final r?) onLift(r);
+            },
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _CharThumb(thumb: thumb),
+                if (checked)
+                  ColoredBox(color: scheme.primary.withValues(alpha: .16)),
+                if (checked)
+                  Positioned(top: 8, left: 8, child: _checkbox(scheme)),
+              ],
+            ),
           ),
         ),
       ),
@@ -496,68 +487,34 @@ class _CharCard extends StatelessWidget {
 
   Widget _checkbox(ColorScheme scheme) {
     return Container(
-      width: 26,
-      height: 26,
+      width: 24,
+      height: 24,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: checked ? scheme.primary : Colors.black.withValues(alpha: .3),
-        border: Border.all(
-          color: checked ? scheme.primary : Colors.white.withValues(alpha: .85),
-          width: 2,
-        ),
+        color: scheme.primary,
+        border: Border.all(color: Colors.white, width: 1.5),
       ),
-      child: checked
-          ? Icon(Icons.check, size: 16, color: scheme.onPrimary)
-          : null,
+      child: Icon(Icons.check, size: 15, color: scheme.onPrimary),
     );
   }
 }
 
-/// 名称行右侧的紧凑「更多」菜单按钮(重命名 / 删除)。
-class _CharMenuButton extends StatelessWidget {
-  const _CharMenuButton({required this.onSelected});
+/// 缩略图渲染(网格卡与长按抬起预览共用)。
+class _CharThumb extends StatelessWidget {
+  const _CharThumb({required this.thumb});
 
-  final ValueChanged<String> onSelected;
+  final File thumb;
 
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    return SizedBox(
-      width: 30,
-      height: 22,
-      child: PopupMenuButton<String>(
-        tooltip: context.l10n.more,
-        icon: Icon(Icons.more_vert, size: 20, color: scheme.onSurfaceVariant),
-        padding: EdgeInsets.zero,
-        iconSize: 20,
-        onSelected: onSelected,
-        itemBuilder: (_) => [
-          PopupMenuItem(
-            value: 'rename',
-            child: ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.drive_file_rename_outline, size: 19),
-              title: Text(context.l10n.rename),
-            ),
-          ),
-          PopupMenuItem(
-            value: 'delete',
-            child: ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(
-                Icons.delete_outline,
-                size: 19,
-                color: scheme.error,
-              ),
-              title: Text(
-                context.l10n.delete,
-                style: TextStyle(color: scheme.error),
-              ),
-            ),
-          ),
-        ],
+    return Image.file(
+      thumb,
+      fit: BoxFit.cover,
+      gaplessPlayback: true,
+      errorBuilder: (_, _, _) => ColoredBox(
+        color: scheme.surfaceContainerHigh,
+        child: Icon(Icons.broken_image_outlined, color: scheme.outline),
       ),
     );
   }

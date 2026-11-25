@@ -508,6 +508,18 @@ abstract class AppLocalizations {
   /// **'角色&风格'**
   String get refCharacterStyle;
 
+  /// No description provided for @refOutfit.
+  ///
+  /// In zh, this message translates to:
+  /// **'服装'**
+  String get refOutfit;
+
+  /// No description provided for @preferSameOutfit.
+  ///
+  /// In zh, this message translates to:
+  /// **'优先相同服装'**
+  String get preferSameOutfit;
+
   /// No description provided for @characters.
   ///
   /// In zh, this message translates to:
@@ -1501,8 +1513,26 @@ abstract class AppLocalizations {
   /// No description provided for @charRefOnly45.
   ///
   /// In zh, this message translates to:
-  /// **'角色参考仅 4.5 模型支持,当前模型生成时不会发送。'**
+  /// **'当前模型不支持角色参考，生成时不会发送。'**
   String get charRefOnly45;
+
+  /// No description provided for @charRefOutfitSkipped.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前模型不支持「服装」参考，已选的服装参考图在生成时将被跳过。'**
+  String get charRefOutfitSkipped;
+
+  /// No description provided for @charRefIgnoredInpaint.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前模型重绘时不支持角色参考'**
+  String get charRefIgnoredInpaint;
+
+  /// No description provided for @charRefMaxExceeded.
+  ///
+  /// In zh, this message translates to:
+  /// **'最多同时生效 {max} 张角色参考图，超出的将在生成时被跳过。'**
+  String charRefMaxExceeded(int max);
 
   /// No description provided for @filesImportFailed.
   ///

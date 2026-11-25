@@ -82,20 +82,21 @@ int estimateCost(
     medium: isNai5MediumModel(p.model),
   );
   if (i2i?.image != null) baseCost = max(2, (baseCost * i2i!.strength).ceil());
-  // 两笔附加费都按**模型是否真会下发**计:V5 不支持 Vibe / 角色参考,载荷里
-  // 整组剥离(见 gen_modules.stripHiddenModules),再计费就是收一笔没发生的钱。
-  // 面板那条路径已经先剥过了,这里再挡一道是给快照复跑那条兜底 —— 它忠实执行
-  // 快照、不过模块配置。
+  // 两笔附加费都按**模型是否真会下发**计:V5 不支持 Vibe,精确参考仅 4.5 与
+  // V5 Full / Curated 下发(V5 重绘不发、V4.5 跳过服装项、V5 上限 16 张)。
   final vibeExtra = vibeSupportsModel(p.model)
       ? max(0, s.enabledVibes - 4) * 2
       : 0;
-  final crExtra = crSupportsModel(p.model) ? s.enabledCharRefs * 5 : 0;
+  final crExtra =
+      effectiveCrRefs(s.charRefs, p.model, inpaint: s.inpaint != null).length *
+      5;
   return (free ? 0 : baseCost) + vibeExtra + crExtra;
 }
 
 /// 重绘成本预估:同一公式,但像素按**发送尺寸**算(局部=64 对齐后的
 /// 裁切框,整图=原图),再按强度折算(对齐 web:局部重绘点数按小区算,
-/// Opus 免费判定同样适用)。vibe/CR 附加费随快照照收。
+/// Opus 免费判定同样适用)。vibe/CR 附加费按模型及 [inpaint] 能力计收
+/// (图生图放大借用此公式时传 `inpaint: false`)。
 int estimateInpaintCost(
   GenerateState s, {
   required bool isOpus,
@@ -103,6 +104,7 @@ int estimateInpaintCost(
   required int sendH,
   required double strength,
   bool v5Charged = false,
+  bool inpaint = true,
 }) {
   final p = s.params;
   if (isModalModel(p.model)) return 0; // Anima / Krea 走 Modal 后端,不扣 Anlas
@@ -122,6 +124,7 @@ int estimateInpaintCost(
   final vibeExtra = vibeSupportsModel(p.model)
       ? max(0, s.enabledVibes - 4) * 2
       : 0;
-  final crExtra = crSupportsModel(p.model) ? s.enabledCharRefs * 5 : 0;
+  final crExtra =
+      effectiveCrRefs(s.charRefs, p.model, inpaint: inpaint).length * 5;
   return (free ? 0 : baseCost) + vibeExtra + crExtra;
 }

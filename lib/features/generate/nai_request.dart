@@ -85,13 +85,51 @@ typedef Img2ImgRef = ({
   bool upscaledEnhance,
 });
 
-/// 一个待发的角色参考:已 contain 处理的 PNG base64 + 模式串 + 强度 + 保真度。
+/// 一个待发的角色参考:已按模型缩放处理的 PNG base64 + 模式串 + 强度 + 保真度。
 typedef CharRefPayload = ({
   String image,
   String mode,
   double strength,
   double fidelity,
 });
+
+/// 按模型能力与是否重绘过滤并规格化待发的角色参考(直连与 bot 线共用):
+/// - 不支持的模型或重绘不支持(如 V5 重绘)返回空;
+/// - V4.5 下跳过 `costume`、降级 `character_mainoutfit -> character`、
+///   `character&style_anyoutfit -> character&style`、钳制 strength 到 `0..1`;
+/// - V5 下保留全部 6 种 mode、strength 允许到 `5.0`、强制 fidelity 为 `1.0`
+///   (直连 secondary=0)、上限 [kMaxCrRefsV5] 张。
+List<CharRefPayload> normalizeCharRefPayloads(
+  List<CharRefPayload> refs,
+  String displayModel, {
+  bool inpaint = false,
+}) {
+  if (refs.isEmpty || !crSupportsModel(displayModel)) return const [];
+  if (inpaint && !crSupportsInpainting(displayModel)) return const [];
+  final outfitOk = crSupportsOutfit(displayModel);
+  final fidelityOk = crSupportsFidelity(displayModel);
+  final maxStrength = crStrengthMax(displayModel);
+  final cap = isNai5Model(displayModel) ? kMaxCrRefsV5 : null;
+  final out = <CharRefPayload>[];
+  for (final c in refs) {
+    if (!outfitOk && c.mode == CharRefMode.outfit.api) continue;
+    final mode = outfitOk
+        ? c.mode
+        : switch (c.mode) {
+            'character_mainoutfit' => CharRefMode.character.api,
+            'character&style_anyoutfit' => CharRefMode.both.api,
+            _ => c.mode,
+          };
+    out.add((
+      image: c.image,
+      mode: mode,
+      strength: c.strength.clamp(0.0, maxStrength),
+      fidelity: fidelityOk ? c.fidelity.clamp(0.0, 1.0) : 1.0,
+    ));
+    if (cap != null && out.length >= cap) break;
+  }
+  return out;
+}
 
 /// UI 展示名 → NAI 采样器串
 const _samplerMap = <String, String>{
@@ -347,25 +385,35 @@ Map<String, double> _center(String? pos, {InpaintPaste? crop}) {
     ], on: p.normalizeVibe);
   }
 
-  // 角色参考(Director/Precise Reference):仅 4.5 模型下发,其余静默不发。
-  // 五个并列数组;information_extracted 恒 1;secondary_strength = 1 - fidelity。
-  if (charRefs.isNotEmpty && crSupportsModel(p.model)) {
-    params['director_reference_images'] = [for (final c in charRefs) c.image];
+  // 角色参考(Director/Precise Reference):4.5 与 V5 Full / Curated 下发,
+  // V5 重绘与 Medium / 4.0 等不支持的模型静默不发。
+  // 五个并列数组;information_extracted 恒 1;secondary_strength = 1 - fidelity
+  // (V5 不支持 fidelity,secondary_strength 恒 0)。
+  final activeCharRefs = normalizeCharRefPayloads(
+    charRefs,
+    p.model,
+    inpaint: inpaint != null,
+  );
+  if (activeCharRefs.isNotEmpty) {
+    final fidelityOk = crSupportsFidelity(p.model);
+    params['director_reference_images'] = [
+      for (final c in activeCharRefs) c.image,
+    ];
     params['director_reference_descriptions'] = [
-      for (final c in charRefs)
+      for (final c in activeCharRefs)
         {
           'caption': {'base_caption': c.mode, 'char_captions': <dynamic>[]},
           'legacy_uc': false,
         },
     ];
     params['director_reference_information_extracted'] = [
-      for (final _ in charRefs) 1,
+      for (final _ in activeCharRefs) 1,
     ];
     params['director_reference_strength_values'] = [
-      for (final c in charRefs) c.strength,
+      for (final c in activeCharRefs) c.strength,
     ];
     params['director_reference_secondary_strength_values'] = [
-      for (final c in charRefs) 1 - c.fidelity,
+      for (final c in activeCharRefs) fidelityOk ? 1 - c.fidelity : 0,
     ];
   }
 

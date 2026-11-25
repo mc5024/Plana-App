@@ -527,11 +527,12 @@ class _ActionRailState extends ConsumerState<_ActionRail> {
     final w = result.width, h = result.height;
     final naiV5Ok = naiV5UpscaleSupportsSize(w, h);
     // 图生图放大取创作页当前画布(提示词、角色、参考图、采样参数、模型,
-    // 隐藏模块剥掉),底图换成这张、去掉重绘任务。倍率表按当前模型算。
+    // 隐藏模块剥掉),底图换成这张、去掉重绘任务。先清 inpaint 再 strip,
+    // 避免画布原本挂着遮罩时误剥 V5 角色参考。倍率表按当前模型算。
     final redrawInput = stripHiddenModules(
-      ref.read(generateProvider),
+      ref.read(generateProvider).copyWith(inpaint: null),
       ref.read(genModulesProvider).value ?? const GenModuleSettings(),
-    ).copyWith(inpaint: null);
+    );
     final curModel = redrawInput.params.model;
     final scales = isModalModel(curModel)
         ? const <EnhanceScale>[]
@@ -1089,6 +1090,7 @@ class _UpscalePanelState extends ConsumerState<_UpscalePanel> {
       sendH: t.h,
       strength: _s.strength,
       v5Charged: ref.read(v5ChargedProvider),
+      inpaint: false,
     );
   }
 

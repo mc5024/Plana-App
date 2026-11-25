@@ -307,6 +307,7 @@ class _VibeDetail extends ConsumerWidget {
         RefDetailHeader(
           index: index,
           name: vibe.name,
+          enabled: vibe.enabled,
           onRemove: onRemove,
           enableToggle: RefEnableToggle(enabled: vibe.enabled, onTap: onToggle),
         ),

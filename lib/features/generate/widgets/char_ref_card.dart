@@ -61,17 +61,33 @@ class _CharRefCardState extends ConsumerState<CharRefCard> {
           .addCharRef(image: bytes, name: f.baseName, imageHash: hash);
     }
     if (lastId == null) return;
-    if (hadVibes) _mutexHint(); // 整批只提示一次
+    final st = ref.read(generateProvider);
+    if (st.inpaint != null && !crSupportsInpainting(st.params.model)) {
+      _inpaintUnsupportedHint();
+    } else if (hadVibes) {
+      _mutexHint(); // 整批只提示一次
+    }
     setState(() => _selectedId = lastId);
   }
 
   void _toggle(String id, bool currentlyEnabled) {
     final hadVibes = ref.read(generateProvider).enabledVibes > 0;
-    ref
+    final applied = ref
         .read(generateProvider.notifier)
         .setCharRefEnabled(id, !currentlyEnabled);
+    if (!applied) {
+      _inpaintUnsupportedHint();
+      return;
+    }
     if (!currentlyEnabled && hadVibes) _mutexHint();
   }
+
+  /// V5 等模型重绘不支持角色参考:点击启用或重绘态下添加时弹一次提示。
+  void _inpaintUnsupportedHint() => hintSnack(
+    context,
+    context.l10n.charRefIgnoredInpaint,
+    icon: Icons.block,
+  );
 
   /// 互斥切换提示:启用/加入角色参考导致 Vibe 被暂停时,弹一次 toast。
   void _mutexHint() => hintSnack(
@@ -99,6 +115,7 @@ class _CharRefCardState extends ConsumerState<CharRefCard> {
     final state = ref.watch(generateProvider);
     final notifier = ref.read(generateProvider.notifier);
     final scheme = context.scheme;
+    final model = state.params.model;
     final refs = state.charRefs;
     // 无内容时恒收起;头部「+」导入后(addCharRef 会 openPanel)自动展开。
     final expanded =
@@ -113,11 +130,21 @@ class _CharRefCardState extends ConsumerState<CharRefCard> {
     }
     selected ??= refs.isNotEmpty ? refs.first : null;
 
+    final supported = crSupportsModel(model);
+    final outfitOk = crSupportsOutfit(model);
+    final enabledCount = refs.where((r) => r.enabled).length;
+    final hasSkippedOutfit =
+        supported &&
+        !outfitOk &&
+        refs.any((r) => r.enabled && r.mode == CharRefMode.outfit);
+    final overCap =
+        supported && isNai5Model(model) && enabledCount > kMaxCrRefsV5;
+
     return SectionCard(
       icon: Icons.face_retouching_natural,
       title: context.l10n.preciseReference,
       reorderIndex: widget.reorderIndex,
-      badge: refs.isEmpty ? null : CountBadge('${refs.length}'),
+      badge: refs.isEmpty ? null : CountBadge('${refs.length}', error: overCap),
       actions: [
         RoundIconBtn(
           Icons.grid_view,
@@ -140,9 +167,23 @@ class _CharRefCardState extends ConsumerState<CharRefCard> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (refs.isNotEmpty && !crSupportsModel(state.params.model)) ...[
+          if (refs.isNotEmpty && !supported) ...[
             InfoNote(
               context.l10n.charRefOnly45,
+              icon: Icons.warning_amber_rounded,
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (hasSkippedOutfit) ...[
+            InfoNote(
+              context.l10n.charRefOutfitSkipped,
+              icon: Icons.warning_amber_rounded,
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (overCap) ...[
+            InfoNote(
+              context.l10n.charRefMaxExceeded(kMaxCrRefsV5),
               icon: Icons.warning_amber_rounded,
             ),
             const SizedBox(height: 12),
@@ -177,6 +218,7 @@ class _CharRefCardState extends ConsumerState<CharRefCard> {
             _CharRefDetail(
               item: selected,
               index: refs.indexOf(selected) + 1,
+              model: model,
               onRemove: () => _remove(selected!.id),
               onToggle: () => _toggle(selected!.id, selected.enabled),
             ),
@@ -191,107 +233,146 @@ class _CharRefDetail extends ConsumerWidget {
   const _CharRefDetail({
     required this.item,
     required this.index,
+    required this.model,
     required this.onRemove,
     required this.onToggle,
   });
 
   final CharRefItem item;
   final int index;
+  final String model;
   final VoidCallback onRemove;
   final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notifier = ref.read(generateProvider.notifier);
+    final l = context.l10n;
+    final outfitOk = crSupportsOutfit(model);
+    final fidelityOk = crSupportsFidelity(model);
+    final maxStrength = crStrengthMax(model);
+    final baseModes = outfitOk
+        ? CharRefBaseMode.values
+        : const [
+            CharRefBaseMode.character,
+            CharRefBaseMode.style,
+            CharRefBaseMode.both,
+          ];
+    final unsupportedOutfit =
+        !outfitOk && item.mode.baseMode == CharRefBaseMode.outfit;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         RefDetailHeader(
           index: index,
-          name: refDisplayName(context.l10n, item.name),
+          name: refDisplayName(l, item.name),
+          enabled: item.enabled,
           onRemove: onRemove,
           enableToggle: RefEnableToggle(enabled: item.enabled, onTap: onToggle),
-          leadingAction: _ModeToggle(
-            mode: item.mode,
-            onTap: () {
-              const modes = CharRefMode.values;
-              final next = modes[(item.mode.index + 1) % modes.length];
-              notifier.updateCharRef(item.id, mode: next);
-            },
-          ),
-          leadingActionWidth: _ModeToggle.maxWidthOf(context),
         ),
-        const SizedBox(height: 14),
-        // 保持最低 0(非负,不采用 web 的 −10..+1);step 0.01。
+        const SizedBox(height: 10),
+        SegmentedButton<CharRefBaseMode>(
+          segments: [
+            for (final m in baseModes)
+              ButtonSegment(
+                value: m,
+                label: Text(
+                  _baseModeLabel(l, m),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                ),
+              ),
+          ],
+          selected: unsupportedOutfit ? const {} : {item.mode.baseMode},
+          emptySelectionAllowed: unsupportedOutfit,
+          onSelectionChanged: (sel) {
+            if (sel.isEmpty) return;
+            notifier.updateCharRef(
+              item.id,
+              mode: CharRefMode.fromBaseMode(sel.first),
+            );
+          },
+          showSelectedIcon: false,
+          style: _modeSegStyle,
+        ),
+        if (outfitOk && item.mode.supportsPreferSameOutfit) ...[
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  l.preferSameOutfit,
+                  style: context.texts.bodySmall!.copyWith(
+                    color: context.scheme.onSurface,
+                  ),
+                ),
+              ),
+              Switch(
+                value: item.mode.preferSameOutfit,
+                onChanged: (v) => notifier.updateCharRef(
+                  item.id,
+                  mode: item.mode.withPreferSameOutfit(v),
+                ),
+              ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 10),
+        // V5 下强度范围 0..5,中点 1.0 非线性映射;V4.5 保持 0..1 线性;刻度对齐官网 0.05。
         LiveParamSlider(
-          label: context.l10n.referenceStrength,
+          label: l.referenceStrength,
           help: Help.charRefStrength,
-          value: item.strength,
-          divisions: 100,
+          value: item.strength.clamp(0.0, maxStrength),
+          min: 0.0,
+          max: maxStrength,
+          divisions: outfitOk ? 100 : 20,
+          valueTextOf: (v) => quantizeToDivisions(
+            v,
+            min: 0.0,
+            max: maxStrength,
+            divisions: outfitOk ? 100 : 20,
+          ).toStringAsFixed(2),
+          toSlider: outfitOk ? crV5StrengthToSlider : null,
+          fromSlider: outfitOk ? crV5StrengthFromSlider : null,
           onCommit: (v) => notifier.updateCharRef(item.id, strength: v),
         ),
-        const SizedBox(height: 6),
-        LiveParamSlider(
-          label: context.l10n.fidelity,
-          help: Help.fidelity,
-          value: item.infoExtracted,
-          divisions: 100,
-          onCommit: (v) => notifier.updateCharRef(item.id, infoExtracted: v),
-        ),
+        if (fidelityOk) ...[
+          const SizedBox(height: 6),
+          LiveParamSlider(
+            label: l.fidelity,
+            help: Help.fidelity,
+            value: item.infoExtracted,
+            divisions: 20,
+            valueTextOf: (v) => quantizeToDivisions(
+              v,
+              min: 0.0,
+              max: 1.0,
+              divisions: 20,
+            ).toStringAsFixed(2),
+            onCommit: (v) => notifier.updateCharRef(item.id, infoExtracted: v),
+          ),
+        ],
       ],
     );
   }
 }
 
-/// 迁移模式:点击循环切换 角色 → 风格 → 角色&风格
-class _ModeToggle extends StatelessWidget {
-  const _ModeToggle({required this.mode, required this.onTap});
+String _baseModeLabel(AppLocalizations l, CharRefBaseMode mode) =>
+    switch (mode) {
+      CharRefBaseMode.character => l.refCharacter,
+      CharRefBaseMode.style => l.refStyle,
+      CharRefBaseMode.both => l.refCharacterStyle,
+      CharRefBaseMode.outfit => l.refOutfit,
+    };
 
-  final CharRefMode mode;
-  final VoidCallback onTap;
-
-  static String _label(BuildContext context, CharRefMode mode) =>
-      switch (mode) {
-        CharRefMode.character => context.l10n.refCharacter,
-        CharRefMode.style => context.l10n.refStyle,
-        CharRefMode.both => context.l10n.refCharacterStyle,
-      };
-
-  static TextStyle _style(BuildContext context) => context.texts.bodyMedium!
-      .copyWith(color: context.scheme.primary, fontWeight: FontWeight.w600);
-
-  static double widthOf(BuildContext context, CharRefMode mode) =>
-      28 +
-      15 +
-      5 +
-      measureText(context, _label(context, mode), _style(context));
-
-  /// 三档里最宽的一档:卡头按它判「移除」缩不缩,切档时不跟着变。
-  static double maxWidthOf(BuildContext context) => [
-    for (final m in CharRefMode.values) widthOf(context, m),
-  ].reduce((a, b) => a > b ? a : b);
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = context.scheme;
-    return Material(
-      color: scheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(20),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.cached, size: 15, color: scheme.primary),
-              const SizedBox(width: 5),
-              Text(_label(context, mode), style: _style(context)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+/// 主模式分段选择器样式(与 hires_card 对齐:占满卡宽、4 项并排不折行)。
+const _modeSegStyle = ButtonStyle(
+  textStyle: WidgetStatePropertyAll(
+    TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+  ),
+  padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 4)),
+  visualDensity: VisualDensity(horizontal: -3, vertical: -1),
+  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+);

@@ -366,6 +366,7 @@ class _LoraRow extends ConsumerWidget {
                           decoration: lora.enabled
                               ? null
                               : TextDecoration.lineThrough,
+                          decorationThickness: 2,
                           color: lora.enabled
                               ? scheme.onSurface
                               : scheme.onSurfaceVariant,

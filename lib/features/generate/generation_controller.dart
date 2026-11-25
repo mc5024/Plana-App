@@ -563,7 +563,9 @@ class GenerationNotifier extends Notifier<GenPool> {
     // 面板发起(using == null)按模块配置剥离隐藏模块的数据;
     // 快照复跑(图库重新生成等)忠实执行,不受当前模块配置影响。
     // 快照在这一刻定死:之后随便改编辑器都不影响已提交的这条。
-    final GenerateState s = withoutInpaintVibes(using ?? _panelJob());
+    final GenerateState s = withoutInpaintCharRefs(
+      withoutInpaintVibes(using ?? _panelJob()),
+    );
 
     final isBot = ref.read(authModeProvider).value == AuthMode.bot;
 
@@ -1566,8 +1568,12 @@ class GenerationNotifier extends Notifier<GenPool> {
     }
     // 库来源的角色参考回写「最近使用」(内容哈希即库条目 id)
     final usedCharRefIds = {
-      for (final r in s.charRefs)
-        if (r.enabled && r.imageHash != null) r.imageHash!,
+      for (final r in effectiveCrRefs(
+        s.charRefs,
+        s.params.model,
+        inpaint: s.inpaint != null,
+      ))
+        if (r.imageHash != null) r.imageHash!,
     };
     if (usedCharRefIds.isNotEmpty) {
       unawaited(
@@ -1671,25 +1677,33 @@ class GenerationNotifier extends Notifier<GenPool> {
     return out;
   }
 
-  /// 角色参考:每张启用且有图的 contain 处理成 PNG base64(无编码调用、免 Anlas)。
-  /// 是否真正下发由载荷层按模型 gate(仅 4.5)。
-  /// 角色参考图处理后的 base64,按原图字节对象记(循环出图时同一张不重复缩放编码)。
-  static final _crMemo = Expando<Future<String>>();
+  /// 角色参考图处理后的 base64,按原图字节对象分模型桶缓存(4.5 黑边 contain 与
+  /// V5 97 档桶表 Cover 独立缓存,切模型不串台;循环出图同图不重复缩放编码)。
+  static final _cr45Memo = Expando<Future<String>>();
+  static final _crV5Memo = Expando<Future<String>>();
 
   Future<List<CharRefPayload>> _processCharRefs(GenerateState s) async {
-    final refs = s.charRefs.where((r) => r.enabled && r.image != null).toList();
+    final model = s.params.model;
+    final refs = effectiveCrRefs(
+      s.charRefs,
+      model,
+      inpaint: s.inpaint != null,
+    ).where((r) => r.image != null).toList();
     if (refs.isEmpty) return const [];
+    final useBucket = crUsesBucketResize(model);
+    final memo = useBucket ? _crV5Memo : _cr45Memo;
     final out = <CharRefPayload>[];
     for (final r in refs) {
       final src = r.image!;
-      final Future<String> b64 = _crMemo[src] ??= crResizePng(
-        src,
-      ).then(base64Encode);
+      final Future<String> b64 = memo[src] ??=
+          (useBucket ? crBucketResizePng(src) : crResizePng(src)).then(
+            base64Encode,
+          );
       final String image;
       try {
         image = await b64;
       } catch (_) {
-        _crMemo[src] = null;
+        memo[src] = null;
         rethrow;
       }
       out.add((

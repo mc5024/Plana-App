@@ -264,6 +264,7 @@ class _ReadTagChip extends StatelessWidget {
               fontWeight: FontWeight.w600,
               color: off ? scheme.outline : scheme.onSurface,
               decoration: off ? TextDecoration.lineThrough : null,
+              decorationThickness: 2,
             ),
           ),
           // 恒占一行,空着/加载中/有字三态严格等高

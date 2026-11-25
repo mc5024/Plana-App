@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:plana_app/features/generate/gen_modules.dart';
 import 'package:plana_app/features/generate/models.dart';
@@ -31,10 +33,16 @@ void main() {
       expect(s.visibleFor('NAI 4.5 Full'), naiDefault);
     });
 
-    test('型号能力门槛:4.0 下角色参考不可见(但组顺序仍保留)', () {
+    test('型号能力门槛:4.0 与 V5 Medium 隐藏角色参考,V5 Full/Curated 放开', () {
       const s = GenModuleSettings();
       expect(s.visibleFor('NAI 4.0 Full'), isNot(contains(GenModule.charRef)));
       expect(s.visibleFor('NAI 4.0 Curated'), hasLength(3));
+      expect(s.visibleFor('NAI 5.0 Full'), contains(GenModule.charRef));
+      expect(s.visibleFor('NAI 5.0 Curated'), contains(GenModule.charRef));
+      expect(
+        s.visibleFor('NAI 5.0 Full Medium'),
+        isNot(contains(GenModule.charRef)),
+      );
       expect(s.orderOf(GenProvider.nai), contains(GenModule.charRef));
     });
 
@@ -113,13 +121,59 @@ void main() {
       expect(out.charRefs, hasLength(1));
     });
 
-    test('型号不支持的模块同样剥离:4.0 下角色参考不发', () {
-      final s = _stateWithAll(model: 'NAI 4.0 Full');
-      final out = stripHiddenModules(s, const GenModuleSettings());
-      expect(out.charRefs, isEmpty);
-      expect(out.vibes, hasLength(1));
-      expect(out.characters, hasLength(1));
-      expect(out.img2img, isNotNull);
+    test('型号不支持的模块同样剥离:4.0 与 V5 Medium 下角色参考不发', () {
+      final s40 = _stateWithAll(model: 'NAI 4.0 Full');
+      final out40 = stripHiddenModules(s40, const GenModuleSettings());
+      expect(out40.charRefs, isEmpty);
+      expect(out40.vibes, hasLength(1));
+      expect(out40.characters, hasLength(1));
+      expect(out40.img2img, isNotNull);
+
+      final sMed = _stateWithAll(model: 'NAI 5.0 Full Medium');
+      final outMed = stripHiddenModules(sMed, const GenModuleSettings());
+      expect(outMed.charRefs, isEmpty);
+      expect(outMed.vibes, isEmpty);
+    });
+
+    test('V5 重绘态剥离 charRefs(保留原状态),V4.5 重绘与 V5 非重绘照常保留', () {
+      final bytes = Uint8List.fromList([1, 2, 3]);
+      final job = InpaintJob(image: bytes, mask: bytes, strength: 0.7);
+      const ms = GenModuleSettings();
+
+      final v5Inpaint = _stateWithAll(model: 'NAI 5.0 Full').copyWith(
+        inpaint: job,
+      );
+      final outV5 = stripHiddenModules(v5Inpaint, ms);
+      expect(outV5.charRefs, isEmpty);
+      expect(v5Inpaint.charRefs, hasLength(1)); // 画布原状态不动
+
+      final v5CuratedInpaint = _stateWithAll(model: 'NAI 5.0 Curated').copyWith(
+        inpaint: job,
+      );
+      expect(stripHiddenModules(v5CuratedInpaint, ms).charRefs, isEmpty);
+
+      final v5Plain = _stateWithAll(model: 'NAI 5.0 Full');
+      expect(stripHiddenModules(v5Plain, ms).charRefs, hasLength(1));
+
+      final v45Inpaint = _stateWithAll(model: 'NAI 4.5 Full').copyWith(
+        inpaint: job,
+      );
+      expect(stripHiddenModules(v45Inpaint, ms).charRefs, hasLength(1));
+    });
+
+    test('retargetModel 按能力保留/剥离角色参考', () {
+      final bytes = Uint8List.fromList([1, 2, 3]);
+      final src = _stateWithAll(model: 'NAI 4.5 Full');
+      expect(retargetModel(src, 'NAI 5.0 Full').charRefs, hasLength(1));
+      expect(retargetModel(src, 'NAI 5.0 Curated').charRefs, hasLength(1));
+      expect(retargetModel(src, 'NAI 5.0 Full Medium').charRefs, isEmpty);
+      expect(retargetModel(src, 'NAI 4.0 Full').charRefs, isEmpty);
+
+      final inpaintSrc = src.copyWith(
+        inpaint: InpaintJob(image: bytes, mask: bytes, strength: 1),
+      );
+      expect(retargetModel(inpaintSrc, 'NAI 5.0 Full').charRefs, isEmpty);
+      expect(retargetModel(inpaintSrc, 'NAI 4.5 Curated').charRefs, hasLength(1));
     });
 
     GenerateState chars(List<bool> enabled) => GenerateState.initial().copyWith(
@@ -155,10 +209,34 @@ void main() {
     });
   });
 
-  test('crSupportsModel 仅 4.5 系为真', () {
-    expect(crSupportsModel('NAI 4.5 Full'), isTrue);
-    expect(crSupportsModel('NAI 4.5 Curated'), isTrue);
-    expect(crSupportsModel('NAI 4.0 Full'), isFalse);
-    expect(crSupportsModel('NAI 4.0 Curated'), isFalse);
+  test('精确参考能力矩阵:4.5 与 V5 Full/Curated 支持,Medium/4.0 不支持', () {
+    for (final m in ['NAI 4.5 Full', 'NAI 4.5 Curated']) {
+      expect(crSupportsModel(m), isTrue, reason: m);
+      expect(crSupportsInpainting(m), isTrue, reason: m);
+      expect(crSupportsOutfit(m), isFalse, reason: m);
+      expect(crSupportsFidelity(m), isTrue, reason: m);
+      expect(crStrengthMax(m), 1.0, reason: m);
+      expect(crUsesBucketResize(m), isFalse, reason: m);
+    }
+    for (final m in ['NAI 5.0 Full', 'NAI 5.0 Curated']) {
+      expect(crSupportsModel(m), isTrue, reason: m);
+      expect(crSupportsInpainting(m), isFalse, reason: m);
+      expect(crSupportsOutfit(m), isTrue, reason: m);
+      expect(crSupportsFidelity(m), isFalse, reason: m);
+      expect(crStrengthMax(m), 5.0, reason: m);
+      expect(crUsesBucketResize(m), isTrue, reason: m);
+    }
+    for (final m in [
+      'NAI 5.0 Full Medium',
+      'NAI 4.0 Full',
+      'NAI 4.0 Curated',
+      'Anima Turbo',
+    ]) {
+      expect(crSupportsModel(m), isFalse, reason: m);
+      expect(crSupportsInpainting(m), isFalse, reason: m);
+      expect(crSupportsOutfit(m), isFalse, reason: m);
+      expect(crSupportsFidelity(m), isFalse, reason: m);
+      expect(crUsesBucketResize(m), isFalse, reason: m);
+    }
   });
 }
