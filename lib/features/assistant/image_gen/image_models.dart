@@ -24,6 +24,7 @@ class ImageModelChoice {
     this.available = true,
     this.sizes = const [],
     this.aspects = const [],
+    this.health = ModelHealth.unknown,
   });
 
   final String key;
@@ -41,6 +42,9 @@ class ImageModelChoice {
   /// 能选的分辨率档 / 比例;不在里面的按「自动」发。
   final List<String> sizes;
   final List<String> aspects;
+
+  /// 后端渠道的近况;接口里的模型没有,恒为 unknown。
+  final ModelHealth health;
 }
 
 typedef PlanaImageChannel = ({
@@ -48,6 +52,7 @@ typedef PlanaImageChannel = ({
   String name,
   List<String> sizes,
   List<String> aspects,
+  ModelHealth health,
 });
 
 /// `GET /api/agent/image/channels` 的响应。
@@ -75,24 +80,23 @@ PlanaImageChannels parsePlanaImageChannels(Map<String, dynamic> j) => (
             ],
             _ => kImageAspects,
           },
+          health:
+              ModelHealth.values.asNameMap()[c['health']] ??
+              ModelHealth.unknown,
         ),
   ],
   authorized: j['authorized'] == true,
 );
 
-/// 后端渠道。拿不到(没配后端、老后端没这个接口)就是空表。
+/// 后端渠道。拿不到(没配后端、老后端没这个接口)就是空表;重取失败时沿用上一份,不自动重试。
 final planaImageChannelsProvider = FutureProvider<PlanaImageChannels>((
   ref,
 ) async {
   final sid = (await ref.watch(botSessionProvider.future))?.sessionId ?? '';
-  try {
-    return parsePlanaImageChannels(
-      await ref.watch(backendClientProvider).agentImageChannels(sid),
-    );
-  } catch (_) {
-    return (channels: const <PlanaImageChannel>[], authorized: false);
-  }
-});
+  return parsePlanaImageChannels(
+    await ref.watch(backendClientProvider).agentImageChannels(sid),
+  );
+}, retry: (_, _) => null);
 
 List<ImageModelChoice> imageModelChoices(
   PlanaImageChannels? plana,
@@ -106,6 +110,7 @@ List<ImageModelChoice> imageModelChoices(
       available: plana!.authorized,
       sizes: c.sizes,
       aspects: c.aspects,
+      health: c.health,
     ),
   for (final e in endpoints)
     if (e.canDraw)

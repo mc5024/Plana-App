@@ -12,8 +12,8 @@
 /// **选中态是整行染色**,右边空出来给「编辑」。选中标记挤在右边的话,想选中却点到
 /// 编辑是迟早的事 —— 而这个弹层九成时候是来选的,不是来改配置的。
 ///
-/// 后端渠道的闪电图标按渠道近况([ModelHealth])上色,没有数据照常;
-/// 弹层打开时重取一次列表,开着时定时再取。
+/// 后端渠道(对话和图像)出问题时图标右下角挂一个小点([ModelHealth]):不稳琥珀、不可用红,
+/// 正常和没数据都不挂;弹层打开时重取一次列表,开着时定时再取。
 library;
 
 import 'dart:async';
@@ -29,7 +29,10 @@ import '../agent_model.dart';
 import '../custom_endpoint.dart';
 import '../endpoints_page.dart';
 import '../image_gen/image_models.dart'
-    show ImageModelChoice, imageModelChoicesProvider;
+    show
+        ImageModelChoice,
+        imageModelChoicesProvider,
+        planaImageChannelsProvider;
 import '../../../l10n/l10n.dart';
 
 Future<void> showModelSheet(BuildContext context) async {
@@ -73,7 +76,9 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
   }
 
   void _refresh() {
-    if (mounted) ref.invalidate(agentModelsProvider);
+    if (!mounted) return;
+    ref.invalidate(agentModelsProvider);
+    ref.invalidate(planaImageChannelsProvider);
   }
 
   @override
@@ -89,6 +94,7 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
         authorized ? l.choices : l.free;
     final hidden = !authorized && async.hasValue && shown(async.value!).isEmpty;
     final images = ref.watch(imageModelChoicesProvider);
+    final imageLive = !ref.watch(planaImageChannelsProvider).hasError;
     String imageKey(ImageModelChoice m) => '$kImageKeyPrefix${m.key}';
     Widget imageRow(ImageModelChoice m) => _row(
       context,
@@ -99,6 +105,7 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
           m.endpoint?.displayName ??
           (m.available ? null : context.l10n.notAvailableYet),
       dim: !m.available,
+      health: m.available && imageLive ? m.health : ModelHealth.unknown,
       selected: imageKey(m) == currentKey,
       onTap: m.available ? () => _pick(context, ref, imageKey(m)) : () {},
       onEdit: m.endpoint == null
@@ -214,22 +221,34 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
         : selected || accent
         ? scheme.primary
         : (dim ? scheme.outline : null);
+    final titleStyle = context.texts.bodyLarge!.copyWith(
+      fontWeight: selected || accent ? FontWeight.w700 : FontWeight.w500,
+      color: fg,
+    );
+    final dot = switch (health) {
+      ModelHealth.degraded => const Color(0xFFF59E0B),
+      ModelHealth.down => scheme.error,
+      _ => null,
+    };
+    final sheetBg = context.raisedFill(scheme.surfaceContainer);
+    final selectedBg = context.skin.float
+        ? scheme.primary
+        : scheme.primaryContainer.withValues(alpha: .35);
+    final ringColor = selected
+        ? (context.skin.float
+              ? scheme.primary
+              : Color.alphaBlend(selectedBg, sheetBg))
+        : sheetBg;
     return ListTile(
       onTap: onTap,
       selected: selected,
-      selectedTileColor: context.skin.float
-          ? scheme.primary
-          : scheme.primaryContainer.withValues(alpha: .35),
+      selectedTileColor: selectedBg,
       contentPadding: const EdgeInsets.only(left: 20, right: 8),
-      leading: Icon(
-        icon,
-        size: 21,
-        color: switch (health) {
-          ModelHealth.ok => const Color(0xFF22C55E),
-          ModelHealth.degraded => const Color(0xFFF59E0B),
-          ModelHealth.down => scheme.error,
-          ModelHealth.unknown => selected ? fg : (dim ? scheme.outline : fg),
-        },
+      leading: _LeadingIcon(
+        icon: icon,
+        color: selected ? fg : (dim ? scheme.outline : fg),
+        dot: dot,
+        ringColor: ringColor,
       ),
       title: Row(
         children: [
@@ -238,12 +257,7 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: context.texts.bodyLarge!.copyWith(
-                fontWeight: selected || accent
-                    ? FontWeight.w700
-                    : FontWeight.w500,
-                color: fg,
-              ),
+              style: titleStyle,
             ),
           ),
           if (badge != null) ...[
@@ -315,4 +329,44 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
       ],
     ),
   );
+}
+
+/// 行首图标(对话闪电 / 图像图标);渠道异常时在右下角挂一枚带行底色描边的小圆点。
+class _LeadingIcon extends StatelessWidget {
+  const _LeadingIcon({
+    required this.icon,
+    required this.color,
+    required this.dot,
+    required this.ringColor,
+  });
+
+  final IconData icon;
+  final Color? color;
+  final Color? dot;
+  final Color ringColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final glyph = Icon(icon, size: 21, color: color);
+    if (dot == null) return glyph;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        glyph,
+        Positioned(
+          right: -2,
+          bottom: -2,
+          child: Container(
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(
+              color: dot,
+              shape: BoxShape.circle,
+              border: Border.all(color: ringColor, width: 1.5),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

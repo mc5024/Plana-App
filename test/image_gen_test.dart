@@ -251,6 +251,21 @@ void main() {
       expect(_openai.copyWith(apiKey: '').canDraw, isFalse);
     });
 
+    test('后端渠道带近况;认不出的、接口里的模型都是 unknown', () {
+      final plana = parsePlanaImageChannels({
+        'channels': [
+          {'key': 'big_gpt', 'name': 'GPT Image 2.6', 'health': 'down'},
+          {'key': 'doubao', 'name': 'Seedream 5.5', 'health': 'flaky'},
+        ],
+        'authorized': true,
+      });
+      expect(imageModelChoices(plana, const [_openai]).map((c) => c.health), [
+        ModelHealth.down,
+        ModelHealth.unknown,
+        ModelHealth.unknown,
+      ]);
+    });
+
     test('后端渠道在前、接口的在后;没授权的后端渠道用不了', () {
       final plana = parsePlanaImageChannels({
         'channels': [
