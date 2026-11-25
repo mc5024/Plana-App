@@ -9625,8 +9625,20 @@ abstract class AppLocalizations {
   /// No description provided for @failRetriesDesc.
   ///
   /// In zh, this message translates to:
-  /// **'出错时自动重发，重发时不带附图'**
+  /// **'出错时自动重发'**
   String get failRetriesDesc;
+
+  /// No description provided for @retryStripImage.
+  ///
+  /// In zh, this message translates to:
+  /// **'最后一次重试不带图'**
+  String get retryStripImage;
+
+  /// No description provided for @retryStripImageDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'最后一次失败重试时去掉附图'**
+  String get retryStripImageDesc;
 
   /// No description provided for @refusalRetries.
   ///

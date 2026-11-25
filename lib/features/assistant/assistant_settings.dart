@@ -68,6 +68,7 @@ class AssistantSettings {
     this.stream = true,
     this.importTo = SectionImport.main,
     this.retries = retriesDefault,
+    this.retryStripImage = false,
     this.rerolls = rerollsDefault,
     this.refusalKeywords = kRefusalKeywords,
     this.imageSize = '',
@@ -159,8 +160,11 @@ class AssistantSettings {
   /// 导入 / 直接生成时提议写进主提示词的方式(见 [SectionImport])。
   final SectionImport importTo;
 
-  /// 出错后自动重发几次,重发时剥掉附图。
+  /// 出错后自动重发几次。
   final int retries;
+
+  /// 最后一次失败重试时去掉附图。
+  final bool retryStripImage;
 
   /// 回复像拒绝时原地重掷几次。0 = 不判拒绝,回复照常显示。
   final int rerolls;
@@ -191,6 +195,7 @@ class AssistantSettings {
     bool? stream,
     SectionImport? importTo,
     int? retries,
+    bool? retryStripImage,
     int? rerolls,
     List<String>? refusalKeywords,
     String? imageSize,
@@ -208,6 +213,7 @@ class AssistantSettings {
     stream: stream ?? this.stream,
     importTo: importTo ?? this.importTo,
     retries: retries ?? this.retries,
+    retryStripImage: retryStripImage ?? this.retryStripImage,
     rerolls: rerolls ?? this.rerolls,
     refusalKeywords: refusalKeywords ?? this.refusalKeywords,
     imageSize: imageSize ?? this.imageSize,
@@ -227,6 +233,7 @@ class AssistantSettings {
     'stream': stream,
     'importTo': importTo.name,
     'retries': retries,
+    'retryStripImage': retryStripImage,
     'rerolls': rerolls,
     if (!defaultRefusalKeywords) 'refusalKeywords': refusalKeywords,
     if (imageSize.isNotEmpty) 'imageSize': imageSize,
@@ -269,6 +276,7 @@ class AssistantSettings {
           _ => historyTurnsDefault,
         },
         retries: _count(j['retries'], retriesDefault),
+        retryStripImage: j['retryStripImage'] == true,
         rerolls: _count(j['rerolls'], rerollsDefault),
         refusalKeywords: switch (j['refusalKeywords']) {
           final List<dynamic> l => [

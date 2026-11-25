@@ -39,6 +39,7 @@ class AgentTurnRequest {
     this.think = ThinkLevel.auto,
     this.stream = true,
     this.retries = AssistantSettings.retriesDefault,
+    this.retryStripImage = false,
     this.rerolls = AssistantSettings.rerollsDefault,
     this.refusalKeywords = kRefusalKeywords,
   });
@@ -80,6 +81,9 @@ class AgentTurnRequest {
   /// 出错后重发几次 / 回复像拒绝时重掷几次,见 [AssistantSettings]。
   final int retries;
   final int rerolls;
+
+  /// 最后一次失败重试时去掉附图。
+  final bool retryStripImage;
 
   /// 回复命中就算拒绝的词。
   final List<String> refusalKeywords;

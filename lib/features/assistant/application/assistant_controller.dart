@@ -555,6 +555,7 @@ class AssistantController extends Notifier<AssistantState> {
       'oc_placeholders': toolSettings.ocPlaceholders,
       'history_turns': settings.historyTurns,
       'retries': settings.retries,
+      'retry_strip_image': settings.retryStripImage,
       'rerolls': settings.rerolls,
       if (!settings.defaultRefusalKeywords)
         'refusal_keywords': settings.refusalKeywords,
@@ -577,6 +578,7 @@ class AssistantController extends Notifier<AssistantState> {
       think: settings.thinkLevel,
       stream: settings.stream,
       retries: settings.retries,
+      retryStripImage: settings.retryStripImage,
       rerolls: settings.rerolls,
       refusalKeywords: settings.refusalKeywords,
     );

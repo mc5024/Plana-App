@@ -5471,7 +5471,13 @@ class AppLocalizationsJa extends AppLocalizations {
   String get failRetries => '失败重试';
 
   @override
-  String get failRetriesDesc => '出错时自动重发，重发时不带附图';
+  String get failRetriesDesc => '出错时自动重发';
+
+  @override
+  String get retryStripImage => '最后一次重试不带图';
+
+  @override
+  String get retryStripImageDesc => '最后一次失败重试时去掉附图';
 
   @override
   String get refusalRetries => '拒绝重试';

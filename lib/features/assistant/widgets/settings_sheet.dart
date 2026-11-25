@@ -149,6 +149,14 @@ class _SettingsSheet extends ConsumerWidget {
             format: (v) => _countLabel(context, v),
             onChanged: (v) => n.patch((o) => o.copyWith(retries: v.round())),
           ),
+          SettingRow(
+            icon: Icons.hide_image_outlined,
+            title: context.l10n.retryStripImage,
+            desc: context.l10n.retryStripImageDesc,
+            enabled: s.retries > 0,
+            value: s.retryStripImage,
+            onChanged: (v) => n.patch((o) => o.copyWith(retryStripImage: v)),
+          ),
           SettingStepperRow(
             icon: Icons.casino_outlined,
             title: context.l10n.refusalRetries,

@@ -1746,14 +1746,17 @@ void main() {
     Future<List<AgentEvent>> run(
       MockClient mock, {
       String userRequest = '用 D11 画小小纺',
+      List<Uint8List> images = const [],
       ToolSettings tools = const ToolSettings(),
       TagLookup? offline,
       OnlineTags? online,
       bool stream = true,
       bool backend = false,
       int retries = AssistantSettings.retriesDefault,
+      bool retryStripImage = false,
       int rerolls = AssistantSettings.rerollsDefault,
       List<String> refusalKeywords = kRefusalKeywords,
+      AgentTrace? trace,
     }) => http.runWithClient(
       () =>
           agentRuntimeFor(
@@ -1768,6 +1771,7 @@ void main() {
               .run(
                 AgentTurnRequest(
                   userText: userRequest,
+                  images: images,
                   imageModel: 'nai_v45_full',
                   customRules: const [
                     PresetRule(name: 'role', content: '你是画师'),
@@ -1789,9 +1793,11 @@ void main() {
                   },
                   stream: stream,
                   retries: retries,
+                  retryStripImage: retryStripImage,
                   rerolls: rerolls,
                   refusalKeywords: refusalKeywords,
                 ),
+                trace: trace,
               )
               .toList(),
       () => mock,
@@ -2091,6 +2097,94 @@ void main() {
         );
         expect(n, want, reason: 'retries=$retries');
       }
+    });
+
+    test('失败重试默认保留附图,开剥图开关后仅最后一次重试剥图', () async {
+      final png = Uint8List.fromList(const [0x89, 0x50, 0x4E, 0x47, 1, 2, 3]);
+      final b64 = base64Encode(png);
+      List<Object?> retryNoImages(AgentTrace t) => [
+        for (final e in t.events)
+          if (e['event'] == 'retry') (e['data'] as Map)['no_image'],
+      ];
+
+      // 默认关闭:每次重试都保留附图
+      final keepBodies = <String>[];
+      final keepTrace = AgentTrace(
+        startedAt: 0,
+        route: AgentTrace.routeCustom,
+        userText: '画这个',
+      );
+      await expectLater(
+        run(
+          MockClient((req) async {
+            keepBodies.add(req.body);
+            return modelSays('');
+          }),
+          images: [png],
+          retries: 3,
+          trace: keepTrace,
+        ),
+        throwsA(isA<AgentFailure>()),
+      );
+      expect(keepBodies, hasLength(4));
+      for (final b in keepBodies) {
+        expect(b, contains(b64));
+        expect(b, isNot(contains('已剥去图片')));
+      }
+      expect(retryNoImages(keepTrace), [false, false, false]);
+
+      // 开启后:前两次重试保留附图,最后一次重试才剥图
+      final stripBodies = <String>[];
+      final stripTrace = AgentTrace(
+        startedAt: 0,
+        route: AgentTrace.routeCustom,
+        userText: '画这个',
+      );
+      final events = await run(
+        MockClient((req) async {
+          stripBodies.add(req.body);
+          return modelSays(stripBodies.length < 4 ? '' : '好');
+        }),
+        images: [png],
+        retries: 3,
+        retryStripImage: true,
+        trace: stripTrace,
+      );
+      expect(events.whereType<AgentDone>().single.result.replyText, '好');
+      expect(stripBodies, hasLength(4));
+      for (var i = 0; i < 3; i++) {
+        expect(stripBodies[i], contains(b64), reason: 'attempt $i 应保留附图');
+        expect(stripBodies[i], isNot(contains('已剥去图片')));
+      }
+      expect(stripBodies[3], isNot(contains(b64)), reason: '最后一次重试应剥图');
+      expect(stripBodies[3], contains('已剥去图片'));
+      expect(retryNoImages(stripTrace), [false, false, true]);
+
+      // 重试次数为 1 时,这唯一一次重试就是最后一次
+      final oneBodies = <String>[];
+      final oneTrace = AgentTrace(
+        startedAt: 0,
+        route: AgentTrace.routeCustom,
+        userText: '画这个',
+      );
+      await expectLater(
+        run(
+          MockClient((req) async {
+            oneBodies.add(req.body);
+            return modelSays('');
+          }),
+          images: [png],
+          retries: 1,
+          retryStripImage: true,
+          trace: oneTrace,
+        ),
+        throwsA(isA<AgentFailure>()),
+      );
+      expect(oneBodies, hasLength(2));
+      expect(oneBodies[0], contains(b64));
+      expect(oneBodies[1], isNot(contains(b64)));
+      expect(oneBodies[1], contains('已剥去图片'));
+      expect(retryNoImages(oneTrace), [true]);
     });
 
     test('空回、只有思考没有正文:换下一次尝试', () async {
@@ -3589,18 +3683,26 @@ void main() {
       );
     });
 
-    test('失败重试 / 拒绝重试:默认 3,0 存得下,越界夹回', () {
+    test('失败重试 / 拒绝重试:默认 3,0 存得下,越界夹回;末次重试剥图默认关', () {
       final d = AssistantSettings.fromJson(const {});
-      expect((d.retries, d.rerolls), (3, 3));
+      expect((d.retries, d.rerolls, d.retryStripImage), (3, 3, false));
       final back = AssistantSettings.fromJson(
-        const AssistantSettings(retries: 0, rerolls: 5).toJson(),
+        const AssistantSettings(
+          retries: 0,
+          retryStripImage: true,
+          rerolls: 5,
+        ).toJson(),
       );
-      expect((back.retries, back.rerolls), (0, 5));
+      expect((back.retries, back.rerolls, back.retryStripImage), (0, 5, true));
       final wild = AssistantSettings.fromJson(const {
         'retries': -1,
         'rerolls': 99,
+        'retryStripImage': 'yes',
       });
-      expect((wild.retries, wild.rerolls), (0, AssistantSettings.retriesMax));
+      expect(
+        (wild.retries, wild.rerolls, wild.retryStripImage),
+        (0, AssistantSettings.retriesMax, false),
+      );
     });
 
     test('拒绝关键词:默认不落盘,改过的存得下读得回来,空词丢掉', () {

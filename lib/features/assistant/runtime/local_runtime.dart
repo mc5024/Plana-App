@@ -2,7 +2,7 @@
 /// 模型经 [LlmProvider]:自定义接口直连,后端模型经后端的模型通道。工具的联网来源
 /// (语义搜词、Wiki 摘要、角色候选筛选)请求后端的公开接口。
 ///
-/// 出错后按设置重发几次,重发时剥掉附图。
+/// 出错后按设置重发几次;开启时最后一次重发剥掉附图。
 /// 一次尝试里,工具结果和写坏的出图块回灌给模型接着跑;回复像拒绝就原地重掷。
 library;
 
@@ -148,7 +148,7 @@ class LocalAgentRuntime implements AgentRuntime {
         collapse(canvasBlock),
       ].where((s) => s.isNotEmpty);
 
-      // 本轮这条用户消息。重发时剥掉图,末尾补一句说明
+      // 本轮这条用户消息。剥图重发时去掉附图,末尾补一句说明
       List<LlmMessage> messagesFor({required bool noImage}) {
         final parts = [...asked, if (block.isNotEmpty) block];
         if (noImage) {
@@ -183,8 +183,13 @@ class LocalAgentRuntime implements AgentRuntime {
         thisTurn: thisTurn,
       );
       final attempts = req.retries + 1;
+      bool stripOn(int attempt) =>
+          req.retryStripImage &&
+          imgs.isNotEmpty &&
+          attempt > 0 &&
+          attempt == attempts - 1;
       for (var attempt = 0; ; attempt++) {
-        final msgs = messagesFor(noImage: attempt > 0 && imgs.isNotEmpty);
+        final msgs = messagesFor(noImage: stripOn(attempt));
         if (attempt == 0) {
           trace?.messages = [
             for (final m in msgs)
@@ -211,7 +216,10 @@ class LocalAgentRuntime implements AgentRuntime {
           );
         } catch (e) {
           if (attempt + 1 >= attempts || !_retryable(e)) rethrow;
-          trace?.event('retry', {'error': '$e', 'no_image': imgs.isNotEmpty});
+          trace?.event('retry', {
+            'error': '$e',
+            'no_image': stripOn(attempt + 1),
+          });
           if (live) yield const AgentDelta();
         }
       }
