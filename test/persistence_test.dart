@@ -86,6 +86,7 @@ void main() {
           await indexFile.exists() &&
           await imageFile.exists(),
     );
+    await Future.wait([stores1.workspace.idle, stores1.gallery.idle]);
 
     // ---- 会话 2:重新装载,断言全部回来 ----
     final stores2 = await AppStores.open(rootOverride: root);
@@ -485,5 +486,25 @@ void main() {
     expect(stores2.gallery.initialSelectedId, a.id);
     final b2 = stores2.gallery.initialResults.firstWhere((r) => r.id == b.id);
     expect(b2.inpaintFrom, a.id);
+  });
+
+  test('BlobStore 并发写同一内容不冲突', () async {
+    final root = Directory.systemTemp.createTempSync('plana_blob_race');
+    addTearDown(() async {
+      for (var i = 0; i < 10; i++) {
+        try {
+          root.deleteSync(recursive: true);
+          return;
+        } catch (_) {
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        }
+      }
+    });
+    final stores = await AppStores.open(rootOverride: root);
+    final hashes = await Future.wait([
+      for (var i = 0; i < 8; i++) stores.blobs.put(_png),
+    ]);
+    expect(hashes.toSet(), hasLength(1));
+    expect(await stores.blobs.get(hashes.first), equals(_png));
   });
 }

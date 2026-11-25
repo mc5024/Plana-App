@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -18,6 +19,9 @@ class BlobStore {
     : _dir = Directory('${supportRoot.path}/blobs');
 
   final Directory _dir;
+
+  /// 正在写入的哈希 → 写入任务,合并同一哈希的并发写入,避免写同一 .tmp 冲突。
+  final _inflight = <String, Future<void>>{};
 
   /// bytes 对象 → 已算过的哈希备忘(同一对象在防抖保存里反复出现,
   /// 不重复算 sha256)。
@@ -44,8 +48,23 @@ class BlobStore {
   /// 哈希对不上,却会被后续 [get] 当成有效缓存命中 —— 比文件缺失更糟。
   Future<String> put(Uint8List bytes, {String? known}) async {
     final h = await hashOf(bytes, known: known);
-    final f = _fileOf(h);
-    if (!await f.exists()) await writeBytesAtomic(f, bytes);
+    final pending = _inflight[h];
+    if (pending != null) {
+      await pending;
+      return h;
+    }
+    Future<void> write() async {
+      final f = _fileOf(h);
+      if (!await f.exists()) await writeBytesAtomic(f, bytes);
+    }
+
+    final work = write();
+    _inflight[h] = work;
+    try {
+      await work;
+    } finally {
+      if (identical(_inflight[h], work)) unawaited(_inflight.remove(h));
+    }
     return h;
   }
 
