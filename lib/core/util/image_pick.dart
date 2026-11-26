@@ -4,10 +4,12 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:photo_manager/photo_manager.dart' show AssetEntity;
 
 import '../theme/theme_settings.dart';
 import '../ui/gallery_picker_page.dart';
 import 'harmony_compat.dart';
+import 'log.dart';
 
 /// 选中的图片:文件名 + 原始字节。
 class PickedImage {
@@ -65,7 +67,7 @@ Future<PickedSources> pickImagesOrFiles(BuildContext context) async {
     final out = await _gallery(context, multiple: true);
     if (out == null) return const PickedSources.none();
     if (!out.useFileBrowser) {
-      return PickedSources.images(await _readAssets(out));
+      return PickedSources.images(out.images);
     }
     // 用户点了「从文件选」→ 落到下方系统文件浏览器
   }
@@ -84,7 +86,7 @@ Future<List<PickedImage>> _pick(
     if (!context.mounted) return const [];
     final out = await _gallery(context, multiple: multiple);
     if (out == null) return const [];
-    if (!out.useFileBrowser) return _readAssets(out);
+    if (!out.useFileBrowser) return out.images;
     // 用户点了「从文件选」→ 落到下方系统文件浏览器
   }
   final res = await FilePicker.platform.pickFiles(
@@ -128,15 +130,32 @@ Future<GalleryPickOutcome?> _gallery(
 );
 
 /// 图库资产 → 原文件字节(PNG 元数据原样保留)。
-Future<List<PickedImage>> _readAssets(GalleryPickOutcome out) async {
-  final picked = <PickedImage>[];
-  for (final a in out.assets) {
-    final bytes = await a.originBytes;
-    if (bytes == null || bytes.isEmpty) continue;
-    // title 在 Android 上随列表查询一起带回来了;titleAsync 会为每张图再走一趟
-    // 平台通道查库,多选时就是白等 N 次往返。拿不到才回落。
-    final name = a.title ?? await a.titleAsync;
-    picked.add(PickedImage(name.isEmpty ? 'image' : name, bytes));
+/// 优先走 [AssetEntity.originFile] 直接在 Dart 侧读文件,减少原生侧内存拷贝与
+/// MethodChannel 大字节传输;拿不到文件或读失败时回落 [AssetEntity.originBytes]。
+Future<PickedImage?> readAssetImage(AssetEntity a) async {
+  Uint8List? bytes;
+  try {
+    final file = await a.originFile;
+    if (file != null && await file.exists()) {
+      bytes = await file.readAsBytes();
+    }
+  } catch (e) {
+    logd('[picker] originFile 读取失败(${a.id}),回落 originBytes: $e');
   }
-  return picked;
+  if (bytes == null || bytes.isEmpty) {
+    try {
+      bytes = await a.originBytes;
+    } catch (e) {
+      logd('[picker] originBytes 读取失败(${a.id}): $e');
+      return null;
+    }
+  }
+  if (bytes == null || bytes.isEmpty) return null;
+  var name = a.title ?? '';
+  if (name.isEmpty) {
+    try {
+      name = await a.titleAsync;
+    } catch (_) {}
+  }
+  return PickedImage(name.isEmpty ? 'image' : name, bytes);
 }
