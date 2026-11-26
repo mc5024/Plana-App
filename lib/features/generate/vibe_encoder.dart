@@ -9,6 +9,7 @@ import '../../core/auth/token_store.dart';
 import '../../core/net/backend_client.dart';
 import '../../core/net/nai_client.dart';
 import '../../core/store/app_stores.dart';
+import '../../core/util/image_ops.dart' show shrinkForVibeEncode;
 import 'models.dart';
 import 'nai_request.dart' show naiModelId;
 import 'vibe_cache.dart';
@@ -101,6 +102,9 @@ class VibeEncoder {
     final hit = await cache.get(imageHash, model, infoExtracted);
     if (hit != null) return hit;
 
+    final payloadImage = await shrinkForVibeEncode(image);
+    final imageBase64 = base64Encode(payloadImage);
+
     final String enc;
     if (_ref.read(authModeProvider).value == AuthMode.bot) {
       final session = await _ref.read(botSessionProvider.future);
@@ -109,7 +113,7 @@ class VibeEncoder {
           .read(backendClientProvider)
           .encodeVibe(
             sessionId: session.sessionId,
-            imageBase64: base64Encode(image),
+            imageBase64: imageBase64,
             informationExtracted: infoExtracted,
             model: model,
           );
@@ -123,7 +127,7 @@ class VibeEncoder {
           .read(naiClientProvider(key.endpoint))
           .encodeVibe(
             token: key.token,
-            imageBase64: base64Encode(image),
+            imageBase64: imageBase64,
             infoExtracted: infoExtracted,
             model: model,
           );

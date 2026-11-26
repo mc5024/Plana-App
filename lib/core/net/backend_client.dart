@@ -4,6 +4,8 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
@@ -14,9 +16,12 @@ import 'nai_client.dart' show NaiUsage, parseNaiUsage;
 
 /// 后端请求失败(网络/非 2xx/格式)。`message` 为可直接展示的人类可读文案。
 class BackendException implements Exception {
-  BackendException(this.message, {this.status});
+  BackendException(this.message, {this.status, this.missingCacheKeys});
   final String message;
   final int? status;
+
+  /// 后端回 `INVALID_CACHE_KEYS` 时携带的缺失分片哈希列表。
+  final List<String>? missingCacheKeys;
 
   @override
   String toString() => message;
@@ -1065,11 +1070,18 @@ class CivitaiLoraInfo {
 /// 其余端点非 2xx + `{"detail": ...}`。
 /// 后端支持的较新传法,见 [BackendClient.caps]。
 class BackendCaps {
-  const BackendCaps({this.img2imgFit = false, this.upscaleBinary = false});
+  const BackendCaps({
+    this.img2imgFit = false,
+    this.upscaleBinary = false,
+    this.charRefFit = false,
+    this.partCache = false,
+  });
 
   factory BackendCaps.fromJson(Map<String, dynamic> j) => BackendCaps(
     img2imgFit: j['img2img_fit'] == true,
     upscaleBinary: j['upscale_binary'] == true,
+    charRefFit: j['char_ref_fit'] == true,
+    partCache: j['part_cache'] == true,
   );
 
   /// 出图请求的 img2img 可以发原图 + `fit: cover`,由后端放大到出图尺寸。
@@ -1077,6 +1089,14 @@ class BackendCaps {
 
   /// 有 `/upscale/binary`。
   final bool upscaleBinary;
+
+  /// 角色参考可发原图,由后端按模型规格缩放/裁切转 PNG。
+  final bool charRefFit;
+
+  /// `/bot/generate/multipart` 支持 `@cache:<sha256>` 分片复用。
+  final bool partCache;
+
+  bool get _all => img2imgFit && upscaleBinary && charRefFit && partCache;
 }
 
 class BackendClient {
@@ -1145,11 +1165,26 @@ class BackendClient {
   Map<String, dynamic> _decode(http.Response resp) {
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       var detail = '请求失败(${resp.statusCode})';
+      List<String>? missing;
       try {
         final j = jsonDecode(utf8.decode(resp.bodyBytes));
-        if (j is Map && j['detail'] is String) detail = j['detail'] as String;
+        if (j is Map) {
+          if (j['detail'] is String) detail = j['detail'] as String;
+          if (resp.statusCode == 400 && j['code'] == 'INVALID_CACHE_KEYS') {
+            final raw = j['missing_keys'];
+            missing = [
+              if (raw is List)
+                for (final k in raw)
+                  if (k is String && k.isNotEmpty) k,
+            ];
+          }
+        }
       } catch (_) {}
-      throw BackendException(detail, status: resp.statusCode);
+      throw BackendException(
+        detail,
+        status: resp.statusCode,
+        missingCacheKeys: missing,
+      );
     }
 
     try {
@@ -1182,12 +1217,53 @@ class BackendClient {
   /// 按后端地址缓存的 [caps] 结果与过期时刻。
   static final _caps = <String, (BackendCaps, DateTime)>{};
 
+  /// 按 `baseUrl|sessionId` 记已上传到服务端的分片 sha256 及写入时刻。
+  static const _partCacheMax = 256;
+  static const _partCacheTtl = Duration(minutes: 90);
+  static final _partCache = <String, Map<String, DateTime>>{};
+
+  @visibleForTesting
+  static void clearCachesForTest() {
+    _noMultipart.clear();
+    _caps.clear();
+    _partCache.clear();
+  }
+
+  String _partCacheScope(String sessionId) => '$baseUrl|$sessionId';
+
+  Set<String> _knownPartHashes(String scope) {
+    final map = _partCache[scope];
+    if (map == null || map.isEmpty) return const {};
+    final cutoff = DateTime.now().subtract(_partCacheTtl);
+    map.removeWhere((_, ts) => ts.isBefore(cutoff));
+    return Set<String>.of(map.keys);
+  }
+
+  void _recordPartHashes(String scope, Iterable<String> hashes) {
+    final now = DateTime.now();
+    final map = _partCache.putIfAbsent(scope, () => <String, DateTime>{});
+    for (final h in hashes) {
+      map.remove(h);
+      map[h] = now;
+    }
+    while (map.length > _partCacheMax) {
+      map.remove(map.keys.first);
+    }
+  }
+
+  void _forgetPartHashes(String scope, Iterable<String> hashes) {
+    final map = _partCache[scope];
+    if (map == null) return;
+    for (final h in hashes) {
+      map.remove(h);
+    }
+  }
+
   /// 后端支持哪些较新的传法(`GET /caps`)。旧后端没有这个地址,当作都不支持。
-  /// 支持的一直记着;不支持或没问到的 10 分钟后再问,后端升级后不用重启 App。
+  /// 全项均支持的一直记着;否则 10 分钟后再问,后端升级后不用重启 App。
   Future<BackendCaps> caps() async {
     final hit = _caps[baseUrl];
-    if (hit != null &&
-        (hit.$1.upscaleBinary || DateTime.now().isBefore(hit.$2))) {
+    if (hit != null && (hit.$1._all || DateTime.now().isBefore(hit.$2))) {
       return hit.$1;
     }
     var c = const BackendCaps();
@@ -1202,31 +1278,67 @@ class BackendClient {
 
   static final _b64 = RegExp(r'^[A-Za-z0-9+/]+={0,2}$');
 
-  /// 把 [v] 里的长 base64 串(图片、Vibe 编码)抽进 [parts],原处换成 `@part:名字`。
-  /// 只抽解码再编码逐字一致的串,服务端换回 base64 后和原来一模一样;同一串只抽一份。
+  /// 把 [v] 里的长 base64 串(图片、Vibe 编码)抽进 [parts],原处换成 `@part:名字`
+  /// 或 `@cache:sha256`(命中 [knownHashes] 时省去重传)。同一串只抽一份。
   static Object? _extractParts(
     Object? v,
     Map<String, Uint8List> parts,
-    Map<String, String> seen,
-  ) {
+    Map<String, String> seen, {
+    Set<String> knownHashes = const {},
+    bool trackHash = false,
+    Set<String>? usedCache,
+    Set<String>? uploadedHashes,
+  }) {
     if (v is String) {
       if (v.length < 1024 || v.length % 4 != 0 || !_b64.hasMatch(v)) return v;
       final hit = seen[v];
-      if (hit != null) return '@part:$hit';
+      if (hit != null) return hit;
       final bytes = base64Decode(v);
       if (base64Encode(bytes) != v) return v;
+      if (trackHash) {
+        final hash = sha256.convert(bytes).toString();
+        if (knownHashes.contains(hash)) {
+          final ref = '@cache:$hash';
+          seen[v] = ref;
+          usedCache?.add(hash);
+          return ref;
+        }
+        uploadedHashes?.add(hash);
+      }
       final name = 'p${parts.length}';
       parts[name] = bytes;
-      seen[v] = name;
-      return '@part:$name';
+      final ref = '@part:$name';
+      seen[v] = ref;
+      return ref;
     }
     if (v is Map) {
       return <String, dynamic>{
         for (final e in v.entries)
-          '${e.key}': _extractParts(e.value, parts, seen),
+          '${e.key}': _extractParts(
+            e.value,
+            parts,
+            seen,
+            knownHashes: knownHashes,
+            trackHash: trackHash,
+            usedCache: usedCache,
+            uploadedHashes: uploadedHashes,
+          ),
       };
     }
-    if (v is List) return [for (final x in v) _extractParts(x, parts, seen)];
+    if (v is List) {
+      return [
+        for (final x in v)
+          _extractParts(
+            x,
+            parts,
+            seen,
+            knownHashes: knownHashes,
+            trackHash: trackHash,
+            usedCache: usedCache,
+            uploadedHashes: uploadedHashes,
+          ),
+      ];
+    }
     return v;
   }
 
@@ -1333,6 +1445,7 @@ class BackendClient {
     required Map<String, dynamic> params,
     String imageBackend = 'novelai',
     String? clientRequestId,
+    bool usePartCache = false,
   }) async {
     final body = {
       'session_id': sessionId,
@@ -1342,21 +1455,56 @@ class BackendClient {
       // NAI 成图原样(无损 WebP)发过来,streamBotTask 里还原成 PNG;旧后端忽略这个字段
       'result_format': 'webp',
     };
+    final cacheScope = _partCacheScope(sessionId);
+    var cacheHits = 0;
     Future<Map<String, dynamic>> submit() async {
       if (!_noMultipart.contains(baseUrl)) {
-        final (mpBody, parts) = await _extractPartsInIsolate(body);
-        if (parts.isNotEmpty) {
+        var retriedCache = false;
+        while (true) {
+          final known = usePartCache
+              ? _knownPartHashes(cacheScope)
+              : const <String>{};
+          final extracted = await _extractPartsInIsolate(
+            body,
+            knownHashes: known,
+            trackHash: usePartCache,
+          );
+          if (extracted.parts.isEmpty && extracted.usedCache.isEmpty) break;
           try {
-            return await _postMultipart(
+            final res = await _postMultipart(
               '/bot/generate/multipart',
-              mpBody,
-              parts,
+              extracted.body,
+              extracted.parts,
               sessionId,
             );
+            if (usePartCache) {
+              _recordPartHashes(cacheScope, [
+                ...extracted.uploadedHashes,
+                ...extracted.usedCache,
+              ]);
+              cacheHits = extracted.usedCache.length;
+            }
+            return res;
           } on BackendException catch (e) {
-            if (e.status != 404 && e.status != 405) rethrow;
-            _noMultipart.add(baseUrl);
-            logi('[net] 后端没有分片提交入口,改回 JSON');
+            if (e.status == 404 || e.status == 405) {
+              _noMultipart.add(baseUrl);
+              logi('[net] 后端没有分片提交入口,改回 JSON');
+              break;
+            }
+            final missing = e.missingCacheKeys;
+            if (usePartCache &&
+                extracted.usedCache.isNotEmpty &&
+                missing != null &&
+                !retriedCache) {
+              retriedCache = true;
+              _forgetPartHashes(
+                cacheScope,
+                missing.isNotEmpty ? missing : extracted.usedCache,
+              );
+              logi('[net] 分片缓存未命中,补发图片重提');
+              continue;
+            }
+            rethrow;
           }
         }
       }
@@ -1376,7 +1524,8 @@ class BackendClient {
     final img = i2i is Map ? i2i['imageBase64'] : null;
     logi(
       '[net] 提交出图 ${sw.elapsedMilliseconds}ms'
-      '${img is String ? ' · 底图 ${img.length * 3 ~/ 4 ~/ 1024} KiB' : ''}',
+      '${img is String ? ' · 底图 ${img.length * 3 ~/ 4 ~/ 1024} KiB' : ''}'
+      '${cacheHits > 0 ? ' · 缓存命中×$cacheHits' : ''}',
     );
     return (
       success: j['success'] == true,
@@ -2779,13 +2928,39 @@ final backendClientProvider = Provider<BackendClient>((ref) {
 });
 
 /// 后台 isolate:抽出 [body] 里的长 base64 串(见 [BackendClient._extractParts])。
-Future<(Map<String, dynamic>, Map<String, Uint8List>)> _extractPartsInIsolate(
-  Map<String, dynamic> body,
-) => Isolate.run(() {
+Future<
+  ({
+    Map<String, dynamic> body,
+    Map<String, Uint8List> parts,
+    Set<String> usedCache,
+    Set<String> uploadedHashes,
+  })
+>
+_extractPartsInIsolate(
+  Map<String, dynamic> body, {
+  Set<String> knownHashes = const {},
+  bool trackHash = false,
+}) => Isolate.run(() {
   final parts = <String, Uint8List>{};
+  final usedCache = <String>{};
+  final uploadedHashes = <String>{};
   final mp =
-      BackendClient._extractParts(body, parts, {}) as Map<String, dynamic>;
-  return (mp, parts);
+      BackendClient._extractParts(
+            body,
+            parts,
+            {},
+            knownHashes: knownHashes,
+            trackHash: trackHash,
+            usedCache: usedCache,
+            uploadedHashes: uploadedHashes,
+          )
+          as Map<String, dynamic>;
+  return (
+    body: mp,
+    parts: parts,
+    usedCache: usedCache,
+    uploadedHashes: uploadedHashes,
+  );
 });
 
 Future<Object?> _jsonOfBytesInIsolate(Uint8List bytes) =>

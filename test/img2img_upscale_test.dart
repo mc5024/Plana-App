@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:plana_app/core/store/app_stores.dart';
+import 'package:plana_app/core/util/image_ops.dart';
 import 'package:plana_app/features/generate/cost.dart';
 import 'package:plana_app/features/generate/gen_modules.dart';
 import 'package:plana_app/features/generate/models.dart';
@@ -74,5 +75,62 @@ void main() {
     final up = (await decodeGenerateState(enc.json, blobs)).img2img!.upscale!;
     expect(up.scale, EnhanceScale.x15);
     expect((up.srcW, up.srcH), (832, 1216));
+  });
+
+  test('角色参考直发原图判定:小尺寸或高压缩原图直发,大体积或超大像素先在本地缩', () {
+    // V4.5 目标约 1.57MP~2.16MP, V5 桶表约 1MP
+    expect(cr45CanvasSize(1000, 1000), (w: 1472, h: 1472));
+    expect(cr45CanvasSize(1600, 900), (w: 1536, h: 1024));
+    expect(cr45CanvasSize(900, 1600), (w: 1024, h: 1536));
+
+    // 原图像素 <= 目标尺寸:直接发原图
+    expect(
+      shouldPreferRawCharRef(
+        srcW: 832,
+        srcH: 1216,
+        srcBytes: 900 * 1024,
+        useBucket: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldPreferRawCharRef(
+        srcW: 1024,
+        srcH: 1536,
+        srcBytes: 2 * 1024 * 1024,
+        useBucket: false,
+      ),
+      isTrue,
+    );
+    // 中等分辨率小体积 JPEG/WebP(<=512KiB):直接发原图
+    expect(
+      shouldPreferRawCharRef(
+        srcW: 1600,
+        srcH: 2400,
+        srcBytes: 300 * 1024,
+        useBucket: true,
+      ),
+      isTrue,
+    );
+    // 大尺寸且高体积 PNG:本地先缩
+    expect(
+      shouldPreferRawCharRef(
+        srcW: 2400,
+        srcH: 3200,
+        srcBytes: 3 * 1024 * 1024,
+        useBucket: true,
+      ),
+      isFalse,
+    );
+    // 超过 4096×4096 像素上限:即使体积小也本地先缩
+    expect(
+      shouldPreferRawCharRef(
+        srcW: 5000,
+        srcH: 5000,
+        srcBytes: 100 * 1024,
+        useBucket: false,
+      ),
+      isFalse,
+    );
   });
 }

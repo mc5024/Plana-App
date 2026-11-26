@@ -13,6 +13,20 @@ import 'package:plana_app/core/net/nai_endpoint.dart';
 import 'package:plana_app/core/net/nai_proxy.dart';
 import 'package:plana_app/core/store/app_stores.dart';
 
+/// 解析 multipart/form-data 请求体为 `name -> bytes`。
+Map<String, List<int>> _parseMultipart(String contentType, List<int> raw) {
+  final boundary = contentType.split('boundary=').last;
+  final parts = <String, List<int>>{};
+  final text = latin1.decode(raw);
+  for (final seg in text.split('--$boundary').skip(1)) {
+    if (seg.startsWith('--')) break;
+    final name = RegExp(r'name="([^"]+)"').firstMatch(seg)!.group(1)!;
+    final data = seg.substring(seg.indexOf('\r\n\r\n') + 4, seg.length - 2);
+    parts[name] = latin1.encode(data);
+  }
+  return parts;
+}
+
 /// 一帧流式消息:4 字节大端长度 + msgpack。
 List<int> _frame(Map<String, dynamic> msg) {
   final b = msgpack.serialize(msg);
@@ -283,7 +297,10 @@ void main() {
       ports.add(req.connectionInfo!.remotePort);
       await req.drain<void>();
       req.response.add(
-        _frame({'event_type': 'final', 'image': Uint8List.fromList([9])}),
+        _frame({
+          'event_type': 'final',
+          'image': Uint8List.fromList([9]),
+        }),
       );
       await req.response.flush();
       // 终图之后响应还要过一会儿才结束(对外 API 等记完账才收尾)
@@ -378,6 +395,178 @@ void main() {
       expect(offline, isA<NaiException>());
       expect(naiTokenRejected(offline), isFalse);
     });
+  });
+
+  test('官网图片缓存键编码:首次带分片与 key,二次命中省分片仍走 multipart', () {
+    final secret = Uint8List.fromList(List.generate(32, (i) => i + 1));
+    final img = base64Encode([0x89, 0x50, 1, 2, 3]);
+    final ref = base64Encode([4, 5, 6, 7]);
+    final body = {
+      'input': 'x',
+      'action': 'img2img',
+      'parameters': {
+        'image': img,
+        'director_reference_images': [ref, ref],
+        'width': 832,
+      },
+    };
+
+    // 首次:全部带上分片 + cache_secret_key,同图去重
+    final first = encodeNaiBodyWithCache(
+      body,
+      multipart: true,
+      cacheSecret: secret,
+    );
+    expect(first.usedCacheKeys, isEmpty);
+    expect(first.uploadedCacheKeys, hasLength(2));
+    final parts1 = _parseMultipart(first.contentType, first.bytes);
+    expect(parts1.keys.toList(), ['image', 'director_ref_0', 'request']);
+    final req1 = jsonDecode(utf8.decode(parts1['request']!)) as Map;
+    final p1 = req1['parameters'] as Map;
+    expect(p1['image'], 'image');
+    expect(p1['image_cache_secret_key'], isA<String>());
+    expect(p1.containsKey('director_reference_images'), isFalse);
+    final refs1 = p1['director_reference_images_cached'] as List;
+    expect(refs1, hasLength(2));
+    expect(refs1[0]['data'], 'director_ref_0');
+    expect(refs1[1]['data'], 'director_ref_0');
+    expect(refs1[0]['cache_secret_key'], refs1[1]['cache_secret_key']);
+
+    // 二次:全部命中已知缓存键 → 无图片分片,但仍发含 request 的 multipart
+    final second = encodeNaiBodyWithCache(
+      body,
+      multipart: true,
+      cacheSecret: secret,
+      knownCacheKeys: first.uploadedCacheKeys,
+    );
+    expect(second.contentType, startsWith('multipart/form-data; boundary='));
+    expect(second.uploadedCacheKeys, isEmpty);
+    expect(second.usedCacheKeys, first.uploadedCacheKeys);
+    final parts2 = _parseMultipart(second.contentType, second.bytes);
+    expect(parts2.keys.toList(), ['request']);
+    final req2 = jsonDecode(utf8.decode(parts2['request']!)) as Map;
+    final p2 = req2['parameters'] as Map;
+    expect(p2.containsKey('image'), isFalse);
+    expect(p2['image_cache_secret_key'], p1['image_cache_secret_key']);
+    final refs2 = p2['director_reference_images_cached'] as List;
+    expect(refs2[0], {'cache_secret_key': refs1[0]['cache_secret_key']});
+    expect(refs2[1], {'cache_secret_key': refs1[0]['cache_secret_key']});
+  });
+
+  test('直连流式与非流式:按 token 复用缓存键,400 INVALID_CACHE_KEYS 自动补图重试', () async {
+    NaiClient.clearImageCacheForTest();
+    final refBytes = [0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4];
+    final refB64 = base64Encode(refBytes);
+    final received =
+        <({String path, String auth, Map<String, List<int>> parts})>[];
+    final serverCache = <String, Set<String>>{};
+    var expireNext = false;
+
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((req) async {
+      final auth = req.headers.value('authorization') ?? '';
+      final ct = req.headers.value('content-type') ?? '';
+      final raw = await req.fold<BytesBuilder>(
+        BytesBuilder(copy: false),
+        (b, chunk) => b..add(chunk),
+      );
+      final parts = _parseMultipart(ct, raw.takeBytes());
+      received.add((path: req.uri.path, auth: auth, parts: parts));
+      final body = jsonDecode(utf8.decode(parts['request']!)) as Map;
+      final refs =
+          (body['parameters'] as Map)['director_reference_images_cached']
+              as List;
+      final known = serverCache.putIfAbsent(auth, () => <String>{});
+      final missing = <String>[];
+      for (final item in refs.cast<Map>()) {
+        final key = item['cache_secret_key'] as String;
+        final dataName = item['data'] as String?;
+        if (dataName != null && parts.containsKey(dataName)) {
+          known.add(key);
+        } else if (expireNext || !known.contains(key)) {
+          known.remove(key);
+          missing.add(key);
+        }
+      }
+      if (missing.isNotEmpty) {
+        expireNext = false;
+        req.response
+          ..statusCode = 400
+          ..headers.contentType = ContentType.json
+          ..write(
+            jsonEncode({
+              'statusCode': 400,
+              'message': 'INVALID_CACHE_KEYS',
+              'details': {'invalidKeys': missing},
+            }),
+          );
+        await req.response.close();
+        return;
+      }
+      if (req.uri.path == '/ai/generate-image') {
+        req.response.add([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10, 0, 0, 0, 0]);
+      } else {
+        req.response.add(
+          _frame({
+            'event_type': 'final',
+            'image': Uint8List.fromList([7, 8, 9]),
+          }),
+        );
+      }
+      await req.response.close();
+    });
+    addTearDown(() => server.close(force: true));
+
+    final client = NaiClient(
+      base: 'http://127.0.0.1:${server.port}',
+      multipartOverride: true,
+      imageCacheOverride: true,
+    );
+    final body = {
+      'input': '1girl',
+      'model': 'nai-diffusion-5-full',
+      'action': 'generate',
+      'parameters': {
+        'director_reference_images': [refB64],
+      },
+    };
+
+    await withRealHttp(() async {
+      // 1. tokA 首次流式:带分片 director_ref_0
+      final f1 = await client
+          .generateImageStream(token: 'tokA', body: body)
+          .toList();
+      expect(f1.single.bytes, [7, 8, 9]);
+
+      // 2. tokA 二次流式:命中缓存,仅发 request
+      final f2 = await client
+          .generateImageStream(token: 'tokA', body: body)
+          .toList();
+      expect(f2.single.bytes, [7, 8, 9]);
+
+      // 3. tokB 首次流式:按 token 隔离,必须带分片
+      final f3 = await client
+          .generateImageStream(token: 'tokB', body: body)
+          .toList();
+      expect(f3.single.bytes, [7, 8, 9]);
+
+      // 4. tokA 流式服务端缓存失效 → 400 INVALID_CACHE_KEYS → 自动带图重试成功
+      expireNext = true;
+      final f4 = await client
+          .generateImageStream(token: 'tokA', body: body)
+          .toList();
+      expect(f4.single.bytes, [7, 8, 9]);
+
+      // 5. tokA 非流式服务端缓存失效 → 400 INVALID_CACHE_KEYS → 自动带图重试成功
+      expireNext = true;
+      final png = await client.generateImage(token: 'tokA', body: body);
+      expect(png.take(4), [0x89, 0x50, 0x4e, 0x47]);
+    });
+
+    expect(
+      [for (final r in received) r.parts.containsKey('director_ref_0')],
+      [true, false, true, false, true, false, true],
+    );
   });
 }
 

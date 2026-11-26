@@ -6,12 +6,14 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 import 'package:msgpack_dart/msgpack_dart.dart' as msgpack;
 
+import '../util/log.dart';
 import '../util/webp_to_png.dart' show isWebp;
 import 'backend_config.dart' show kDefaultBackendBase;
 import 'gen_abort.dart';
@@ -34,6 +36,14 @@ final HttpClient _shortIdleHttp = HttpClient()
 final _longIdleIo = IOClient(_longIdleHttp);
 final _shortIdleIo = IOClient(_shortIdleHttp);
 
+/// 直连请求体编码结果:附带本次复用的缓存键与新上传的缓存键。
+typedef EncodedNaiBody = ({
+  String contentType,
+  Uint8List bytes,
+  Set<String> usedCacheKeys,
+  Set<String> uploadedCacheKeys,
+});
+
 /// 请求体编码。带图且对面收分片时照官网:JSON 里图片字段的值换成分片名,字节单独
 /// 成片,request 分片放最后,省掉 base64 的三分之一。图片字段必须全部外提 ——
 /// 留在 JSON 里的 base64 会被 NAI 当成分片名去找,整单 400。
@@ -42,13 +52,39 @@ final _shortIdleIo = IOClient(_shortIdleHttp);
   Map<String, dynamic> body, {
   required bool multipart,
 }) {
-  ({String contentType, Uint8List bytes}) asJson() =>
-      (contentType: 'application/json', bytes: utf8.encode(jsonEncode(body)));
+  final r = encodeNaiBodyWithCache(body, multipart: multipart);
+  return (contentType: r.contentType, bytes: r.bytes);
+}
+
+/// 同 [encodeNaiBody],传入 [cacheSecret] 时启用官网图片缓存键协议:
+/// 单图带 `<field>_cache_secret_key`,列表换为 `*_cached`,命中 [knownCacheKeys]
+/// 时省略分片字节,仅发缓存键。
+@visibleForTesting
+EncodedNaiBody encodeNaiBodyWithCache(
+  Map<String, dynamic> body, {
+  required bool multipart,
+  Uint8List? cacheSecret,
+  Set<String> knownCacheKeys = const {},
+}) {
+  EncodedNaiBody asJson() => (
+    contentType: 'application/json',
+    bytes: utf8.encode(jsonEncode(body)),
+    usedCacheKeys: const {},
+    uploadedCacheKeys: const {},
+  );
   final p = body['parameters'];
   if (!multipart || p is! Map) return asJson();
   final params = Map<String, dynamic>.from(p);
   final parts = <String, Uint8List>{};
   final seen = <String, String>{};
+  final usedCacheKeys = <String>{};
+  final uploadedCacheKeys = <String>{};
+  final keyMemo = <String, String>{};
+  final hmac = cacheSecret != null ? Hmac(sha256, cacheSecret) : null;
+
+  String keyOf(String b64) =>
+      keyMemo[b64] ??= hmac!.convert(utf8.encode(b64)).toString();
+
   try {
     String put(String b64, String name) {
       final hit = seen[b64];
@@ -58,28 +94,82 @@ final _shortIdleIo = IOClient(_shortIdleHttp);
       return name;
     }
 
-    for (final k in const ['image', 'mask']) {
-      final v = params[k];
-      if (v is String && v.isNotEmpty) params[k] = put(v, k);
-    }
-    for (final k in const [
-      'reference_image_multiple',
-      'director_reference_images',
-    ]) {
-      final v = params[k];
-      if (v is List && v.isNotEmpty) {
-        params[k] = [
-          for (var i = 0; i < v.length; i++)
-            v[i] is String && (v[i] as String).isNotEmpty
-                ? put(v[i] as String, '${k}_$i')
-                : v[i],
-        ];
+    if (hmac == null) {
+      for (final k in const ['image', 'mask']) {
+        final v = params[k];
+        if (v is String && v.isNotEmpty) params[k] = put(v, k);
+      }
+      for (final k in const [
+        'reference_image_multiple',
+        'director_reference_images',
+      ]) {
+        final v = params[k];
+        if (v is List && v.isNotEmpty) {
+          params[k] = [
+            for (var i = 0; i < v.length; i++)
+              v[i] is String && (v[i] as String).isNotEmpty
+                  ? put(v[i] as String, '${k}_$i')
+                  : v[i],
+          ];
+        }
+      }
+    } else {
+      for (final k in const ['image', 'mask', 'reference_image']) {
+        final v = params[k];
+        if (v is String && v.isNotEmpty) {
+          final key = keyOf(v);
+          params['${k}_cache_secret_key'] = key;
+          if (knownCacheKeys.contains(key)) {
+            params.remove(k);
+            usedCacheKeys.add(key);
+          } else {
+            params[k] = put(v, k);
+            uploadedCacheKeys.add(key);
+          }
+        }
+      }
+      for (final (oldKey, newKey, prefix) in const [
+        (
+          'reference_image_multiple',
+          'reference_image_multiple_cached',
+          'ref_multiple',
+        ),
+        (
+          'director_reference_images',
+          'director_reference_images_cached',
+          'director_ref',
+        ),
+      ]) {
+        final v = params[oldKey];
+        if (v is List && v.isNotEmpty) {
+          final items = <Object?>[];
+          for (var i = 0; i < v.length; i++) {
+            final x = v[i];
+            if (x is String && x.isNotEmpty) {
+              final key = keyOf(x);
+              if (knownCacheKeys.contains(key)) {
+                usedCacheKeys.add(key);
+                items.add({'cache_secret_key': key});
+              } else {
+                uploadedCacheKeys.add(key);
+                items.add({
+                  'cache_secret_key': key,
+                  'data': put(x, '${prefix}_$i'),
+                });
+              }
+            } else {
+              items.add(x);
+            }
+          }
+          params.remove(oldKey);
+          params[newKey] = items;
+        }
       }
     }
   } on FormatException {
     return asJson();
   }
-  if (parts.isEmpty) return asJson();
+  if (parts.isEmpty && usedCacheKeys.isEmpty) return asJson();
   final boundary =
       '----PlanaFormBoundary${Random().nextInt(1 << 32).toRadixString(16)}'
       '${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
@@ -106,6 +196,8 @@ final _shortIdleIo = IOClient(_shortIdleHttp);
   return (
     contentType: 'multipart/form-data; boundary=$boundary',
     bytes: out.takeBytes(),
+    usedCacheKeys: usedCacheKeys,
+    uploadedCacheKeys: uploadedCacheKeys,
   );
 }
 
@@ -293,9 +385,13 @@ const kNaiV5UpscaleModel = 'nai-diffusion-5-curated';
 class NaiClient {
   /// [base] 为空 = 官方 [kNaiOfficialBase],此时开了 [proxy] 改经 [kNaiProxyBase];
   /// 非空则整条直连线改打它,[proxy] 不起作用。
-  NaiClient({String base = '', bool proxy = false})
-    : _host = naiBaseOf(base, proxy: proxy),
-      _chat = naiEndpointIsChat(base);
+  NaiClient({
+    String base = '',
+    bool proxy = false,
+    @visibleForTesting this.multipartOverride,
+    @visibleForTesting this.imageCacheOverride,
+  }) : _host = naiBaseOf(base, proxy: proxy),
+       _chat = naiEndpointIsChat(base);
 
   /// `/ai/*` 与 `/user/subscription` 的基址(已带协议、无尾斜杠);
   /// OpenAI 兼容接口则是整条 chat 地址。
@@ -304,6 +400,24 @@ class NaiClient {
   /// OpenAI 兼容接口(见 `nai_chat_compat.dart`):这种格式只有出图一个端点,
   /// 点数查询、Vibe 编码、超分都没有对应的地址可打。
   final bool _chat;
+
+  @visibleForTesting
+  final bool? multipartOverride;
+  @visibleForTesting
+  final bool? imageCacheOverride;
+
+  /// 进程级随机 HMAC 密钥,用于生成官网图片缓存键 `cache_secret_key`。
+  static final Uint8List _cacheSecret = Uint8List.fromList(
+    List.generate(32, (_) => Random.secure().nextInt(256)),
+  );
+
+  /// 按 `hostGroup|tokenSha256` 记已上传且收到 200 的官网图片缓存键。
+  static const _imageCacheMax = 256;
+  static const _imageCacheTtl = Duration(minutes: 90);
+  static final _imageCache = <String, Map<String, DateTime>>{};
+
+  @visibleForTesting
+  static void clearImageCacheForTest() => _imageCache.clear();
 
   /// 有没有逐步预览。OpenAI 兼容接口只回终图。
   bool get streams => !_chat;
@@ -314,7 +428,7 @@ class NaiClient {
   /// 报错文案里的主机名(自定义地址时不能再张口就说「novelai.net 被拦了」)。
   String get _hostName => Uri.tryParse(_host)?.host ?? _host;
 
-  /// 官方、Plana 代理、Plana 后端(对外 API)的保活时长都已知够长。
+  /// 官方、Plana 代理、Plana 后端(对外 API)均支持长保活、官网分片与图片缓存键。
   bool get _longIdle =>
       _host == kNaiOfficialBase ||
       _host == kNaiProxyBase ||
@@ -335,14 +449,78 @@ class NaiClient {
     'user-agent': _ua,
   };
 
-  /// 官方与 Plana 代理收二进制分片(官网 2026-08 起默认这么发,代理原样透传);
-  /// 第三方站点不一定认,照旧发 JSON。
-  bool get _multipart => _host == kNaiOfficialBase || _host == kNaiProxyBase;
+  /// 官方、Plana 代理与 Plana 对外 API 收二进制分片与官网缓存键;第三方站点照旧发 JSON。
+  bool get _multipart => multipartOverride ?? _longIdle;
+  bool get _useImageCache => imageCacheOverride ?? _longIdle;
 
-  /// 请求体在后台 isolate 里编码(几 MB 的 base64 图解码、拼分片都不占主线程)。
-  Future<({String contentType, Uint8List bytes})> _encodeBody(
-    Map<String, dynamic> body,
-  ) => _encodeNaiBodyInIsolate(body, _multipart);
+  String _cacheScope(String token) {
+    final hostGroup = (_host == kNaiOfficialBase || _host == kNaiProxyBase)
+        ? 'nai-official'
+        : _host;
+    final tokenId = sha256.convert(utf8.encode(token)).toString();
+    return '$hostGroup|$tokenId';
+  }
+
+  Set<String> _knownCacheKeys(String scope) {
+    final map = _imageCache[scope];
+    if (map == null || map.isEmpty) return const {};
+    final cutoff = DateTime.now().subtract(_imageCacheTtl);
+    map.removeWhere((_, ts) => ts.isBefore(cutoff));
+    return Set<String>.of(map.keys);
+  }
+
+  void _recordCacheKeys(String scope, Iterable<String> keys) {
+    if (keys.isEmpty) return;
+    final now = DateTime.now();
+    final map = _imageCache.putIfAbsent(scope, () => <String, DateTime>{});
+    for (final k in keys) {
+      map.remove(k);
+      map[k] = now;
+    }
+    while (map.length > _imageCacheMax) {
+      map.remove(map.keys.first);
+    }
+  }
+
+  void _forgetCacheKeys(String scope, Iterable<String> keys) {
+    final map = _imageCache[scope];
+    if (map == null) return;
+    for (final k in keys) {
+      map.remove(k);
+    }
+  }
+
+  /// 解析官网 400 `INVALID_CACHE_KEYS` 响应中的失效键列表;非此错误返回 null。
+  static List<String>? _parseInvalidCacheKeys(int statusCode, String text) {
+    if (statusCode != 400) return null;
+    try {
+      final j = jsonDecode(text);
+      if (j is! Map || j['message'] != 'INVALID_CACHE_KEYS') return null;
+      final details = j['details'];
+      final raw = details is Map ? details['invalidKeys'] : null;
+      return [
+        if (raw is List)
+          for (final k in raw)
+            if (k is String && k.isNotEmpty) k,
+      ];
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 请求体在后台 isolate 里编码(几 MB 的 base64 图解码、拼分片与算缓存键都不占主线程)。
+  Future<EncodedNaiBody> _encodeBody(
+    Map<String, dynamic> body, {
+    required String token,
+  }) {
+    final cacheOn = _multipart && _useImageCache;
+    return _encodeNaiBodyInIsolate(
+      body,
+      multipart: _multipart,
+      cacheSecret: cacheOn ? _cacheSecret : null,
+      knownCacheKeys: cacheOn ? _knownCacheKeys(_cacheScope(token)) : const {},
+    );
+  }
 
   /// 流式端点头:NAI 前端每请求都带 x-correlation-id(6 hex)+ x-initiated-at。
   Map<String, String> _streamHeaders(String token) => {
@@ -404,21 +582,46 @@ class NaiClient {
     var yielded = 0;
 
     try {
-      final payload = await _encodeBody(body);
-      final r = req = await (_longIdle ? _longIdleHttp : _shortIdleHttp)
-          .postUrl(uri);
-      if (abort?.aborted ?? false) throw NaiException(l10nNow.genCancelled);
-      _streamHeaders(token).forEach(r.headers.set);
-      r.headers.set('Content-Type', payload.contentType);
-      r.contentLength = payload.bytes.length;
-      r.add(payload.bytes);
+      final cacheScope = _cacheScope(token);
+      late HttpClientResponse resp;
+      for (var attempt = 0; ; attempt++) {
+        final payload = await _encodeBody(body, token: token);
+        final r = req = await (_longIdle ? _longIdleHttp : _shortIdleHttp)
+            .postUrl(uri);
+        if (abort?.aborted ?? false) throw NaiException(l10nNow.genCancelled);
+        _streamHeaders(token).forEach(r.headers.set);
+        r.headers.set('Content-Type', payload.contentType);
+        r.contentLength = payload.bytes.length;
+        r.add(payload.bytes);
 
-      final resp = await r.close().timeout(const Duration(seconds: 60));
-      if (resp.statusCode != 200) {
+        resp = await r.close().timeout(const Duration(seconds: 60));
+        if (resp.statusCode == 200) {
+          if (_multipart && _useImageCache) {
+            _recordCacheKeys(cacheScope, [
+              ...payload.uploadedCacheKeys,
+              ...payload.usedCacheKeys,
+            ]);
+          }
+          break;
+        }
         final text = await resp
             .transform(utf8.decoder)
             .join()
             .timeout(const Duration(seconds: 10), onTimeout: () => '');
+        final invalid = _parseInvalidCacheKeys(resp.statusCode, text);
+        if (_multipart &&
+            _useImageCache &&
+            attempt == 0 &&
+            payload.usedCacheKeys.isNotEmpty &&
+            invalid != null) {
+          _forgetCacheKeys(
+            cacheScope,
+            invalid.isNotEmpty ? invalid : payload.usedCacheKeys,
+          );
+          req = null;
+          logi('[nai] 图片缓存键失效,补发原图重试');
+          continue;
+        }
         throw NaiException(
           _errorTextRaw(text, resp.statusCode),
           status: resp.statusCode,
@@ -567,27 +770,49 @@ class NaiClient {
     }
 
     abort?.whenAbort(stopNow);
-    final payload = await _encodeBody(body);
-    final req = http.AbortableRequest('POST', uri, abortTrigger: stop.future)
-      ..headers.addAll(_genHeaders(token))
-      ..headers['Content-Type'] = payload.contentType
-      ..bodyBytes = payload.bytes;
-    final http.Response resp;
-    try {
-      resp = await (_longIdle ? _longIdleIo : _shortIdleIo)
-          .send(req)
-          .then(http.Response.fromStream)
-          .timeout(const Duration(seconds: 120));
-    } catch (e) {
-      stopNow();
-      throw NaiException(l10nNow.networkError('$e'));
-    }
+    final cacheScope = _cacheScope(token);
+    for (var attempt = 0; ; attempt++) {
+      if (stop.isCompleted) throw NaiException(l10nNow.genCancelled);
+      final payload = await _encodeBody(body, token: token);
+      final req = http.AbortableRequest('POST', uri, abortTrigger: stop.future)
+        ..headers.addAll(_genHeaders(token))
+        ..headers['Content-Type'] = payload.contentType
+        ..bodyBytes = payload.bytes;
+      final http.Response resp;
+      try {
+        resp = await (_longIdle ? _longIdleIo : _shortIdleIo)
+            .send(req)
+            .then(http.Response.fromStream)
+            .timeout(const Duration(seconds: 120));
+      } catch (e) {
+        stopNow();
+        throw NaiException(l10nNow.networkError('$e'));
+      }
 
-    if (resp.statusCode != 200) {
+      if (resp.statusCode == 200) {
+        if (_multipart && _useImageCache) {
+          _recordCacheKeys(cacheScope, [
+            ...payload.uploadedCacheKeys,
+            ...payload.usedCacheKeys,
+          ]);
+        }
+        return _pngFromMaybeZip(resp.bodyBytes);
+      }
+      final invalid = _parseInvalidCacheKeys(resp.statusCode, resp.body);
+      if (_multipart &&
+          _useImageCache &&
+          attempt == 0 &&
+          payload.usedCacheKeys.isNotEmpty &&
+          invalid != null) {
+        _forgetCacheKeys(
+          cacheScope,
+          invalid.isNotEmpty ? invalid : payload.usedCacheKeys,
+        );
+        logi('[nai] 图片缓存键失效,补发原图重试');
+        continue;
+      }
       throw NaiException(_errorText(resp), status: resp.statusCode);
     }
-
-    return _pngFromMaybeZip(resp.bodyBytes);
   }
 
   /// OpenAI 兼容接口出图:官方请求体转成 chat 请求,从回复里取图。
@@ -821,7 +1046,16 @@ class NaiClient {
   }
 }
 
-Future<({String contentType, Uint8List bytes})> _encodeNaiBodyInIsolate(
-  Map<String, dynamic> body,
-  bool multipart,
-) => Isolate.run(() => encodeNaiBody(body, multipart: multipart));
+Future<EncodedNaiBody> _encodeNaiBodyInIsolate(
+  Map<String, dynamic> body, {
+  required bool multipart,
+  Uint8List? cacheSecret,
+  Set<String> knownCacheKeys = const {},
+}) => Isolate.run(
+  () => encodeNaiBodyWithCache(
+    body,
+    multipart: multipart,
+    cacheSecret: cacheSecret,
+    knownCacheKeys: knownCacheKeys,
+  ),
+);

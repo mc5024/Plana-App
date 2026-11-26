@@ -1214,12 +1214,10 @@ class GenerationNotifier extends Notifier<GenPool> {
     var attempt429 = 0;
     while (true) {
       try {
-        // 参考图:CR / 图生图离线处理;vibe 走统一编码服务(缓存,避免重复扣 2 Anlas)
-        final img2img = await _prepImg2Img(
-          s,
-          serverFit: (await client.caps()).img2imgFit,
-        );
-        final charRefs = await _processCharRefs(s);
+        // 参考图:CR / 图生图预处理(后端支持时发更小原图);vibe 走统一编码服务
+        final caps = await client.caps();
+        final img2img = await _prepImg2Img(s, serverFit: caps.img2imgFit);
+        final charRefs = await _processCharRefs(s, serverFit: caps.charRefFit);
         final prepared = await _prepareVibes(s);
         final styleRefs = await _processKreaStyleRefs(s);
         final preset = _applyPreset(s, await run.presets);
@@ -1248,6 +1246,7 @@ class GenerationNotifier extends Notifier<GenPool> {
           sessionId: session.sessionId,
           params: params,
           clientRequestId: requestId,
+          usePartCache: caps.partCache,
           // anima / krea → 服务端 Modal ComfyUI 后端(共用同一条队列与 WS 通道,
           // 任务表也与 NAI 共用);两者的参数各进自己的 *_extra。
           imageBackend: switch (providerOfModel(s.params.model)) {
@@ -1677,12 +1676,45 @@ class GenerationNotifier extends Notifier<GenPool> {
     return out;
   }
 
-  /// 角色参考图处理后的 base64,按原图字节对象分模型桶缓存(4.5 黑边 contain 与
-  /// V5 97 档桶表 Cover 独立缓存,切模型不串台;循环出图同图不重复缩放编码)。
+  /// 角色参考图处理后的 base64,按原图字节对象分模型与是否由后端缩放独立缓存。
   static final _cr45Memo = Expando<Future<String>>();
   static final _crV5Memo = Expando<Future<String>>();
+  static final _cr45FitMemo = Expando<Future<String>>();
+  static final _crV5FitMemo = Expando<Future<String>>();
 
-  Future<List<CharRefPayload>> _processCharRefs(GenerateState s) async {
+  Future<String> _encodeCharRef(
+    Uint8List src, {
+    required bool useBucket,
+    required bool serverFit,
+  }) async {
+    if (serverFit && isNaiImageFormat(src)) {
+      final (sw, sh) = imageSizeOf(src) ?? await decodeImageSize(src);
+      if (shouldPreferRawCharRef(
+        srcW: sw,
+        srcH: sh,
+        srcBytes: src.length,
+        useBucket: useBucket,
+      )) {
+        return base64Encode(src);
+      }
+      final png = useBucket
+          ? await crBucketResizePng(src)
+          : await crResizePng(src);
+      if (sw * sh <= kRawCharRefMaxPixels && src.length < png.length) {
+        return base64Encode(src);
+      }
+      return base64Encode(png);
+    }
+    final png = useBucket
+        ? await crBucketResizePng(src)
+        : await crResizePng(src);
+    return base64Encode(png);
+  }
+
+  Future<List<CharRefPayload>> _processCharRefs(
+    GenerateState s, {
+    bool serverFit = false,
+  }) async {
     final model = s.params.model;
     final refs = effectiveCrRefs(
       s.charRefs,
@@ -1691,14 +1723,17 @@ class GenerationNotifier extends Notifier<GenPool> {
     ).where((r) => r.image != null).toList();
     if (refs.isEmpty) return const [];
     final useBucket = crUsesBucketResize(model);
-    final memo = useBucket ? _crV5Memo : _cr45Memo;
+    final memo = serverFit
+        ? (useBucket ? _crV5FitMemo : _cr45FitMemo)
+        : (useBucket ? _crV5Memo : _cr45Memo);
     final out = <CharRefPayload>[];
     for (final r in refs) {
       final src = r.image!;
-      final Future<String> b64 = memo[src] ??=
-          (useBucket ? crBucketResizePng(src) : crResizePng(src)).then(
-            base64Encode,
-          );
+      final Future<String> b64 = memo[src] ??= _encodeCharRef(
+        src,
+        useBucket: useBucket,
+        serverFit: serverFit,
+      );
       final String image;
       try {
         image = await b64;

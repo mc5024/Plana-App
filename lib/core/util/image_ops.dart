@@ -1,3 +1,4 @@
+import 'dart:isolate' show TransferableTypedData;
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -221,6 +222,36 @@ Uint8List _styleRefResizeJpg((Uint8List, int, int) arg) {
   return Uint8List.fromList(img.encodeJpg(canvas, quality: quality));
 }
 
+/// V4.5 角色参考目标画布尺寸:方形(0.8≤AR≤1.25)→1472²;横图→1536×1024;竖图→1024×1536。
+({int w, int h}) cr45CanvasSize(int width, int height) {
+  final ar = math.max(width, 1) / math.max(height, 1);
+  if (ar >= 0.8 && ar <= 1.25) return (w: 1472, h: 1472);
+  return width > height ? (w: 1536, h: 1024) : (w: 1024, h: 1536);
+}
+
+/// 交给后端缩放角色参考图时的原图最大像素预算(避免超大分辨率占用后端解码内存)。
+const kRawCharRefMaxPixels = 4096 * 4096;
+
+/// 高压缩原图(如 JPEG/WebP)的体积阈值:不高于此值且像素在预算内时直发原图,
+/// 避免本地重编码成 1MP–2MP 无损 PNG 反而变大。
+const kRawCharRefSmallBytes = 512 * 1024;
+
+/// 后端支持角色参考缩放(`char_ref_fit`)时,判断是否应跳过本地缩放直接发原图。
+bool shouldPreferRawCharRef({
+  required int srcW,
+  required int srcH,
+  required int srcBytes,
+  required bool useBucket,
+}) {
+  if (srcW <= 0 || srcH <= 0) return false;
+  final pixels = srcW * srcH;
+  if (pixels > kRawCharRefMaxPixels) return false;
+  final target = useBucket
+      ? pickV5CrBucket(srcW, srcH)
+      : cr45CanvasSize(srcW, srcH);
+  return pixels <= target.w * target.h || srcBytes <= kRawCharRefSmallBytes;
+}
+
 /// 角色参考(CR)预处理,复刻 web `processCRImage`:按宽高比选目标画布,
 /// contain(整图可见、按比例缩放)+ 黑边居中填充,输出 PNG。
 /// 方形(0.8≤AR≤1.25)→1472²;横图→1536×1024;竖图→1024×1536。
@@ -231,19 +262,9 @@ Future<Uint8List> crResizePng(Uint8List src) async {
 
   final iw = img.width.toDouble();
   final ih = img.height.toDouble();
-  final ar = iw / ih;
-
-  int cw, ch;
-  if (ar >= 0.8 && ar <= 1.25) {
-    cw = 1472;
-    ch = 1472;
-  } else if (iw > ih) {
-    cw = 1536;
-    ch = 1024;
-  } else {
-    cw = 1024;
-    ch = 1536;
-  }
+  final size = cr45CanvasSize(img.width, img.height);
+  final cw = size.w;
+  final ch = size.h;
 
   final twd = cw.toDouble();
   final thd = ch.toDouble();
@@ -468,4 +489,140 @@ Future<Uint8List> crBucketResizePng(Uint8List src) async {
   } finally {
     image.dispose();
   }
+}
+
+/// NAI Vibe 编码图片像素上限（4096×4096）与单边上限。
+const kVibeEncodeMaxPixels = 4096 * 4096;
+const kVibeEncodeMaxSide = 16383;
+
+/// 计算不超 [maxPixels] 与单边 [maxSide] 的等比目标尺寸；未超限返回 null。
+({int w, int h})? fitImageWithinLimits(
+  int width,
+  int height, {
+  int maxPixels = kVibeEncodeMaxPixels,
+  int maxSide = kVibeEncodeMaxSide,
+}) {
+  if (width <= 0 || height <= 0) return null;
+  if (width <= maxSide && height <= maxSide && width * height <= maxPixels) {
+    return null;
+  }
+  final scale = math.min(
+    math.sqrt(maxPixels / (width * height)),
+    math.min(maxSide / width, maxSide / height),
+  );
+  var tw = math.min(maxSide, math.max(1, (width * scale).floor()));
+  var th = math.min(maxSide, math.max(1, (height * scale).floor()));
+  while (tw * th > maxPixels) {
+    if (tw >= th && tw > 1) {
+      tw--;
+    } else if (th > 1) {
+      th--;
+    } else {
+      break;
+    }
+  }
+  return (w: tw, h: th);
+}
+
+/// 缩小超过 NAI Vibe 编码尺寸上限的图片；未超限或无法解码时原样返回。
+/// 不透明图片编码为 JPEG，带透明通道的图片保留 PNG。
+Future<Uint8List> shrinkForVibeEncode(
+  Uint8List src, {
+  int maxPixels = kVibeEncodeMaxPixels,
+  int maxSide = kVibeEncodeMaxSide,
+}) async {
+  ui.ImmutableBuffer? buffer;
+  ui.ImageDescriptor? descriptor;
+  ui.Codec? codec;
+  ui.Image? decoded;
+  ui.Image? out;
+  try {
+    buffer = await ui.ImmutableBuffer.fromUint8List(src);
+    descriptor = await ui.ImageDescriptor.encoded(buffer);
+    final target = fitImageWithinLimits(
+      descriptor.width,
+      descriptor.height,
+      maxPixels: maxPixels,
+      maxSide: maxSide,
+    );
+    if (target == null) return src;
+
+    codec = await descriptor.instantiateCodec(
+      targetWidth: target.w,
+      targetHeight: target.h,
+    );
+    decoded = (await codec.getNextFrame()).image;
+
+    final ui.Image finalImg;
+    final exact = fitImageWithinLimits(
+      decoded.width,
+      decoded.height,
+      maxPixels: maxPixels,
+      maxSide: maxSide,
+    );
+    if (exact == null) {
+      finalImg = decoded;
+    } else {
+      final recorder = ui.PictureRecorder();
+      final canvas = ui.Canvas(
+        recorder,
+        ui.Rect.fromLTWH(0, 0, exact.w.toDouble(), exact.h.toDouble()),
+      );
+      canvas.drawImageRect(
+        decoded,
+        ui.Rect.fromLTWH(
+          0,
+          0,
+          decoded.width.toDouble(),
+          decoded.height.toDouble(),
+        ),
+        ui.Rect.fromLTWH(0, 0, exact.w.toDouble(), exact.h.toDouble()),
+        ui.Paint()..filterQuality = ui.FilterQuality.high,
+      );
+      final picture = recorder.endRecording();
+      try {
+        out = await picture.toImage(exact.w, exact.h);
+      } finally {
+        picture.dispose();
+      }
+      finalImg = out;
+    }
+
+    final raw = await finalImg.toByteData(format: ui.ImageByteFormat.rawRgba);
+    if (raw == null) return src;
+    final rgba = raw.buffer.asUint8List(raw.offsetInBytes, raw.lengthInBytes);
+    if (!rgbaHasAlpha(rgba)) {
+      final transfer = TransferableTypedData.fromList([rgba]);
+      return compute(_encodeRgbaJpg, (
+        transfer,
+        finalImg.width,
+        finalImg.height,
+        92,
+      ));
+    }
+    final png = await finalImg.toByteData(format: ui.ImageByteFormat.png);
+    if (png == null) return src;
+    return png.buffer.asUint8List();
+  } catch (_) {
+    return src;
+  } finally {
+    out?.dispose();
+    decoded?.dispose();
+    codec?.dispose();
+    descriptor?.dispose();
+    buffer?.dispose();
+  }
+}
+
+Uint8List _encodeRgbaJpg((TransferableTypedData, int, int, int) arg) {
+  final (data, w, h, quality) = arg;
+  final rgba = data.materialize().asUint8List();
+  final image = img.Image.fromBytes(
+    width: w,
+    height: h,
+    bytes: rgba.buffer,
+    bytesOffset: rgba.offsetInBytes,
+    numChannels: 4,
+  );
+  return Uint8List.fromList(img.encodeJpg(image, quality: quality));
 }
