@@ -517,7 +517,7 @@ abstract class AppLocalizations {
   /// No description provided for @preferSameOutfit.
   ///
   /// In zh, this message translates to:
-  /// **'优先相同服装'**
+  /// **'同时参考服装'**
   String get preferSameOutfit;
 
   /// No description provided for @characters.

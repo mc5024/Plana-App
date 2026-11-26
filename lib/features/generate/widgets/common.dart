@@ -597,7 +597,7 @@ class RefThumb extends StatelessWidget {
   }
 }
 
-/// 启用/停用开关(裸电源图标)—— Vibe / 角色参考 / LoRA / 重绘放大 共用
+/// 启用/停用开关(电源圆钮)—— Vibe / 角色参考 / LoRA / 重绘放大 共用
 class RefEnableToggle extends StatelessWidget {
   const RefEnableToggle({
     super.key,
@@ -617,28 +617,15 @@ class RefEnableToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    return SizedBox(
-      width: 38,
-      height: 38,
-      child: IconButton(
-        onPressed: onTap,
-        icon: Icon(
-          Icons.power_settings_new,
-          size: 24,
-          color: enabled ? scheme.primary : scheme.outline,
-        ),
-        // 图标字体只有一档笔画,「加粗」只能靠字号 + 启用时的主色底托
-        style: IconButton.styleFrom(
-          backgroundColor: enabled
-              ? scheme.primary.withValues(alpha: .12)
-              : Colors.transparent,
-        ),
-        tooltip: enabled
-            ? onTooltip ?? context.l10n.refDisable
-            : offTooltip ?? context.l10n.enable,
-        padding: EdgeInsets.zero,
-        visualDensity: VisualDensity.compact,
-      ),
+    return RoundIconBtn(
+      Icons.power_settings_new,
+      size: 38,
+      iconSize: 20,
+      color: enabled ? scheme.primary : scheme.outline,
+      tooltip: enabled
+          ? onTooltip ?? context.l10n.refDisable
+          : offTooltip ?? context.l10n.enable,
+      onTap: onTap,
     );
   }
 }
@@ -688,7 +675,7 @@ class AddTile extends StatelessWidget {
   }
 }
 
-/// 参考图详情头:「参考图 N」+ 文件名 + 移除药丸 —— Vibe / 角色参考 共用
+/// 参考图详情头:「参考图 N」+ 文件名 + 启用开关 + 移除药丸 —— Vibe / 角色参考 共用
 class RefDetailHeader extends StatelessWidget {
   const RefDetailHeader({
     super.key,
@@ -708,10 +695,10 @@ class RefDetailHeader extends StatelessWidget {
   /// 停用时标题与名称灰掉并加删除线,一眼看出这一张不进载荷。
   final bool enabled;
 
-  /// 行首的启用/停用开关
+  /// 放在「移除」按钮左侧的启用/停用开关
   final Widget? enableToggle;
 
-  /// 放在「移除」按钮左侧的额外控件(如角色参考的迁移模式切换)
+  /// 放在尾部操作组左侧的额外控件
   final Widget? leadingAction;
 
   /// [leadingAction] 的宽度,用来判一行放不放得下。
@@ -737,10 +724,10 @@ class RefDetailHeader extends StatelessWidget {
     );
     // 放不下时(英文标签长)「移除」只留图标
     final need =
-        (enableToggle != null ? 42 : 0) +
         measureText(context, title, titleStyle) +
-        8 +
+        16 +
         (leadingAction != null ? leadingActionWidth + 8 : 0) +
+        (enableToggle != null ? 46 : 0) +
         56 +
         measureText(context, l.remove, removeStyle);
     final compact = need > maxWidth;
@@ -770,10 +757,9 @@ class RefDetailHeader extends StatelessWidget {
     );
     return Row(
       children: [
-        if (enableToggle != null) ...[enableToggle!, const SizedBox(width: 4)],
         Text(title, style: titleStyle),
         const SizedBox(width: 8),
-        // Expanded 占满中段,把尾部(切换 + 移除)顶到最右
+        // Expanded 占满中段,把尾部操作顶到最右
         Expanded(
           child: Text(
             name,
@@ -787,10 +773,12 @@ class RefDetailHeader extends StatelessWidget {
             ),
           ),
         ),
+        const SizedBox(width: 8),
         if (leadingAction != null) ...[
           leadingAction!,
           const SizedBox(width: 8),
         ],
+        if (enableToggle != null) ...[enableToggle!, const SizedBox(width: 8)],
         if (compact) Tooltip(message: l.remove, child: remove) else remove,
       ],
     );

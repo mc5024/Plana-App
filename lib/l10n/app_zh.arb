@@ -77,7 +77,7 @@
   "refStyle": "风格",
   "refCharacterStyle": "角色&风格",
   "refOutfit": "服装",
-  "preferSameOutfit": "优先相同服装",
+  "preferSameOutfit": "同时参考服装",
 
   "characters": "角色",
   "addCharacter": "添加角色",

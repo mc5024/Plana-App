@@ -206,7 +206,7 @@ class VibeItem {
       );
 }
 
-/// 角色参考主模式(用于 UI 选择器;「优先相同服装」开关叠加在 character / both 上)。
+/// 角色参考主模式(用于 UI 选择器;「同时参考服装」开关叠加在 character / both 上)。
 enum CharRefBaseMode { character, style, both, outfit }
 
 /// 角色参考迁移模式。api 直接进载荷 base_caption(对齐 web)。
@@ -231,17 +231,17 @@ enum CharRefMode {
     CharRefMode.outfit => CharRefBaseMode.outfit,
   };
 
-  /// 是否支持「优先相同服装」开关(仅 character / both 主模式)。
+  /// 是否支持「同时参考服装」开关(仅 character / both 主模式)。
   bool get supportsPreferSameOutfit =>
       baseMode == CharRefBaseMode.character || baseMode == CharRefBaseMode.both;
 
-  /// 当前是否开启「优先相同服装」。
-  /// character 默认不优先同款(`character`),开启为 `character_mainoutfit`;
-  /// both 默认优先同款(`character&style`),关闭为 `character&style_anyoutfit`。
+  /// 当前是否开启「同时参考服装」。
+  /// character 默认不参考服装(`character`),开启为 `character_mainoutfit`;
+  /// both 默认同时参考服装(`character&style`),关闭为 `character&style_anyoutfit`。
   bool get preferSameOutfit =>
       this == CharRefMode.characterMainOutfit || this == CharRefMode.both;
 
-  /// 切换「优先相同服装」开关后的迁移模式。
+  /// 切换「同时参考服装」开关后的迁移模式。
   CharRefMode withPreferSameOutfit(bool prefer) => switch (baseMode) {
     CharRefBaseMode.character =>
       prefer ? CharRefMode.characterMainOutfit : CharRefMode.character,
@@ -250,11 +250,19 @@ enum CharRefMode {
     CharRefBaseMode.style || CharRefBaseMode.outfit => this,
   };
 
-  /// 从主模式构造默认迁移模式:切到「角色&风格」默认勾同款,切到「角色」默认不勾。
-  static CharRefMode fromBaseMode(CharRefBaseMode base) => switch (base) {
-    CharRefBaseMode.character => CharRefMode.character,
+  /// 从主模式构造迁移模式。传入 [preferSameOutfit] 时沿用该开关状态;
+  /// 未传时按主模式默认:角色&风格开启、角色关闭。
+  static CharRefMode fromBaseMode(
+    CharRefBaseMode base, {
+    bool? preferSameOutfit,
+  }) => switch (base) {
+    CharRefBaseMode.character =>
+      (preferSameOutfit ?? false)
+          ? CharRefMode.characterMainOutfit
+          : CharRefMode.character,
     CharRefBaseMode.style => CharRefMode.style,
-    CharRefBaseMode.both => CharRefMode.both,
+    CharRefBaseMode.both =>
+      (preferSameOutfit ?? true) ? CharRefMode.both : CharRefMode.bothAnyOutfit,
     CharRefBaseMode.outfit => CharRefMode.outfit,
   };
 
@@ -586,7 +594,7 @@ bool crSupportsModel(String displayModel) => switch (displayModel) {
 bool crSupportsInpainting(String displayModel) =>
     displayModel == 'NAI 4.5 Full' || displayModel == 'NAI 4.5 Curated';
 
-/// 是否支持「服装」模式与「优先相同服装」开关(仅 V5 Full / Curated)。
+/// 是否支持「服装」模式与「同时参考服装」开关(仅 V5 Full / Curated)。
 bool crSupportsOutfit(String displayModel) =>
     displayModel == 'NAI 5.0 Full' || displayModel == 'NAI 5.0 Curated';
 

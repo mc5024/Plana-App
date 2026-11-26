@@ -216,7 +216,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get refOutfit => '服装';
 
   @override
-  String get preferSameOutfit => '优先相同服装';
+  String get preferSameOutfit => '同时参考服装';
 
   @override
   String get characters => '角色';

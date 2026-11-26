@@ -247,30 +247,39 @@ class _VibeCardState extends ConsumerState<VibeCard> {
             ),
           ),
           // 只有多张同时启用才谈得上「均衡」,单张时这行没有意义(与 web 同)
-          if (state.enabledVibes > 1) ...[
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: HelpLabel(
-                    text: context.l10n.normalizeStrength,
-                    help: Help.normalizeVibe,
-                    style: context.texts.bodySmall!.copyWith(
-                      color: scheme.onSurface,
+          ExpandBody(
+            expanded: state.enabledVibes > 1,
+            child: IgnorePointer(
+              ignoring: state.enabledVibes <= 1,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: HelpLabel(
+                        text: context.l10n.normalizeStrength,
+                        help: Help.normalizeVibe,
+                        style: context.texts.bodySmall!.copyWith(
+                          color: scheme.onSurface,
+                        ),
+                      ),
                     ),
-                  ),
+                    Switch(
+                      value: state.params.normalizeVibe,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: EdgeInsets.zero,
+                      onChanged: (v) => notifier.applyParams(
+                        state.params.copyWith(normalizeVibe: v),
+                      ),
+                    ),
+                  ],
                 ),
-                Switch(
-                  value: state.params.normalizeVibe,
-                  onChanged: (v) => notifier.applyParams(
-                    state.params.copyWith(normalizeVibe: v),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ],
+          ),
           if (selected != null) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             _VibeDetail(
               vibe: selected,
               index: vibes.indexOf(selected) + 1,

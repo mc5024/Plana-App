@@ -33,6 +33,7 @@ class CharRefCard extends ConsumerStatefulWidget {
 
 class _CharRefCardState extends ConsumerState<CharRefCard> {
   String? _selectedId;
+  final Map<String, bool> _outfitPrefById = {};
 
   Future<void> _onAdd() async {
     final canvasId = ref.read(canvasWorkspaceProvider).activeId;
@@ -83,11 +84,8 @@ class _CharRefCardState extends ConsumerState<CharRefCard> {
   }
 
   /// V5 等模型重绘不支持角色参考:点击启用或重绘态下添加时弹一次提示。
-  void _inpaintUnsupportedHint() => hintSnack(
-    context,
-    context.l10n.charRefIgnoredInpaint,
-    icon: Icons.block,
-  );
+  void _inpaintUnsupportedHint() =>
+      hintSnack(context, context.l10n.charRefIgnoredInpaint, icon: Icons.block);
 
   /// 互斥切换提示:启用/加入角色参考导致 Vibe 被暂停时,弹一次 toast。
   void _mutexHint() => hintSnack(
@@ -99,6 +97,7 @@ class _CharRefCardState extends ConsumerState<CharRefCard> {
   void _remove(String id) {
     final refs = ref.read(generateProvider).charRefs;
     final idx = refs.indexWhere((r) => r.id == id);
+    _outfitPrefById.remove(id);
     ref.read(generateProvider.notifier).removeCharRef(id);
     final rest = ref.read(generateProvider).charRefs;
     setState(() {
@@ -108,6 +107,28 @@ class _CharRefCardState extends ConsumerState<CharRefCard> {
         _selectedId = rest[idx.clamp(0, rest.length - 1)].id;
       }
     });
+  }
+
+  void _selectBaseMode(CharRefItem item, CharRefBaseMode base) {
+    if (item.mode.supportsPreferSameOutfit) {
+      _outfitPrefById[item.id] = item.mode.preferSameOutfit;
+    }
+    final prefer = item.mode.supportsPreferSameOutfit
+        ? item.mode.preferSameOutfit
+        : _outfitPrefById[item.id];
+    ref
+        .read(generateProvider.notifier)
+        .updateCharRef(
+          item.id,
+          mode: CharRefMode.fromBaseMode(base, preferSameOutfit: prefer),
+        );
+  }
+
+  void _togglePreferOutfit(CharRefItem item, bool value) {
+    _outfitPrefById[item.id] = value;
+    ref
+        .read(generateProvider.notifier)
+        .updateCharRef(item.id, mode: item.mode.withPreferSameOutfit(value));
   }
 
   @override
@@ -221,6 +242,8 @@ class _CharRefCardState extends ConsumerState<CharRefCard> {
               model: model,
               onRemove: () => _remove(selected!.id),
               onToggle: () => _toggle(selected!.id, selected.enabled),
+              onSelectBaseMode: (base) => _selectBaseMode(selected!, base),
+              onTogglePreferOutfit: (v) => _togglePreferOutfit(selected!, v),
             ),
           ],
         ],
@@ -236,6 +259,8 @@ class _CharRefDetail extends ConsumerWidget {
     required this.model,
     required this.onRemove,
     required this.onToggle,
+    required this.onSelectBaseMode,
+    required this.onTogglePreferOutfit,
   });
 
   final CharRefItem item;
@@ -243,6 +268,8 @@ class _CharRefDetail extends ConsumerWidget {
   final String model;
   final VoidCallback onRemove;
   final VoidCallback onToggle;
+  final ValueChanged<CharRefBaseMode> onSelectBaseMode;
+  final ValueChanged<bool> onTogglePreferOutfit;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -289,36 +316,17 @@ class _CharRefDetail extends ConsumerWidget {
           emptySelectionAllowed: unsupportedOutfit,
           onSelectionChanged: (sel) {
             if (sel.isEmpty) return;
-            notifier.updateCharRef(
-              item.id,
-              mode: CharRefMode.fromBaseMode(sel.first),
-            );
+            onSelectBaseMode(sel.first);
           },
           showSelectedIcon: false,
           style: _modeSegStyle,
         ),
-        if (outfitOk && item.mode.supportsPreferSameOutfit) ...[
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  l.preferSameOutfit,
-                  style: context.texts.bodySmall!.copyWith(
-                    color: context.scheme.onSurface,
-                  ),
-                ),
-              ),
-              Switch(
-                value: item.mode.preferSameOutfit,
-                onChanged: (v) => notifier.updateCharRef(
-                  item.id,
-                  mode: item.mode.withPreferSameOutfit(v),
-                ),
-              ),
-            ],
-          ),
-        ],
+        _PreferOutfitRow(
+          visible: outfitOk && item.mode.supportsPreferSameOutfit,
+          value: item.mode.preferSameOutfit,
+          label: l.preferSameOutfit,
+          onChanged: onTogglePreferOutfit,
+        ),
         const SizedBox(height: 10),
         // V5 下强度范围 0..5,中点 1.0 非线性映射;V4.5 保持 0..1 线性;刻度对齐官网 0.05。
         LiveParamSlider(
@@ -366,6 +374,66 @@ String _baseModeLabel(AppLocalizations l, CharRefBaseMode mode) =>
       CharRefBaseMode.both => l.refCharacterStyle,
       CharRefBaseMode.outfit => l.refOutfit,
     };
+
+/// 「同时参考服装」开关行:随模式切换平滑展开/收起,收起期间保留上次开关值避免滑块闪动。
+class _PreferOutfitRow extends StatefulWidget {
+  const _PreferOutfitRow({
+    required this.visible,
+    required this.value,
+    required this.label,
+    required this.onChanged,
+  });
+
+  final bool visible;
+  final bool value;
+  final String label;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  State<_PreferOutfitRow> createState() => _PreferOutfitRowState();
+}
+
+class _PreferOutfitRowState extends State<_PreferOutfitRow> {
+  late bool _shownValue = widget.value;
+
+  @override
+  void didUpdateWidget(covariant _PreferOutfitRow old) {
+    super.didUpdateWidget(old);
+    if (widget.visible) _shownValue = widget.value;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ExpandBody(
+      expanded: widget.visible,
+      child: IgnorePointer(
+        ignoring: !widget.visible,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  widget.label,
+                  style: context.texts.bodySmall!.copyWith(
+                    color: context.scheme.onSurface,
+                  ),
+                ),
+              ),
+              Switch(
+                value: widget.visible ? widget.value : _shownValue,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                padding: EdgeInsets.zero,
+                onChanged: widget.onChanged,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// 主模式分段选择器样式(与 hires_card 对齐:占满卡宽、4 项并排不折行)。
 const _modeSegStyle = ButtonStyle(
