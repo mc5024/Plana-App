@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 
 import '../../../core/theme/app_skin.dart';
+import '../../../core/ui/gen_progress_frame.dart';
 import '../../../core/ui/prefix_extent_list.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../generate/gen_jobs.dart' show GenJob;
@@ -767,8 +768,8 @@ class _StripController extends ScrollController {
   );
 }
 
-/// 在跑的任务卡:逐帧预览(未到帧显斜纹)+ 底部细进度条。
-/// 点卡片让画布跟随这条;active 时亮选中环。取消在画布的进度胶囊上,不在这儿。
+/// 在跑的任务卡:逐帧预览(未到帧显斜纹),外框直接承载进度环。
+/// 点卡片让画布跟随这条;active 时外框亮主色,后台态为中性灰。取消在画布的进度胶囊上,不在这儿。
 class _GenThumb extends StatelessWidget {
   const _GenThumb({required this.job, required this.active, this.onTap});
 
@@ -783,51 +784,32 @@ class _GenThumb extends StatelessWidget {
     final aspect = _aspectOf(job.width, job.height);
     final w = _thumbImgW(aspect);
     final preview = job.preview;
+    const inset = _thumbBorder + _thumbPad;
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: Motion.fast,
-        curve: Motion.standard,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: active ? scheme.primary : Colors.transparent,
-            width: _thumbBorder,
-          ),
-        ),
-        padding: const EdgeInsets.all(_thumbPad),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: SizedBox(
-            width: w,
-            height: h,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (preview != null)
-                  Image.memory(
-                    preview,
-                    fit: BoxFit.cover,
-                    gaplessPlayback: true,
-                  )
-                else
-                  StripeThumb(width: w, height: h, radius: 0),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: SizedBox(
-                    height: 3,
-                    child: LinearProgressIndicator(
-                      value: job.progress, // null = 准备中,不确定动画
-                      backgroundColor: Colors.black.withValues(alpha: .25),
-                      valueColor: AlwaysStoppedAnimation(scheme.primary),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+      child: SizedBox(
+        width: w + inset * 2,
+        height: _thumbSlotH,
+        child: GenProgressFrame(
+          progress: job.progress,
+          hasPreview: preview != null,
+          radius: 14,
+          innerRadius: 10,
+          inset: inset,
+          strokeWidth: _thumbBorder,
+          trackColor: active
+              ? scheme.primary.withValues(alpha: .22)
+              : scheme.outlineVariant.withValues(alpha: .8),
+          progressColor: active
+              ? scheme.primary
+              : scheme.onSurfaceVariant.withValues(alpha: .72),
+          child: preview != null
+              ? Image.memory(
+                  preview,
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                )
+              : StripeThumb(width: w, height: h, radius: 0),
         ),
       ),
     );

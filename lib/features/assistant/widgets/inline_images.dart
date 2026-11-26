@@ -25,6 +25,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/store/app_stores.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/ui/gen_progress_frame.dart';
 import '../../../core/util/haptics.dart';
 import '../../../core/util/image_pick.dart' show PickedImage;
 import '../../gallery/gallery_state.dart'
@@ -287,7 +288,7 @@ class _Bitmap extends StatelessWidget {
   );
 }
 
-/// 在跑的那一单:逐帧预览 + 底部细进度条,与图库胶片条同款。
+/// 在跑的那一单:逐帧预览 + 外框进度环,与图库胶片条同款。
 ///
 /// 预览帧没到的时候:这条消息出过图就垫着上一张(压暗,看得出不是结果),
 /// 第一次出图才显斜纹。
@@ -315,50 +316,60 @@ class _Running extends ConsumerWidget {
     final lastBytes = preview == null && last != null
         ? _bytesOf(ref, last)
         : null;
-    return _frame(context, size, [
-      if (preview != null)
-        Image.memory(preview, fit: BoxFit.cover, gaplessPlayback: true)
-      else if (lastBytes != null) ...[
-        _Bitmap(bytes: lastBytes, size: size),
-        ColoredBox(color: Colors.black.withValues(alpha: .35)),
-      ] else
-        StripeThumb(width: size.width, height: size.height, radius: 0),
-      // 排队位次、冷启动、限流倒计时 —— 这些只有文字说得清,进度条说不清
-      if (note != null && note.isNotEmpty)
-        Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: .55),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              note,
-              style: context.texts.labelSmall!.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
-      Positioned(
-        left: 0,
-        right: 0,
-        bottom: 0,
-        child: SizedBox(
-          height: 4,
-          child: LinearProgressIndicator(
-            value: job.progress, // null = 准备中,走不确定动画
-            backgroundColor: Colors.black.withValues(alpha: .25),
-            valueColor: AlwaysStoppedAnimation(scheme.primary),
-          ),
-        ),
+    final progress = job.progress;
+    return SizedBox(
+      width: size.width,
+      height: size.height,
+      child: GenProgressFrame(
+        progress: progress,
+        hasPreview: preview != null || lastBytes != null,
+        radius: _radius,
+        innerRadius: _radius - 1,
+        inset: 1,
+        strokeWidth: 2.5,
+        trackColor: scheme.outlineVariant,
+        progressColor: scheme.primary,
+        // 排队位次、冷启动、限流倒计时 —— 这些只有文字说得清,进度环说不清
+        overlay: note != null && note.isNotEmpty
+            ? Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: .55),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    note,
+                    style: context.texts.labelSmall!.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              )
+            : null,
+        child: preview != null
+            ? Image.memory(preview, fit: BoxFit.cover, gaplessPlayback: true)
+            : lastBytes != null
+            ? Stack(
+                fit: StackFit.expand,
+                children: [
+                  _Bitmap(bytes: lastBytes, size: size),
+                  // 有准备进度(如拉 LoRA)时底图仍是上一张结果,轻压暗与新图区隔
+                  if (progress != null)
+                    ColoredBox(color: Colors.black.withValues(alpha: .25)),
+                ],
+              )
+            : StripeThumb(width: size.width, height: size.height, radius: 0),
       ),
-    ]);
+    );
   }
 }
 
-/// 图像模型在重新生成:没有逐帧预览也没有进度,只走一条不确定的细条。
+/// 图像模型在重新生成:没有逐帧预览也没有进度,走外框流光 + 斜向扫光。
 /// 垫着上一张(压暗);上一张在图库里删了就是方框斜纹。
 class _Drawing extends ConsumerWidget {
   const _Drawing({super.key, required this.maxW, this.under});
@@ -368,29 +379,28 @@ class _Drawing extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = context.scheme;
     final last = under;
     final (w, h) = last != null ? (last.width, last.height) : (1, 1);
     final size = _box(w, h, maxW);
     final lastBytes = last == null ? null : _bytesOf(ref, last);
-    return _frame(context, size, [
-      if (lastBytes != null) ...[
-        _Bitmap(bytes: lastBytes, size: size),
-        ColoredBox(color: Colors.black.withValues(alpha: .35)),
-      ] else
-        StripeThumb(width: size.width, height: size.height, radius: 0),
-      Positioned(
-        left: 0,
-        right: 0,
-        bottom: 0,
-        child: SizedBox(
-          height: 4,
-          child: LinearProgressIndicator(
-            backgroundColor: Colors.black.withValues(alpha: .25),
-            valueColor: AlwaysStoppedAnimation(context.scheme.primary),
-          ),
-        ),
+    return SizedBox(
+      width: size.width,
+      height: size.height,
+      child: GenProgressFrame(
+        progress: null,
+        hasPreview: lastBytes != null,
+        radius: _radius,
+        innerRadius: _radius - 1,
+        inset: 1,
+        strokeWidth: 2.5,
+        trackColor: scheme.outlineVariant,
+        progressColor: scheme.primary,
+        child: lastBytes != null
+            ? _Bitmap(bytes: lastBytes, size: size)
+            : StripeThumb(width: size.width, height: size.height, radius: 0),
       ),
-    ]);
+    );
   }
 }
 
