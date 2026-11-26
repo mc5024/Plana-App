@@ -274,7 +274,12 @@ abstract final class RemoteImageStore {
 /// 网络恢复了也不会重试)。
 @immutable
 class RemoteImageProvider extends ImageProvider<RemoteImageProvider> {
-  const RemoteImageProvider(this.url, {this.scale = 1.0, this.version = 0});
+  const RemoteImageProvider(
+    this.url, {
+    this.scale = 1.0,
+    this.version = 0,
+    this.headers,
+  });
 
   final String url;
   final double scale;
@@ -283,6 +288,9 @@ class RemoteImageProvider extends ImageProvider<RemoteImageProvider> {
   /// 同一个 URL 换了内容时它 +1,于是内存里那份解码后的旧位图不再命中。
   /// 加载路径根本不看它 —— 字节永远以磁盘上那份为准。
   final int version;
+
+  /// 附加请求头(如外站图床要求的 User-Agent)。不参与缓存键。
+  final Map<String, String>? headers;
 
   static final _client = http.Client();
   static const _timeout = Duration(seconds: 30);
@@ -335,10 +343,10 @@ class RemoteImageProvider extends ImageProvider<RemoteImageProvider> {
         // 先拿缓存显示,过期的**在后台**回源验证 —— 阻塞等 304 会把「秒开」
         // 变成「每张图都先等一个来回」,而作者改图是低频事件。
         // 真拿到新内容时 write(replaced: true) 会换掉缓存键,屏幕上那张跟着换。
-        unawaited(_revalidate(key.url));
+        unawaited(_revalidate(key.url, headers: key.headers));
         return decode(await ui.ImmutableBuffer.fromUint8List(hit));
       }
-      final bytes = await _shared(key.url, chunks);
+      final bytes = await _shared(key.url, chunks, key.headers);
       return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
     } catch (_) {
       // 与 NetworkImage 同款:微任务里踢缓存,让下次 build 能真的重试
@@ -355,9 +363,10 @@ class RemoteImageProvider extends ImageProvider<RemoteImageProvider> {
   static Future<Uint8List> _shared(
     String url, [
     StreamController<ImageChunkEvent>? chunks,
+    Map<String, String>? headers,
   ]) {
     if (_downloading[url] case final f?) return f;
-    final f = _fetch(url, chunks);
+    final f = _fetch(url, chunks, headers: headers);
     _downloading[url] = f;
     f.then((_) {}, onError: (_) => _downloading.remove(url));
     return f;
@@ -366,11 +375,13 @@ class RemoteImageProvider extends ImageProvider<RemoteImageProvider> {
   /// 首次下载并落盘。进度只报给发起这次下载的那一路。
   static Future<Uint8List> _fetch(
     String url,
-    StreamController<ImageChunkEvent>? chunks,
-  ) async {
+    StreamController<ImageChunkEvent>? chunks, {
+    Map<String, String>? headers,
+  }) async {
     final (:bytes, :etag, :immutable) = await _download(
       url,
       chunks,
+      headers: headers,
     ).timeout(_timeout);
     // 落盘是旁路:写失败只是下次还得重下,不该连累这一次显示。
     // 落盘完成前别从 _downloading 里摘掉,这段时间里来要字节的直接拿这一份
@@ -394,7 +405,10 @@ class RemoteImageProvider extends ImageProvider<RemoteImageProvider> {
   /// ⚠ 每一步都得防这条回路:换缓存键 → provider 相等性变化 → Flutter 重新
   /// resolve → 再走一次 _load → 又发起验证。只要有一步**无条件**换键,就是
   /// 死循环(不发 ETag 的服务端曾经就踩在这上面,预览图肉眼可见地反复刷新)。
-  static Future<void> _revalidate(String url) async {
+  static Future<void> _revalidate(
+    String url, {
+    Map<String, String>? headers,
+  }) async {
     if (!_validating.add(url)) return;
     try {
       // 新鲜期对「验过没有」生效,而不是对「有没有 ETag」生效
@@ -405,6 +419,7 @@ class RemoteImageProvider extends ImageProvider<RemoteImageProvider> {
         return; // 上个进程刚验过(旁文件的 mtime 跨启动还在)
       }
       final req = http.Request('GET', Uri.parse(url));
+      if (headers != null) req.headers.addAll(headers);
       if (v != null && v.etag.isNotEmpty) req.headers['If-None-Match'] = v.etag;
       final resp = await _client.send(req).timeout(_revalidateTimeout);
       // 拿到任何一个完整响应就算验过。放在分支之前:非 200 那条也得记,
@@ -458,10 +473,13 @@ class RemoteImageProvider extends ImageProvider<RemoteImageProvider> {
 
   static Future<({Uint8List bytes, String? etag, bool immutable})> _download(
     String url,
-    StreamController<ImageChunkEvent>? chunks,
-  ) async {
+    StreamController<ImageChunkEvent>? chunks, {
+    Map<String, String>? headers,
+  }) async {
     final uri = Uri.parse(url);
-    final resp = await _client.send(http.Request('GET', uri));
+    final req = http.Request('GET', uri);
+    if (headers != null) req.headers.addAll(headers);
+    final resp = await _client.send(req);
     if (resp.statusCode != 200) {
       throw NetworkImageLoadException(statusCode: resp.statusCode, uri: uri);
     }
@@ -552,6 +570,7 @@ class RemoteImage extends StatelessWidget {
     this.width,
     this.height,
     this.decodeWidth,
+    this.headers,
     this.filterQuality = FilterQuality.medium,
     this.gaplessPlayback = false,
     this.frameBuilder,
@@ -567,6 +586,9 @@ class RemoteImage extends StatelessWidget {
   /// 解码宽度上限(**逻辑像素**,内部乘 dpr);null = 取布局约束宽。
   final double? decodeWidth;
 
+  /// 附加请求头(见 [RemoteImageProvider.headers])。
+  final Map<String, String>? headers;
+
   final FilterQuality filterQuality;
   final bool gaplessPlayback;
   final ImageFrameBuilder? frameBuilder;
@@ -577,6 +599,7 @@ class RemoteImage extends StatelessWidget {
     final base = RemoteImageProvider(
       url,
       version: RemoteImageStore.versionOf(url),
+      headers: headers,
     );
     return Image(
       image: cacheWidth == null

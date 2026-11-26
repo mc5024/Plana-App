@@ -2,19 +2,18 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_skin.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/editor_theme.dart';
 import '../../generate/widgets/common.dart' show hintSnack, measureText;
-import '../data/suggestions.dart' show translationOf;
+import '../data/suggestions.dart' show formatCount, translationOf;
 import '../editor_models.dart';
 import '../../../core/util/haptics.dart';
 import '../../../l10n/l10n.dart';
 
 /// 词条栏 / 权重面板 —— 光标右邻是本标签正文时吸在键盘上方。
-/// 头部(名字·热度·翻译·维基·复制·收藏·关闭)+ 权重(括号快捷键 · 数值加减,长按持续)
+/// 头部(名字·翻译·热度·详情·复制·收藏·关闭)+ 权重(括号快捷键 · 数值加减,长按持续)
 /// + 清除/关联/禁用/删除 + 关联标签(点「关联」才展开)。改动都由页面改文本落地。
 class TagPanel extends StatefulWidget {
   const TagPanel({
@@ -34,6 +33,7 @@ class TagPanel extends StatefulWidget {
     required this.onDelete,
     required this.onAddRelated,
     required this.onClose,
+    this.onOpenDetail,
     this.onRename,
     this.favorited = false,
     this.onToggleFavorite,
@@ -42,6 +42,9 @@ class TagPanel extends StatefulWidget {
   final Tok tok;
   final int? count;
   final List<String> related;
+
+  /// 打开当前标签的居中详情弹窗;null = 不展示详情入口。
+  final VoidCallback? onOpenDetail;
 
   /// 这枚标签已在收藏里(头部星标实心)。
   final bool favorited;
@@ -209,6 +212,7 @@ class _TagPanelState extends State<TagPanel> {
               count: widget.count,
               wc: wc,
               favorited: widget.favorited,
+              onOpenDetail: widget.onOpenDetail,
               onToggleFavorite: widget.onToggleFavorite,
               onClose: widget.onClose,
               renaming: _renaming,
@@ -761,13 +765,14 @@ class TagAddChip extends StatelessWidget {
   }
 }
 
-/// 头部:名字 · 热度 · 翻译 · 维基 · 复制 · 收藏 · 关闭
+/// 头部:名字 · 翻译 · 热度 · 详情 · 复制 · 收藏 · 关闭
 class _Header extends StatelessWidget {
   const _Header({
     required this.tok,
     required this.count,
     required this.wc,
     required this.favorited,
+    required this.onOpenDetail,
     required this.onToggleFavorite,
     required this.onClose,
     required this.renaming,
@@ -782,6 +787,7 @@ class _Header extends StatelessWidget {
   final int? count;
   final Color wc;
   final bool favorited;
+  final VoidCallback? onOpenDetail;
   final VoidCallback? onToggleFavorite;
   final VoidCallback onClose;
 
@@ -799,6 +805,8 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = context.scheme;
     if (renaming) return _renameRow(context);
+    final hasTrans = tok.trans != null && tok.trans!.isNotEmpty;
+    final countText = count != null ? formatCount(count!) : null;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -810,59 +818,57 @@ class _Header extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        tok.name.isEmpty ? context.l10n.tagLabel : tok.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.texts.titleMedium!.copyWith(
-                          color: wc,
-                          fontWeight: FontWeight.w700,
-                          height: 1.35,
-                          decoration: tok.disabled
-                              ? TextDecoration.lineThrough
-                              : null,
-                          decorationThickness: 2,
-                        ),
-                      ),
-                    ),
-                    if (count != null) ...[
-                      const SizedBox(width: 10),
-                      Text(
-                        _formatCount(count!),
-                        style: mono(
-                          context,
-                          size: 12,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ],
+                Text(
+                  tok.name.isEmpty ? context.l10n.tagLabel : tok.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.texts.titleMedium!.copyWith(
+                    color: wc,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                    decoration: tok.disabled
+                        ? TextDecoration.lineThrough
+                        : null,
+                    decorationThickness: 2,
+                  ),
                 ),
-                // 译文只给一行:长译文折成两行会把整张面板顶高一截
-                if (tok.trans != null && tok.trans!.isNotEmpty)
-                  Text(
-                    tok.trans!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: context.texts.bodyMedium!.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      height: 1.3,
-                    ),
+                // 译文只给一行,引用数紧随其后:长译文折行会把整张面板顶高一截
+                if (hasTrans || countText != null)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      if (hasTrans)
+                        Flexible(
+                          child: Text(
+                            tok.trans!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.texts.bodyMedium!.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                      if (countText != null) ...[
+                        if (hasTrans) const SizedBox(width: 8),
+                        Text(
+                          countText,
+                          style: mono(context, size: 12, color: scheme.outline),
+                        ),
+                      ],
+                    ],
                   ),
               ],
             ),
           ),
         ),
-        if (tok.name.isNotEmpty) ...[
+        if (tok.name.isNotEmpty && onOpenDetail != null) ...[
           _circleIcon(
             context,
-            icon: Icons.travel_explore,
-            onTap: () => _openWiki(context, tok.name),
+            icon: Icons.info_outline_rounded,
+            size: 20,
+            onTap: onOpenDetail!,
           ),
           const SizedBox(width: 4),
         ],
@@ -932,29 +938,6 @@ class _Header extends StatelessWidget {
         _circleIcon(context, icon: Icons.close, onTap: onCancelRename),
       ],
     );
-  }
-
-  /// 跳系统浏览器开 Danbooru wiki(web openDanbooru 同款,空格转下划线)。
-  Future<void> _openWiki(BuildContext context, String name) async {
-    final tag = name.trim().replaceAll(' ', '_');
-    final uri = Uri.https('danbooru.donmai.us', '/wiki_pages/$tag');
-    var ok = false;
-    try {
-      ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {}
-    if (!ok && context.mounted) {
-      hintSnack(
-        context,
-        context.l10n.cantOpenBrowser,
-        icon: Icons.error_outline,
-      );
-    }
-  }
-
-  static String _formatCount(int n) {
-    if (n < 1000) return '';
-    if (n < 10000) return '${(n / 1000).toStringAsFixed(1)}k';
-    return '${(n / 1000).round()}k';
   }
 }
 

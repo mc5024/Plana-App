@@ -1,6 +1,4 @@
-// 补全里的 OC 两处来源:本机灵感库的角色条目(底行「本地库」)排在前面,
-// 公共库的接在后面(底行写作者昵称,查不到昵称写归属 id,连归属都没有写「公共库」)。
-// 公共库里本地已经有的那份(收藏 / 发布的副本,或同名)只出本地的。
+// 补全里的画风与 OC 只检索本机灵感库,不再拉取后端公共库。
 import 'dart:convert';
 import 'dart:io';
 
@@ -21,132 +19,105 @@ http.Response _json(Object body) => http.Response(
   headers: {'content-type': 'application/json; charset=utf-8'},
 );
 
-final _client = MockClient((req) async {
-  switch (req.url.path) {
-    case '/api/oc/list':
-      return _json({
-        'ocs': [
-          // 本地那份是从这条收藏来的(publicId 对得上)
-          {
-            'en_name': 'oc_xueli',
-            'zh_name': '雪莉',
-            'tag_group': 'public copy',
-            'owner_id': '10001',
-          },
-          {
-            'en_name': 'oc_xuetu',
-            'zh_name': '雪兔',
-            'tag_group': 'rabbit',
-            'owner_id': '10001',
-          },
-          // 老数据:没有 owner_id,归属在 created_by,目录里也没有昵称
-          {
-            'en_name': 'oc_xuemei',
-            'zh_name': '雪梅',
-            'tag_group': 'plum',
-            'created_by': '10002',
-          },
-          {'en_name': 'oc_xuehua', 'zh_name': '雪花', 'tag_group': 'flake'},
-          // 和本地一个 OC 同名
-          {
-            'en_name': 'oc_dongxue',
-            'zh_name': '冬雪',
-            'tag_group': 'winter',
-            'owner_id': '10001',
-          },
-        ],
-      });
-    case '/api/public/authors':
-      return _json({
-        'authors': [
-          {'user_id': '10001', 'nickname': '小明'},
-          {'user_id': '10002', 'nickname': null},
-        ],
-      });
-    case '/api/artists/list':
-      return _json({'artists': []});
-    case '/api/tags/search':
-      return _json({'results': []});
-  }
-  return http.Response('{}', 404);
-});
+TagEntry _oc(
+  String id,
+  String name,
+  String positive, {
+  List<String> aliases = const [],
+}) => TagEntry(
+  id: id,
+  category: TagCategory.character,
+  name: name,
+  positive: positive,
+  aliases: aliases,
+  origin: TagOrigin.local,
+);
 
-TagEntry _oc(String id, String name, String positive, {String? publicId}) =>
-    TagEntry(
-      id: id,
-      category: TagCategory.character,
-      name: name,
-      positive: positive,
-      publicId: publicId,
-      origin: publicId == null ? TagOrigin.local : TagOrigin.favorited,
-    );
+TagEntry _artist(
+  String id,
+  String name,
+  String positive, {
+  List<String> aliases = const [],
+}) => TagEntry(
+  id: id,
+  category: TagCategory.artist,
+  name: name,
+  positive: positive,
+  aliases: aliases,
+  origin: TagOrigin.local,
+);
 
-final _local = [
-  _oc('character_1', '雪莉', 'local copy', publicId: 'oc_xueli'),
+final _localOcs = [
+  _oc('character_1', '雪莉', 'local copy', aliases: ['sherry']),
   _oc('character_2', '初雪', 'first snow'),
   _oc('character_3', '冬雪', 'my winter'),
   _oc('character_4', '晴天', 'sunny'),
 ];
 
-TagCompletion _completion({String? session}) => TagCompletion(
-  baseUrl: _base,
-  localDb: LocalTagDb(),
-  artistOcLib: ArtistOcLibrary(_base, session, _client),
-  localOcs: Future.value(_local),
-  client: _client,
-);
+final _localArtists = [
+  _artist('artist_1', '水彩画风', 'watercolor style', aliases: ['shuicai']),
+  _artist('artist_2', '厚涂风', 'impasto style'),
+];
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized(); // 离线词库从 asset 读
 
-  test('本地库排前、底行写「本地库」;公共库底行写作者', () async {
-    final ocs = (await _completion(session: 'sid').query('雪')).ocs;
-    expect(ocs.map((s) => s.text), ['雪莉', '初雪', '冬雪', '雪兔', '雪梅', '雪花']);
-    expect(ocs.map((s) => s.source), [
-      '本地库',
-      '本地库',
-      '本地库',
-      '小明',
-      '10002',
-      '公共库',
-    ]);
-    expect(ocs.map((s) => s.local), [true, true, true, false, false, false]);
+  test('画风与 OC 仅查本机灵感库,不请求公共库接口', () async {
+    final requestedPaths = <String>[];
+    final client = MockClient((req) async {
+      requestedPaths.add(req.url.path);
+      if (req.url.path == '/api/tags/search') {
+        return _json({'results': []});
+      }
+      return http.Response('{}', 404);
+    });
+    final tc = TagCompletion(
+      baseUrl: _base,
+      localDb: LocalTagDb(),
+      artistOcLib: const ArtistOcLibrary(),
+      localArtists: Future.value(_localArtists),
+      localOcs: Future.value(_localOcs),
+      client: client,
+    );
+
+    final ocRes = await tc.query('雪');
+    expect(ocRes.ocs.map((s) => s.text), ['雪莉', '初雪', '冬雪']);
+    expect(ocRes.ocs.map((s) => s.local), everyElement(isTrue));
+    expect(ocRes.ocs.first.insertText, 'local copy');
+
+    final styleRes = await tc.query('画风');
+    expect(styleRes.artists.map((s) => s.text), ['水彩画风']);
+    expect(styleRes.artists.single.insertText, 'watercolor style');
+    expect(styleRes.artists.single.local, isTrue);
+
+    final aliasRes = await tc.query('sherry');
+    expect(aliasRes.ocs.map((s) => s.text), ['雪莉']);
+
+    expect(requestedPaths, isNot(contains('/api/oc/list')));
+    expect(requestedPaths, isNot(contains('/api/artists/list')));
+    expect(requestedPaths, isNot(contains('/api/public/authors')));
   });
 
-  test('公共库里本地已有的(publicId 或同名)只出本地那份', () async {
-    final ocs = (await _completion(session: 'sid').query('雪')).ocs;
-    expect(ocs.singleWhere((s) => s.text == '雪莉').insertText, 'local copy');
-    expect(ocs.singleWhere((s) => s.text == '冬雪').insertText, 'my winter');
-  });
-
-  test('没登录拿不到公共库,本地库照样补', () async {
-    final ocs = (await _completion().query('雪')).ocs;
-    expect(ocs.map((s) => s.text), ['雪莉', '初雪', '冬雪']);
-  });
-
-  test('后端连不上:本地库的角色中英文都照样补', () async {
+  test('后端连不上:本机画风与 OC 中英文都照样补', () async {
     final down = MockClient(
       (req) async => throw const SocketException('network down'),
     );
     final tc = TagCompletion(
       baseUrl: _base,
       localDb: LocalTagDb(),
-      artistOcLib: ArtistOcLibrary(_base, 'sid', down),
+      artistOcLib: const ArtistOcLibrary(),
+      localArtists: Future.value(_localArtists),
       localOcs: Future.value([
-        ..._local,
-        TagEntry(
-          id: 'character_5',
-          category: TagCategory.character,
-          name: 'Kimono Girl',
-          positive: 'kimono girl tags',
-          origin: TagOrigin.local,
-        ),
+        ..._localOcs,
+        _oc('character_5', 'Kimono Girl', 'kimono girl tags'),
       ]),
       client: down,
     );
+
     final zh = await tc.query('雪');
     expect(zh.ocs.map((s) => s.text), ['雪莉', '初雪', '冬雪']);
-    expect(zh.ocs.map((s) => s.source).toSet(), {'本地库'});
+    final style = await tc.query('shuicai');
+    expect(style.artists.map((s) => s.text), ['水彩画风']);
     final en = await tc.query('kimono');
     expect(en.ocs.map((s) => s.text), ['Kimono Girl']);
     expect(en.tags.map((s) => s.text), contains('kimono'));

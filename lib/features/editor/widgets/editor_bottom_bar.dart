@@ -6,9 +6,11 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/editor_theme.dart';
 import '../../../core/util/haptics.dart';
 import '../../generate/widgets/common.dart' show hintSnack, measureText;
+import '../data/suggestions.dart' show countOf, formatCount, translationOf;
 import '../data/tag_favorites.dart';
 import '../editor_state.dart';
-import 'tag_panel.dart' show TagAddChip;
+import 'completion_bar.dart'
+    show DockTagChip, kCompletionRowGap, kCompletionRowH;
 import '../../../l10n/l10n.dart';
 
 /// 底栏控件的统一高度:正/负滑块、展开钮、右侧操作胶囊共用一个数。
@@ -24,6 +26,7 @@ class EditorBottomBar extends ConsumerWidget {
     required this.onToggleMode,
     required this.chipMode,
     required this.trayOpen,
+    this.mergeTop = false,
     required this.onToggleTray,
     required this.onInsertFavorite,
   });
@@ -34,6 +37,10 @@ class EditorBottomBar extends ConsumerWidget {
 
   /// 收藏托盘是否展开。状态放在页面上:返回键要先收托盘。
   final bool trayOpen;
+
+  /// 上方紧贴补全条时去掉顶边分隔线、用同行距衔接,合开时连成三行。
+  final bool mergeTop;
+
   final VoidCallback onToggleTray;
 
   /// 托盘里点了一枚收藏:插进正文。
@@ -61,8 +68,14 @@ class EditorBottomBar extends ConsumerWidget {
     final notifier = ref.read(editorProvider.notifier);
     final favs = ref.watch(tagFavoritesProvider);
 
-    // 浮卡样式:托盘和底栏同为卡片白,顶边描发丝边
-    return Docked(
+    // 浮卡样式下仅在无补全且托盘关闭时描底栏顶边;托盘展开时由托盘自身描顶边,
+    // 紧贴补全条(mergeTop)时两侧皆不描线,让补全与收藏连成同一块面板。
+    final barEdge = !mergeTop && !trayOpen ? context.skin.edge : null;
+    return DecoratedBox(
+      position: DecorationPosition.foreground,
+      decoration: barEdge == null
+          ? const BoxDecoration()
+          : BoxDecoration(border: Border(top: BorderSide(color: barEdge))),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -75,13 +88,17 @@ class EditorBottomBar extends ConsumerWidget {
               heightFactor: trayOpen ? 1 : 0,
               child: Material(
                 color: context.editorDock,
-                shape: Border(top: BorderSide(color: context.editorDockLine)),
+                shape: mergeTop
+                    ? null
+                    : Border(top: BorderSide(color: context.editorDockLine)),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  // 卡片高度同词条栏的关联标签;空着也占这一行,收第一枚时不跳
+                  // 底边借用下方底栏顶部 6dp 内边距,与补全条对齐
+                  padding: EdgeInsets.only(
+                    top: mergeTop ? kCompletionRowGap : 6,
+                  ),
                   child: SizedBox(
                     width: double.infinity,
-                    height: 50,
+                    height: kCompletionRowH,
                     child: favs.isEmpty
                         ? Center(
                             child: Text(
@@ -93,16 +110,25 @@ class EditorBottomBar extends ConsumerWidget {
                           )
                         : ListView.separated(
                             scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
                             itemCount: favs.length,
                             separatorBuilder: (_, _) =>
-                                const SizedBox(width: 8),
-                            itemBuilder: (context, i) => TagAddChip(
-                              tag: favs[i],
-                              onTap: () => onInsertFavorite(favs[i]),
-                              onLongPress: () =>
-                                  _removeFavorite(context, ref, favs[i]),
-                            ),
+                                const SizedBox(width: 6),
+                            itemBuilder: (context, i) {
+                              final tag = favs[i];
+                              final cnt = countOf(tag);
+                              return DockTagChip(
+                                icon: Icons.star_rounded,
+                                iconColor: scheme.primary,
+                                iconSize: 12,
+                                title: tag,
+                                count: cnt != null ? formatCount(cnt) : null,
+                                subtitle: translationOf(tag),
+                                onTap: () => onInsertFavorite(tag),
+                                onLongPress: () =>
+                                    _removeFavorite(context, ref, tag),
+                              );
+                            },
                           ),
                   ),
                 ),

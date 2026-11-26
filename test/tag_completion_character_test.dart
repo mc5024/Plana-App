@@ -85,7 +85,7 @@ void main() {
   TagCompletion makeCompletion(http.Client c) => TagCompletion(
     baseUrl: _base,
     localDb: LocalTagDb(),
-    artistOcLib: ArtistOcLibrary(_base, null, c),
+    artistOcLib: const ArtistOcLibrary(),
     client: c,
   );
 
@@ -97,7 +97,7 @@ void main() {
     expect(miku.characters.first.trans, isNotNull);
     final voc = await makeCompletion(c).query('vocalo');
     expect(voc.works.first.text, 'vocaloid');
-    expect(voc.works.first.note, isNotNull, reason: '作品行带骰子提示');
+    expect(voc.works.first.kind, SuggestionKind.work);
     expect(autocompleteCalls, 0);
   });
 
@@ -108,7 +108,7 @@ void main() {
     final tc = TagCompletion(
       baseUrl: _base,
       localDb: LocalTagDb(),
-      artistOcLib: ArtistOcLibrary(_base, 'sid', down),
+      artistOcLib: const ArtistOcLibrary(),
       client: down,
     );
     final miku = await tc.query('hatsune mi');

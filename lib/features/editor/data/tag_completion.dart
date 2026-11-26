@@ -13,35 +13,57 @@ import 'local_tag_db.dart';
 import 'suggestions.dart';
 import '../../../l10n/l10n.dart';
 
-/// Danbooru wiki 预览(增强模式):标题 + 中/英摘要 + 别名。缩略图因 Cloudflare 不取。
+/// 请求 Danbooru / Safebooru 图床时附带的客户端 UA(避免默认脚本 UA 被拦截)。
+const Map<String, String> kBooruImageHeaders = {
+  'User-Agent': 'PlanaApp/1.2 (Flutter)',
+};
+
+/// Danbooru wiki 预览:标题 + 中/英摘要 + 别名 + 示例图链接。
 class WikiPreview {
   WikiPreview({
     this.title,
     this.summary,
     this.summaryZh,
     this.otherNames = const [],
+    this.images = const [],
   });
   final String? title;
   final String? summary;
   final String? summaryZh;
   final List<String> otherNames;
+  final List<String> images;
   bool get hasText =>
       (summary != null && summary!.isNotEmpty) ||
       (summaryZh != null && summaryZh!.isNotEmpty) ||
       otherNames.isNotEmpty;
+
+  WikiPreview copyWith({
+    String? title,
+    String? summary,
+    String? summaryZh,
+    List<String>? otherNames,
+    List<String>? images,
+  }) => WikiPreview(
+    title: title ?? this.title,
+    summary: summary ?? this.summary,
+    summaryZh: summaryZh ?? this.summaryZh,
+    otherNames: otherNames ?? this.otherNames,
+    images: images ?? this.images,
+  );
 }
 
 /// 标签补全引擎。以离线词库 [LocalTagDb](assets/danbooru.tsv)为准,后端只做兜底:
 ///  - 英文查离线词库(含拼写纠错),还是一条没有才问后端 `/autocomplete`;
 ///  - 中文过后端 `/tags/search` 语义搜词;
-///  - 画师串 / 公共库 OC 来自后端,本机灵感库的角色条目一直并进来。
+///  - 画风与 OC 仅来自本机灵感库,不拉取公共库。
 /// 后端的几路一律静默:连不上、出错都退回本地能给的,不弹错。
 /// query→result 结果缓存;顺带回填注音/热度缓存([cacheTagMeta]),供词下注音层与词条栏反查。
 class TagCompletion {
   TagCompletion({
     required this.baseUrl,
     required this.localDb,
-    required this.artistOcLib,
+    this.artistOcLib = const ArtistOcLibrary(),
+    this.localArtists,
     this.localOcs,
     http.Client? client,
   }) : _client = client ?? backendHttpClient();
@@ -52,18 +74,16 @@ class TagCompletion {
   /// 离线 Danbooru 标签库。
   final LocalTagDb localDb;
 
-  /// 画师 / OC 库,并进补全。
+  /// 本地画风 / OC 匹配器。
   final ArtistOcLibrary artistOcLib;
 
-  /// 本机灵感库的角色条目,和公共库的 OC 一起并进补全(本地在前,见
-  /// [ArtistOcLibrary.search])。给 future 是因为第一次查询时库可能还没读完盘。
+  /// 本机灵感库的画风条目。
+  final Future<List<TagEntry>>? localArtists;
+
+  /// 本机灵感库的角色(OC)条目。
   final Future<List<TagEntry>>? localOcs;
 
   final http.Client _client;
-
-  /// 作品行的附注。本地库退役后拿不到「N 个角色」这个数了(那是遍历全库现算的),
-  /// 随机角色改成点骰子时按需拉,见 [randomCharacterOf]。
-  static String get _kWorkNote => l10nNow.workNote;
 
   static const _timeout = Duration(seconds: 12);
   static const _limit = 12;
@@ -74,6 +94,7 @@ class TagCompletion {
   final _cache = <String, SuggestResult>{};
   final _relatedCache = <String, List<String>>{};
   final _originChars = <String, List<String>>{}; // 作品 → 该作品下的角色池
+  final _safebooruCache = <String, List<String>>{}; // tag → Safebooru 示例图
   final _rand = Random();
 
   static void _capped<K, V>(Map<K, V> m, K k, V v) {
@@ -151,11 +172,9 @@ class TagCompletion {
     }
   }
 
-  /// 作品行骰子:随机抽一个该作品下的角色。本地角色库退役后没有预抽的角色了
-  /// (那是遍历全库现算的),改成点的时候按需拉 `/api/tags/related` —— 上游按
-  /// 共现度返回该作品最常画的角色,还自带中文名。代价是一次点击一次请求,
-  /// 所以按作品缓存,同一行连点只打一次。对齐 web `pickRandomCharacterFromOrigin`。
-  Future<String?> randomCharacterOf(String work) async {
+  /// 作品行骰子:按需拉 `/api/tags/related` 获取该作品下高共现角色池并随机抽一名。
+  /// 传入 [exclude] 时尽量避开该角色(池内有多个角色时不重复抽到同一名)。
+  Future<String?> randomCharacterOf(String work, {String? exclude}) async {
     final key = _unders(work).toLowerCase();
     if (key.isEmpty || baseUrl.isEmpty) return null;
     var pool = _originChars[key];
@@ -195,6 +214,16 @@ class TagCompletion {
         return null;
       }
     }
+    if (exclude != null && pool.length > 1) {
+      final ex = exclude.trim().toLowerCase();
+      final filtered = [
+        for (final c in pool)
+          if (c.toLowerCase() != ex) c,
+      ];
+      if (filtered.isNotEmpty) {
+        return filtered[_rand.nextInt(filtered.length)];
+      }
+    }
     return pool[_rand.nextInt(pool.length)];
   }
 
@@ -214,11 +243,14 @@ class TagCompletion {
   // 中文是语义搜词的 Copyright/Character。
   Future<SuggestResult> _complete(String q, bool cjk) async {
     final tagsF = cjk ? _chineseTags(q) : _englishTags(q);
-    final aoF = (localOcs ?? Future.value(const <TagEntry>[])).then(
-      (local) => artistOcLib.search(q, localOcs: local),
+    final artistsF = localArtists ?? Future.value(const <TagEntry>[]);
+    final ocsF = localOcs ?? Future.value(const <TagEntry>[]);
+    final (tags, localArt, localOc) = await (tagsF, artistsF, ocsF).wait;
+    final (artists, ocs) = artistOcLib.search(
+      q,
+      localArtists: localArt,
+      localOcs: localOc,
     );
-    final tags = await tagsF;
-    final (artists, ocs) = await aoF;
     return _group(tags, artists, ocs);
   }
 
@@ -414,11 +446,6 @@ class TagCompletion {
           text: text,
           kind: kind,
           trans: cn,
-          // 出处(source)留空:cn_name 后面几段**不是**稳定的出处字段,
-          // 而是建库时一起写进去的分类词/关联词 —— hatsune_miku 是
-          // 「初音未来,角色人数,VOCALOID,虚拟歌姬」,第二段拿来当出处会显示
-          // 「角色人数」。D 站角色 tag 本身多带 `_(作品)` 后缀,不猜更稳。
-          note: kind == SuggestionKind.work ? _kWorkNote : null,
           count: count,
         ),
       );
@@ -501,7 +528,6 @@ class TagCompletion {
     return Suggestion(
       text: text,
       kind: kind,
-      note: kind == SuggestionKind.work ? _kWorkNote : null,
       trans: trans,
       count: count,
     );
@@ -518,22 +544,17 @@ class TagCompletion {
     });
   }
 
-  /// 拉某标签的 Danbooru wiki 预览(仅增强模式;danbooru/离线返回 null)。文本走后端;
-  /// 缩略图(cdn.donmai.us)因 Cloudflare 手机加载不了,不取。
-  ///
-  /// **只打 `/wiki-preview` 这一发**——实测 0.5~1s,英文摘要与别名当场就有。
-  /// 中文摘要单独走 [fetchWikiZh]:服务端那张 upstream 成品表(`data/tag_wiki_zh.json`)
-  /// 目前还是空的,绝大多数标签得现抓 wiki 正文喂模型,实测 2.3~4.4s。原先把整张卡片
-  /// 压在这第二发上等,用户点开只看见一个转四五秒的圈,和坏了没区别。
-  Future<WikiPreview?> fetchWiki(String tag) async {
+  /// 拉某标签的 Danbooru wiki 预览(标题、摘要、别名与最多 3 张安全示例图)。
+  /// 中文摘要若未命中成品表则由 [fetchWikiZh] 异步补拉。
+  Future<WikiPreview?> fetchWiki(String tag, {int examples = 3}) async {
     final t = _wikiTag(tag);
     if (t == null) return null;
     try {
       final pv = await _retry(
         () => _client.get(
-          Uri.parse(
-            '$baseUrl/api/tags/wiki-preview',
-          ).replace(queryParameters: {'tag': t, 'examples': '0'}),
+          Uri.parse('$baseUrl/api/tags/wiki-preview').replace(
+            queryParameters: {'tag': t, 'examples': '$examples'},
+          ),
         ),
       );
       if (pv.statusCode != 200) return null;
@@ -546,14 +567,82 @@ class TagCompletion {
           if (x is String && x.isNotEmpty) other.add(x);
         }
       }
+      final images = <String>[];
+      final exs = j['examples'];
+      if (exs is List) {
+        for (final e in exs) {
+          if (e is! Map) continue;
+          final u = e['previewUrl'];
+          if (u is String && u.isNotEmpty && !images.contains(u)) {
+            images.add(u);
+          }
+        }
+      }
+      if (images.isEmpty && j['example'] is Map) {
+        final u = (j['example'] as Map)['previewUrl'];
+        if (u is String && u.isNotEmpty) images.add(u);
+      }
       return WikiPreview(
         title: j['title'] as String?,
         summary: j['summary'] as String?,
         summaryZh: j['summaryZh'] as String?,
         otherNames: other,
+        images: images,
       );
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Safebooru 公开 API 兜底拉取安全示例图(按高分优先)。失败返回空表,不抛。
+  Future<List<String>> fetchSafebooruImages(String tag, {int limit = 3}) async {
+    final t = tag.trim().toLowerCase().replaceAll(' ', '_');
+    if (t.isEmpty) return const [];
+    final hit = _safebooruCache[t];
+    if (hit != null) return hit;
+
+    Future<List<String>> queryOnce(String tagsParam) async {
+      final uri = Uri.https('safebooru.org', '/index.php', {
+        'page': 'dapi',
+        's': 'post',
+        'q': 'index',
+        'json': '1',
+        'limit': '${limit * 3}',
+        'tags': tagsParam,
+      });
+      final resp = await _client
+          .get(uri, headers: kBooruImageHeaders)
+          .timeout(const Duration(seconds: 10));
+      if (resp.statusCode != 200) return const [];
+      final raw = utf8.decode(resp.bodyBytes).trim();
+      if (raw.isEmpty) return const [];
+      final data = jsonDecode(raw);
+      if (data is! List) return const [];
+      const exts = {'.jpg', '.jpeg', '.png', '.webp', '.gif'};
+      final out = <String>[];
+      for (final item in data) {
+        if (item is! Map) continue;
+        final candidate = [
+          item['sample_url'],
+          item['file_url'],
+          item['preview_url'],
+        ].whereType<String>().firstWhere((u) => u.isNotEmpty, orElse: () => '');
+        if (candidate.isEmpty) continue;
+        final lower = candidate.toLowerCase();
+        if (!exts.any(lower.endsWith)) continue;
+        if (!out.contains(candidate)) out.add(candidate);
+        if (out.length >= limit) break;
+      }
+      return out;
+    }
+
+    try {
+      var urls = await queryOnce('$t sort:score:desc');
+      if (urls.isEmpty) urls = await queryOnce(t);
+      if (urls.isNotEmpty) _capped(_safebooruCache, t, urls);
+      return urls;
+    } catch (_) {
+      return const [];
     }
   }
 
@@ -592,20 +681,19 @@ class TagCompletion {
 /// 按后端基址 + 会话构造补全引擎;任一变化即重建(缓存随之刷新)。
 final tagCompletionProvider = Provider<TagCompletion>((ref) {
   final base = ref.watch(backendBaseProvider).value ?? '';
-  // 不需要在这里 watch 会话:补全接口全是公开的,而画师串/OC 那两个私有接口
-  // 由 artistOcLibraryProvider 自己 watch,会话一变它重建、这里跟着重建。
+  final libFuture = ref.watch(tagLibraryProvider.future);
   final tc = TagCompletion(
     baseUrl: base,
     localDb: ref.watch(localTagDbProvider),
     artistOcLib: ref.watch(artistOcLibraryProvider),
-    // watch 的是 .future:第一次查询等盘读完;之后库里一有增删改就重建,
-    // 查询缓存跟着作废 —— 不然刚在灵感页建的 OC 要等缓存清掉才补得出来。
-    localOcs: ref
-        .watch(tagLibraryProvider.future)
-        .then(
-          (lib) => lib.of(TagCategory.character),
-          onError: (Object _) => const <TagEntry>[],
-        ),
+    localArtists: libFuture.then(
+      (lib) => lib.of(TagCategory.artist),
+      onError: (Object _) => const <TagEntry>[],
+    ),
+    localOcs: libFuture.then(
+      (lib) => lib.of(TagCategory.character),
+      onError: (Object _) => const <TagEntry>[],
+    ),
   );
   ref.onDispose(tc.dispose);
   return tc;

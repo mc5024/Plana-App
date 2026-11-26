@@ -106,6 +106,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   bool _translating = false; // 「翻译为英文」LLM 在途(补全条切「翻译中」态)
   bool _sheetOpen = false; // 形态 B(分类竖向列表)弹层是否打开
   double _sheetH = 0; // 形态 B 弹层高度(正文底边让到它上沿,关着为 0)
+  final Map<String, WikiPreview> _wikiCache = {}; // 补全详情弹窗会话缓存
   Tok? _panelTok; // 光标所在词条(显示词条栏)
   bool _cursorDragging = false; // 正在拖水滴手柄挪光标(吸底面板暂时收起)
   (int, int)? _multiRange; // 划词多选覆盖的词条区间 [first, last](批量面板)
@@ -671,7 +672,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
   /// `+`=连续插入不关闭,抓手/底部/下滑=关闭。关闭后唤回键盘。
   Future<void> _expand() async {
     if (_sheetOpen || _query.isEmpty || _result.isEmpty) return;
-    _sheetOpen = true;
+    setState(() => _sheetOpen = true);
     (_chipMode ? _inputFocus : _focus).unfocus();
     final size = MediaQuery.of(context).size;
     await showModalBottomSheet<void>(
@@ -687,8 +688,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
             if (mounted && _sheetOpen) setState(() => _sheetH = h);
           },
           child: CompletionPanel(
+            query: _query,
             result: _result,
-            maxHeight: size.height * 0.5,
+            maxHeight: size.height * 0.75,
+            wikiCache: _wikiCache,
             onPick: (s) {
               Navigator.of(ctx).pop();
               _pick(s);
@@ -706,6 +709,37 @@ class _EditorPageState extends ConsumerState<EditorPage>
     if (!mounted) return;
     setState(() => _sheetH = 0);
     (_chipMode ? _inputFocus : _focus).requestFocus(); // 关闭即回键盘
+  }
+
+  /// 长按补全横条上的标签 / 角色 / 作品芯片:弹出居中详情弹窗,点「使用」后落地。
+  Future<void> _openSuggestDetail(Suggestion s) async {
+    if (!canShowWiki(s.kind)) return;
+    Haptics.selection();
+    final picked = await showSuggestionWikiDialog(
+      context,
+      suggestion: s,
+      cache: _wikiCache,
+    );
+    if (!mounted || picked == null) return;
+    _pick(picked);
+  }
+
+  /// 权重面板详情按钮:弹出居中标签详情弹窗(当前词已在正文里,不显示「使用」)。
+  Future<void> _openTokDetail(Tok tok) async {
+    final name = tok.name.trim();
+    if (name.isEmpty) return;
+    Haptics.selection();
+    await showSuggestionWikiDialog(
+      context,
+      suggestion: Suggestion(
+        text: name,
+        kind: SuggestionKind.tag,
+        trans: tok.trans,
+        count: countOf(name) ?? 0,
+      ),
+      cache: _wikiCache,
+      showUse: false,
+    );
   }
 
   /// 编辑器设置弹层:开关即时生效(经 build 的 ref.listen 反映到当前会话)。
@@ -1596,6 +1630,13 @@ class _EditorPageState extends ConsumerState<EditorPage>
     // 拖光标期间 dock 是冻住的那份,顶栏跟着不动,松手再定。
     final dock = _dock();
     final weightDock = dock is TagPanel || dock is BatchPanel;
+    final showExpandPill =
+        dock is CompletionBar &&
+        !_loading &&
+        !_translating &&
+        !_result.isEmpty &&
+        !_cursorDragging &&
+        !_sheetOpen;
 
     // 两种正文形态。切正/负时编辑区随方向轻滑 + 淡入
     // (单实例,不复制 TextField——controller/focus 不能同时挂两棵树)
@@ -1759,10 +1800,41 @@ class _EditorPageState extends ConsumerState<EditorPage>
                                   onToggleMode: _toggleChipMode,
                                   chipMode: settings.chipMode,
                                   trayOpen: _trayOpen,
+                                  mergeTop: dock is CompletionBar,
                                   onToggleTray: _toggleTray,
                                   onInsertFavorite: _insertFavorite,
                                 ),
                               ],
+                            ),
+                          ),
+                          LayoutId(
+                            id: _BodySlot.expandPill,
+                            child: AnimatedSwitcher(
+                              duration: Motion.fast,
+                              reverseDuration: Motion.quick,
+                              switchInCurve: Motion.emphasized,
+                              switchOutCurve: Motion.standard,
+                              transitionBuilder: (child, anim) =>
+                                  FadeTransition(
+                                    opacity: anim,
+                                    child: SlideTransition(
+                                      position: Tween<Offset>(
+                                        begin: const Offset(0, 0.2),
+                                        end: Offset.zero,
+                                      ).animate(anim),
+                                      child: child,
+                                    ),
+                                  ),
+                              child: showExpandPill
+                                  ? CompletionExpandPill(
+                                      key: const ValueKey('expand-pill'),
+                                      count: _result.total,
+                                      onExpand: _expand,
+                                      onClose: _clearSuggest,
+                                    )
+                                  : const SizedBox.shrink(
+                                      key: ValueKey('expand-pill-none'),
+                                    ),
                             ),
                           ),
                         ],
@@ -1905,6 +1977,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
         loading: _loading,
         translating: _translating,
         onPick: _pick,
+        onLongPress: _openSuggestDetail,
         // 一个都没匹配上时的「直接添加」:文本模式里字已经在正文里了,
         // 收起补全即可;芯片模式还躺在输入框里,得落成一枚 chip。
         onAddRaw: _chipMode ? _commitInput : _clearSuggest,
@@ -1944,6 +2017,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
         onToggleDisabled: _toggleDisabled,
         onDelete: _chipMode ? _chipDelete : _deleteCurrent,
         onAddRelated: _addRelated,
+        onOpenDetail: () => _openTokDetail(tok),
         onRename: _chipMode ? _chipRename : null,
         onClose: _chipMode ? () => _setChipSel({}) : _closePanel,
         favorited: ref
@@ -1957,13 +2031,14 @@ class _EditorPageState extends ConsumerState<EditorPage>
   }
 }
 
-enum _BodySlot { content, bottom }
+enum _BodySlot { content, bottom, expandPill }
 
-/// 正文 + 吸底那摞(dock、底栏)。
+/// 正文 + 吸底那摞(dock、底栏)+ 浮在补全条顶边上方的展开药丸。
 ///
 /// 键盘:整摞抬到键盘上沿,正文让出键盘 + 整摞。补全展开层是浮层,吸底那摞
 /// 本来就压在它后面,不跟着抬;只有正文底边要让到它上沿。两者取高者 ——
 /// 正文视口变矮时光标那行由 [KeepInViewTracker] 拉回视野。
+/// 展开药丸只占自身宽高、贴在底栏组合上沿外侧,不裁短正文高度。
 class _BodyLayout extends MultiChildLayoutDelegate {
   _BodyLayout({required this.keyboard, required this.sheet});
 
@@ -1985,8 +2060,20 @@ class _BodyLayout extends MultiChildLayoutDelegate {
         height: math.max(0.0, size.height - floor),
       ),
     );
+    final pill = layoutChild(
+      _BodySlot.expandPill,
+      BoxConstraints.loose(size),
+    );
     positionChild(_BodySlot.content, Offset.zero);
     positionChild(_BodySlot.bottom, Offset(0, size.height - keyboard - bottom));
+    positionChild(
+      _BodySlot.expandPill,
+      Offset(
+        math.max(0.0, w - pill.width - 12),
+        // 下压 1px 盖住补全条顶边发丝线,让耳片与补全条连为一体。
+        math.max(0.0, size.height - keyboard - bottom - pill.height + 1),
+      ),
+    );
   }
 
   @override

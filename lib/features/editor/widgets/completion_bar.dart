@@ -14,7 +14,7 @@ import '../../../l10n/l10n.dart';
     case SuggestionKind.oc:
       return (Icons.face, pal.oc);
     case SuggestionKind.work:
-      return (Icons.casino, pal.work);
+      return (Icons.auto_stories_rounded, pal.work);
     case SuggestionKind.tag:
       return (Icons.label, context.scheme.onSurfaceVariant);
     case SuggestionKind.artist:
@@ -22,45 +22,220 @@ import '../../../l10n/l10n.dart';
   }
 }
 
-/// 抓手(横向态的上拉、竖向态的下收共用)。
-///
-/// 原来是一枚 `outline` 色的裸箭头,压在 surfaceContainer 上几乎看不出是个能点的
-/// 东西 —— 而横向态那枚是**唯一**的展开入口(另一条路是盲上滑)。加个胶囊底
-/// 把它托起来:形状本身就在说「这儿可以拉」。
-///
-/// 触摸区比胶囊大一圈:胶囊管看得见,外面那圈管按得着。
-class CompletionGrip extends StatelessWidget {
-  const CompletionGrip({
+/// Danbooru 上有对应词条的类型(画风与 OC 为本机灵感库条目,无 Wiki 详情)。
+bool canShowWiki(SuggestionKind kind) =>
+    kind == SuggestionKind.tag ||
+    kind == SuggestionKind.character ||
+    kind == SuggestionKind.work;
+
+/// 贴在补全条顶边右侧的连体耳片:显示命中总数,点按或上滑展开形态 B。
+/// 与补全条同底色、仅描上/左/右发丝边,定位时下压 1px 盖掉重合的那段顶边线。
+class CompletionExpandPill extends StatelessWidget {
+  const CompletionExpandPill({
     super.key,
-    required this.icon,
-    required this.onTap,
-    this.onDragEnd,
+    required this.count,
+    required this.onExpand,
+    required this.onClose,
   });
 
-  final IconData icon;
-  final VoidCallback onTap;
-  final void Function(DragEndDetails)? onDragEnd;
+  static const double _radius = 12;
+
+  final int count;
+  final VoidCallback onExpand;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
+    const topRadius = BorderRadius.vertical(top: Radius.circular(_radius));
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onVerticalDragEnd: onDragEnd,
+      onVerticalDragEnd: (d) {
+        final v = d.primaryVelocity ?? 0;
+        if (v < -120) {
+          onExpand();
+        } else if (v > 120) {
+          onClose();
+        }
+      },
+      child: Tooltip(
+        message: context.l10n.expand,
+        child: CustomPaint(
+          foregroundPainter: _TabEdgePainter(
+            color: context.editorDockLine,
+            radius: _radius,
+          ),
+          child: Material(
+            color: context.editorDock,
+            borderRadius: topRadius,
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onExpand,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 112),
+                child: SizedBox(
+                  height: 31,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 14, 1),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          context.l10n.all,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '$count',
+                          style: mono(
+                            context,
+                            size: 12.5,
+                            weight: FontWeight.w700,
+                            color: scheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.keyboard_arrow_up_rounded,
+                          size: 20,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 仅描左、上圆角、右三条边,底部敞口与补全条顶边线衔接。
+class _TabEdgePainter extends CustomPainter {
+  const _TabEdgePainter({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 1.0;
+    const half = stroke / 2;
+    // 止于补全条顶边发丝线上沿,避免半透明线重叠出深色角点。
+    final yEnd = (size.height - stroke).clamp(0.0, size.height);
+    final r = radius.clamp(0.0, yEnd);
+    final path = Path()
+      ..moveTo(half, yEnd)
+      ..lineTo(half, r + half)
+      ..arcToPoint(Offset(r + half, half), radius: Radius.circular(r))
+      ..lineTo(size.width - r - half, half)
+      ..arcToPoint(
+        Offset(size.width - half, r + half),
+        radius: Radius.circular(r),
+      )
+      ..lineTo(size.width - half, yEnd);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_TabEdgePainter old) =>
+      old.color != color || old.radius != radius;
+}
+
+/// 横向芯片条的行高与行距(补全条与收藏托盘共用,合开时三行等距)。
+const double kCompletionRowH = 42;
+const double kCompletionRowGap = 5;
+
+/// 横向芯片条里的单枚标签卡(补全条与收藏托盘共用)。
+/// 首行仅放标签名,分类图标、译文与引用数收在第二行以压缩横向宽度。
+class DockTagChip extends StatelessWidget {
+  const DockTagChip({
+    super.key,
+    required this.icon,
+    required this.iconColor,
+    this.iconSize = 11,
+    required this.title,
+    this.count,
+    this.subtitle,
+    required this.onTap,
+    this.onLongPress,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final double iconSize;
+  final String title;
+  final String? count;
+  final String? subtitle;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    final sub = subtitle;
+    final hasSub = sub != null && sub.isNotEmpty;
+    return Material(
+      color: scheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(10),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        onLongPress: onLongPress,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 3),
-          child: Container(
-            width: 64,
-            height: 26,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: iconSize, color: iconColor),
+                    if (hasSub) ...[
+                      const SizedBox(width: 4),
+                      Text(
+                        sub,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                    if (count != null) ...[
+                      SizedBox(width: hasSub ? 5 : 4),
+                      Text(
+                        count!,
+                        style: mono(context, size: 9.5, color: scheme.outline),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -69,8 +244,8 @@ class CompletionGrip extends StatelessWidget {
 }
 
 /// 形态 A · 默认横向态:吸在键盘正上方。
-/// 自适应 1+1 —— 标签行常驻,实体行(角色/OC/作品)仅命中时滑入。
-/// 上滑 / 点把手 → 展开为形态 B。
+/// 自适应 1+1 —— 标签行常驻,实体行(画师/OC/角色/作品)命中时滑入。
+/// 上滑 / 点顶边连体耳片 → 展开为形态 B;下滑 → 关闭补全条;长按支持 Wiki 的芯片弹出详情。
 /// 内容三态(结果行 / 翻译中 / 空态)之间走高度 + 淡入过渡。
 class CompletionBar extends StatelessWidget {
   const CompletionBar({
@@ -80,6 +255,7 @@ class CompletionBar extends StatelessWidget {
     this.loading = false,
     this.translating = false,
     required this.onPick,
+    this.onLongPress,
     required this.onAddRaw,
     required this.onExpand,
     required this.onClose,
@@ -96,10 +272,13 @@ class CompletionBar extends StatelessWidget {
 
   final void Function(Suggestion) onPick;
 
+  /// 长按支持详情弹窗的芯片(标签 / 角色 / 作品)时触发。
+  final void Function(Suggestion)? onLongPress;
+
   /// 无匹配时把已输入文本直接加为新标签
   final VoidCallback onAddRaw;
 
-  /// 上滑 / 点抓手 → 展开形态 B
+  /// 上滑 → 展开形态 B
   final VoidCallback onExpand;
 
   /// 下滑 → 关闭补全条
@@ -109,16 +288,7 @@ class CompletionBar extends StatelessWidget {
   Widget build(BuildContext context) {
     if (query.isEmpty) return const SizedBox.shrink();
 
-    // 自有库(画师串 / OC)排在上游结果之前。
-    //
-    // 这一行是**横向滚动**的,手机上一屏就露两三个 —— 谁排在前面谁才算“提示”。
-    // 而角色·作品退役本地库、全量改走上游之后条数明显变多(autocomplete 一次
-    // 12 条、语义搜词不设上限),把 OC 挤出了屏幕:用户打自己 OC 的名字,得往右滑
-    // 过一串 D 站角色才看得到。自有库条数少(各 limit 5)、匹配精确,而且会去打
-    // 那个名字本来就是冲它来的,理应先露面;上游那些是补充。OC 里本地库的
-    // 又排在公共库前面(引擎给的就是这个顺序)。
-    //
-    // 形态 B(展开面板)的分组顺序同理,两边保持一致。
+    // 自有库(画师串 / OC)排在上游结果之前,与形态 B 的分组顺序保持一致。
     final entities = [
       ...result.artists,
       ...result.ocs,
@@ -137,35 +307,17 @@ class CompletionBar extends StatelessWidget {
       },
       child: Material(
         color: context.editorDock,
-        // 圆角顶 + 一圈发丝线:左右两条压在屏幕边上看不见,实际读到的
-        // 就是顺着圆角走的上沿(和词条栏那条同一副写法)。
-        shape: RoundedRectangleBorder(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-          side: BorderSide(color: context.editorDockLine),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.only(top: 4, bottom: 5),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 把手:点一下或往上拉都展开
-              CompletionGrip(
-                icon: Icons.keyboard_arrow_up_rounded,
-                onTap: onExpand,
-              ),
-              AnimatedSize(
-                duration: Motion.medium,
-                curve: Motion.emphasized,
-                alignment: Alignment.topCenter,
-                child: AnimatedSwitcher(
-                  duration: Motion.fast,
-                  child: KeyedSubtree(
-                    key: ValueKey(_bodyKey),
-                    child: _body(context, entities),
-                  ),
-                ),
-              ),
-            ],
+        shape: Border(top: BorderSide(color: context.editorDockLine)),
+        child: AnimatedSize(
+          duration: Motion.medium,
+          curve: Motion.emphasized,
+          alignment: Alignment.topCenter,
+          child: AnimatedSwitcher(
+            duration: Motion.fast,
+            child: KeyedSubtree(
+              key: ValueKey(_bodyKey),
+              child: _body(context, entities),
+            ),
           ),
         ),
       ),
@@ -186,23 +338,28 @@ class CompletionBar extends StatelessWidget {
           ? _busyHint(context, context.l10n.querying(query))
           : _emptyHint(context);
     }
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 实体行(画师/角色/OC/作品)命中时才滑入,占上;标签行常驻在下。
-        AnimatedSize(
-          duration: Motion.medium,
-          curve: Motion.emphasized,
-          alignment: Alignment.topCenter,
-          child: entities.isEmpty
-              ? const SizedBox(width: double.infinity)
-              : Padding(
-                  padding: const EdgeInsets.only(bottom: 5),
-                  child: _row(context, entities),
-                ),
-        ),
-        _row(context, result.tags),
-      ],
+    // 底边贴着 EditorBottomBar 顶部的 6dp 内边距,不重复垫底以免双倍间距
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedSize(
+            duration: Motion.medium,
+            curve: Motion.emphasized,
+            alignment: Alignment.topCenter,
+            child: entities.isEmpty
+                ? const SizedBox(width: double.infinity)
+                : Padding(
+                    padding: EdgeInsets.only(
+                      bottom: result.tags.isEmpty ? 0 : kCompletionRowGap,
+                    ),
+                    child: _row(context, entities),
+                  ),
+          ),
+          _row(context, result.tags),
+        ],
+      ),
     );
   }
 
@@ -211,7 +368,7 @@ class CompletionBar extends StatelessWidget {
     return InkWell(
       onTap: onAddRaw,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
         child: Row(
           children: [
             Icon(Icons.add, size: 16, color: scheme.primary),
@@ -235,7 +392,7 @@ class CompletionBar extends StatelessWidget {
   Widget _busyHint(BuildContext context, String label) {
     final scheme = context.scheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+      padding: const EdgeInsets.fromLTRB(16, 11, 16, 5),
       child: Row(
         children: [
           SizedBox(
@@ -265,7 +422,7 @@ class CompletionBar extends StatelessWidget {
   Widget _row(BuildContext context, List<Suggestion> items) {
     if (items.isEmpty) return const SizedBox(width: double.infinity);
     return SizedBox(
-      height: 42,
+      height: kCompletionRowH,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -298,57 +455,17 @@ class CompletionBar extends StatelessWidget {
   }
 
   Widget _chip(BuildContext context, Suggestion s) {
-    final scheme = context.scheme;
     final (icon, iconColor) = suggestionGlyph(context, s.kind);
-    final count = formatCount(s.count);
-    return Material(
-      color: scheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(10),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => onPick(s),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 12, color: iconColor),
-                  const SizedBox(width: 5),
-                  Text(
-                    s.text,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  if (count != null) ...[
-                    const SizedBox(width: 5),
-                    Text(
-                      count,
-                      style: mono(context, size: 9.5, color: scheme.outline),
-                    ),
-                  ],
-                ],
-              ),
-              if (_subtitle(s) case final String sub when sub.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 1),
-                  child: Text(
-                    sub,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
+    return DockTagChip(
+      icon: icon,
+      iconColor: iconColor,
+      title: s.text,
+      count: formatCount(s.count),
+      subtitle: _subtitle(s),
+      onTap: () => onPick(s),
+      onLongPress: onLongPress != null && canShowWiki(s.kind)
+          ? () => onLongPress!(s)
+          : null,
     );
   }
 }
