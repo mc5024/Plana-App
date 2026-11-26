@@ -25,7 +25,7 @@ import 'public_tags.dart';
 import 'tag_library.dart';
 import 'tag_models.dart';
 import 'tag_preview_gen.dart';
-import 'widgets/tag_sheets.dart' show pickTagSheet;
+import 'widgets/tag_sheets.dart' show confirmDeleteTagEntries, pickTagSheet;
 import '../../l10n/l10n.dart';
 
 /// 新建时预填的名字、正负向与标签(创作页「存到灵感库」带进来的,或新建页换类别时
@@ -502,7 +502,7 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
     final ok = await confirmDialog(
       context,
       title: '撤回公共发布',
-      message: '将从公共库撤回「${edit.name}」,本地保留一份可继续编辑的副本。',
+      message: '将从公共库撤回「${edit.name}」，本地会保留一份可继续编辑的副本。',
       confirmLabel: '撤回',
     );
     if (!ok || !mounted) return;
@@ -649,16 +649,9 @@ class _TagEditorPageState extends ConsumerState<TagEditorPage> {
 
   Future<void> _delete() async {
     final edit = _edit!;
-    final isCreated = edit.origin == TagOrigin.created;
-    final ok = await confirmDialog(
-      context,
-      title: context.l10n.deleteNamedQ(edit.name),
-      message: isCreated
-          ? '将同时删除公共库条目与本地副本,不可恢复。'
-          : context.l10n.localOnlyDeleteBody,
-      confirmLabel: context.l10n.delete,
-    );
-    if (!ok) return;
+    final isCreated = edit.origin == TagOrigin.created && edit.publicId != null;
+    final ok = await confirmDeleteTagEntries(context, [edit]);
+    if (!ok || !mounted) return;
     await _run(() async {
       if (isCreated) {
         final session = ref.read(botSessionProvider).value;

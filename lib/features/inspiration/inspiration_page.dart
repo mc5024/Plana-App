@@ -20,8 +20,7 @@ import '../generate/gen_modules.dart';
 import '../generate/generate_state.dart';
 import '../generate/models.dart' show maxCharactersOf;
 import '../generate/style_recipes.dart';
-import '../generate/widgets/common.dart'
-    show confirmDialog, hintSnack, sharedAxisRoute;
+import '../generate/widgets/common.dart' show hintSnack, sharedAxisRoute;
 import '../shell/shell_state.dart';
 import 'codex/codex_view.dart';
 import 'artist_models.dart';
@@ -148,11 +147,14 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
   // ---- 回填(语义对齐 web;app 编辑器无芯片协议,按约定插裸内容) ----
 
   List<TagEntry> _resolveSelected(TagLibraryState lib) {
-    final byId = {for (final e in lib.of(_cat)) e.id: e};
+    final uid = ref.read(botSessionProvider).value?.botUserId;
     final pub = ref.read(publicTagsProvider(_cat)).value;
+    final byId = {
+      for (final e in mergeMineTags(lib.of(_cat), uid, pub)) e.id: e,
+    };
     if (pub != null) {
       for (final e in pub) {
-        byId[e.id] = e;
+        byId.putIfAbsent(e.id, () => e);
       }
     }
     return [
@@ -490,54 +492,14 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
       _deleteEntries(_resolveSelected(lib));
 
   /// 删除条目:已发布的(created + publicId)连同公共库条目一并删。
-  ///
-  /// 卡片菜单和多选底栏走同一条 —— 早先卡片菜单只删本地、文案还恒写「仅删除
-  /// 本地条目」,已发布的条目从库里消失、公共库那份却还挂着,之后连管理入口
-  /// 都没有了。
   Future<void> _deleteEntries(List<TagEntry> entries) async {
     if (entries.isEmpty) return;
-    // 三种来源三种后果(对齐 web 桌面端管理器的单卡菜单):
-    //   created  发布过的 → 公共库条目 + 本地副本一起删
-    //   favorited 收藏来的 → 只丢自己这份副本,公共库原作不动
-    //   local     纯本地的 → 就是删本地
     final published = [
       for (final e in entries)
         if (e.origin == TagOrigin.created && e.publicId != null) e,
     ];
-    final favorited = [
-      for (final e in entries)
-        if (e.origin == TagOrigin.favorited) e,
-    ];
-    final localOnly = entries.length - published.length - favorited.length;
     final one = entries.length == 1 ? entries.first : null;
-
-    final String title, message;
-    if (one != null) {
-      if (published.isNotEmpty) {
-        title = '删除「${one.name}」?';
-        message = '将彻底删除公共库条目与本地副本,不可恢复。';
-      } else if (favorited.isNotEmpty) {
-        title = '删除收藏?';
-        message = '将从本地移除「${one.name}」,公共库原作不受影响。';
-      } else {
-        title = context.l10n.deleteNamedQ(one.name);
-        message = context.l10n.localOnlyDeleteBody;
-      }
-    } else {
-      title = context.l10n.deleteNItemsQ(entries.length);
-      final lines = [
-        if (published.isNotEmpty) '· 你发布的 ${published.length} 项:连同公共库条目一起删',
-        if (favorited.isNotEmpty) '· 收藏的 ${favorited.length} 项:只移除本地副本,原作不动',
-        if (localOnly > 0) context.l10n.localOnlyNLine(localOnly),
-      ];
-      message = '${lines.join('\n')}\n\n${context.l10n.cantUndoShort}';
-    }
-    final ok = await confirmDialog(
-      context,
-      title: title,
-      message: message,
-      confirmLabel: context.l10n.delete,
-    );
+    final ok = await confirmDeleteTagEntries(context, entries);
     if (!ok || !mounted) return;
     await _runBatch(() async {
       final notifier = ref.read(tagLibraryProvider.notifier);
@@ -601,6 +563,28 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
     });
   }
 
+  /// 批量收藏到指定标签(公共库 scope):未在「我的」中的先收藏,再统一打上所选标签。
+  Future<void> _batchCollectWithTag(TagLibraryState lib) async {
+    final entries = _resolveSelected(lib);
+    if (entries.isEmpty) return;
+    final tag = await pickTagSheet(context, ref, _cat, title: '添加到我的标签');
+    if (tag == null || !mounted) return;
+    await _runBatch(() async {
+      final myUserId = ref.read(botSessionProvider).value?.botUserId;
+      final r = await ref
+          .read(tagLibraryProvider.notifier)
+          .collectWithTag(_cat, entries, tag, myUserId: myUserId);
+      if (!mounted) return;
+      setState(() => _sel.clear());
+      final msg = switch (r.tagged) {
+        0 => '所选项已在「$tag」中',
+        final n when n == entries.length => '已添加 $n 项到「$tag」',
+        final n => '已添加 $n 项到「$tag」(其余已有该标签)',
+      };
+      hintSnack(context, msg, icon: Icons.sell_outlined);
+    });
+  }
+
   // ---- 底部操作条 ----
 
   /// 角色模块对当前模型是否可见 —— 决定「加入角色」这个去处存不存在。
@@ -612,7 +596,9 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
     return ms.isVisibleFor(GenModule.character, model);
   }
 
-  /// 多选底栏(一行):✕ 取消 · 标签 / 收藏 · 删除 · 添加。
+  /// 多选底栏(一行):
+  /// - 我的:✕ 取消 · 标签 · 删除 · 添加
+  /// - 公共库:✕ 取消 · 收藏 · 标签 · 添加
   /// 「添加」:角色加成角色卡;角色模块不可见时(anima 等)和其余分类一样
   /// 拼进主提示词。
   Widget _selectionBar(ColorScheme scheme, TagLibraryState lib) {
@@ -626,13 +612,18 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
       safeArea: false,
       onClear: () => setState(() => _sel.clear()),
       actions: [
-        if (publicScope)
+        if (publicScope) ...[
           SelectionIconButton(
             icon: Icons.favorite_border,
             tooltip: context.l10n.favoriteAction,
             onTap: _busy ? null : () => _batchCollect(lib),
-          )
-        else
+          ),
+          SelectionIconButton(
+            icon: Icons.sell_outlined,
+            tooltip: context.l10n.kindTag,
+            onTap: _busy ? null : () => _batchCollectWithTag(lib),
+          ),
+        ] else
           SelectionIconButton(
             icon: Icons.sell_outlined,
             tooltip: context.l10n.kindTag,

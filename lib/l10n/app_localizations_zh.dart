@@ -4016,11 +4016,19 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String deleteNamedQ(String name) {
-    return '删除「$name」?';
+    return '删除「$name」？';
   }
 
   @override
-  String get localOnlyDeleteBody => '仅删除本地条目,不可恢复。';
+  String get deleteEntry => '删除条目';
+
+  @override
+  String deleteEntryLocalBody(String name) {
+    return '将删除「$name」，无法恢复。';
+  }
+
+  @override
+  String get localOnlyDeleteBody => '删除后无法恢复。';
 
   @override
   String get deletedLabel => '已删除';
@@ -4156,20 +4164,20 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String deleteNItemsQ(int n) {
-    return '删除 $n 项?';
+    return '删除 $n 项';
   }
 
   @override
   String localOnlyNLine(int n) {
-    return '· 本地的 $n 项:仅删除本地';
+    return '本地 · $n 项：删除后无法恢复';
   }
 
   @override
-  String get cantUndoShort => '不可恢复。';
+  String get cantUndoShort => '无法恢复。';
 
   @override
   String deletedNFailed(int done, int failed) {
-    return '已删除 $done 项,$failed 项失败';
+    return '已删除 $done 项，$failed 项失败';
   }
 
   @override
@@ -4346,7 +4354,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String clearFavoritesBody(int n) {
-    return '将移除全部 $n 条收藏,不可恢复。法典词条本身不受影响。';
+    return '将清空全部 $n 条收藏，无法恢复。法典词条本身不受影响。';
   }
 
   @override
@@ -4442,16 +4450,29 @@ class AppLocalizationsZh extends AppLocalizations {
   String get categoryExists => '已有同名类别';
 
   @override
-  String get categoryEmpty => '这个类别还没有条目。';
+  String get deleteCategory => '删除类别';
+
+  @override
+  String get categoryEmpty => '该类别暂无条目。';
+
+  @override
+  String categoryDeleteEmpty(String name) {
+    return '将删除类别「$name」，该类别暂无条目。';
+  }
 
   @override
   String categoryDeleteN(int n) {
-    return '类别里的 $n 个条目会一起删除,不可恢复。';
+    return '该类别下的 $n 个条目将一并删除，无法恢复。';
+  }
+
+  @override
+  String categoryDeleteNamedN(String name, int n) {
+    return '将删除类别「$name」及其中的 $n 个条目，无法恢复。';
   }
 
   @override
   String categoryReAdd(String name) {
-    return '之后新建一个叫「$name」的类别,可以把它加回来。';
+    return '之后新建同名类别「$name」可恢复。';
   }
 
   @override
@@ -4553,12 +4574,17 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String deleteTagQ(String tag) {
-    return '删除标签「$tag」?';
+    return '删除标签「$tag」？';
   }
 
   @override
   String deleteTagEntriesBody(int n) {
-    return '$n 个条目会摘掉该标签,条目本身保留。';
+    return '将从 $n 个条目中移除该标签，条目本身会保留。';
+  }
+
+  @override
+  String deleteTagNamedBody(String tag, int n) {
+    return '将从 $n 个条目中移除标签「$tag」，条目本身会保留。';
   }
 
   @override

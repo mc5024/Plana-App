@@ -276,14 +276,28 @@ class _ManagerSheet extends ConsumerWidget {
     final n = lib.of(def.key).length;
     final builtin = !def.key.isCustom;
     final entries = n == 0
-        ? context.l10n.categoryEmpty
-        : context.l10n.categoryDeleteN(n);
+        ? context.l10n.categoryDeleteEmpty(def.label)
+        : context.l10n.categoryDeleteNamedN(def.label, n);
     final ok = await confirmDialog(
       context,
-      title: context.l10n.deleteNamedQ(def.label),
-      message: builtin
-          ? '$entries\n${context.l10n.categoryReAdd(builtinCategoryLabel(def.webId))}'
-          : entries,
+      title: context.l10n.deleteCategory,
+      message: builtin ? null : entries,
+      body: builtin
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(entries),
+                const SizedBox(height: 6),
+                Text(
+                  context.l10n.categoryReAdd(builtinCategoryLabel(def.webId)),
+                  style: context.texts.bodySmall!.copyWith(
+                    color: context.scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            )
+          : null,
       confirmLabel: context.l10n.delete,
     );
     if (!ok) return;

@@ -4375,6 +4375,14 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get deleteEntry => 'Delete Entry';
+
+  @override
+  String deleteEntryLocalBody(String name) {
+    return '“$name” will be permanently deleted.';
+  }
+
+  @override
   String get localOnlyDeleteBody =>
       'Only the local entry is deleted. This can\'t be undone.';
 
@@ -4528,10 +4536,10 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       n,
       locale: localeName,
-      other: '$n items',
-      one: '1 item',
+      other: '$n Items',
+      one: '1 Item',
     );
-    return 'Delete $_temp0?';
+    return 'Delete $_temp0';
   }
 
   @override
@@ -4833,7 +4841,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get categoryExists => 'A category with this name already exists';
 
   @override
+  String get deleteCategory => 'Delete Category';
+
+  @override
   String get categoryEmpty => 'This category has no entries yet.';
+
+  @override
+  String categoryDeleteEmpty(String name) {
+    return 'Category “$name” has no entries and will be deleted.';
+  }
 
   @override
   String categoryDeleteN(int n) {
@@ -4844,6 +4860,17 @@ class AppLocalizationsEn extends AppLocalizations {
       one: 'Its 1 entry',
     );
     return '$_temp0 will be deleted too. This can\'t be undone.';
+  }
+
+  @override
+  String categoryDeleteNamedN(String name, int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'its $n entries',
+      one: 'its 1 entry',
+    );
+    return 'Category “$name” and $_temp0 will be deleted. This can\'t be undone.';
   }
 
   @override
@@ -4962,6 +4989,17 @@ class AppLocalizationsEn extends AppLocalizations {
       one: '1 entry',
     );
     return 'The tag will be removed from $_temp0; the entries stay.';
+  }
+
+  @override
+  String deleteTagNamedBody(String tag, int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n entries',
+      one: '1 entry',
+    );
+    return 'Tag “$tag” will be removed from $_temp0; the entries stay.';
   }
 
   @override

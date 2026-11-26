@@ -7081,13 +7081,25 @@ abstract class AppLocalizations {
   /// No description provided for @deleteNamedQ.
   ///
   /// In zh, this message translates to:
-  /// **'删除「{name}」?'**
+  /// **'删除「{name}」？'**
   String deleteNamedQ(String name);
+
+  /// No description provided for @deleteEntry.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除条目'**
+  String get deleteEntry;
+
+  /// No description provided for @deleteEntryLocalBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'将删除「{name}」，无法恢复。'**
+  String deleteEntryLocalBody(String name);
 
   /// No description provided for @localOnlyDeleteBody.
   ///
   /// In zh, this message translates to:
-  /// **'仅删除本地条目,不可恢复。'**
+  /// **'删除后无法恢复。'**
   String get localOnlyDeleteBody;
 
   /// No description provided for @deletedLabel.
@@ -7321,25 +7333,25 @@ abstract class AppLocalizations {
   /// No description provided for @deleteNItemsQ.
   ///
   /// In zh, this message translates to:
-  /// **'删除 {n} 项?'**
+  /// **'删除 {n} 项'**
   String deleteNItemsQ(int n);
 
   /// No description provided for @localOnlyNLine.
   ///
   /// In zh, this message translates to:
-  /// **'· 本地的 {n} 项:仅删除本地'**
+  /// **'本地 · {n} 项：删除后无法恢复'**
   String localOnlyNLine(int n);
 
   /// No description provided for @cantUndoShort.
   ///
   /// In zh, this message translates to:
-  /// **'不可恢复。'**
+  /// **'无法恢复。'**
   String get cantUndoShort;
 
   /// No description provided for @deletedNFailed.
   ///
   /// In zh, this message translates to:
-  /// **'已删除 {done} 项,{failed} 项失败'**
+  /// **'已删除 {done} 项，{failed} 项失败'**
   String deletedNFailed(int done, int failed);
 
   /// No description provided for @deletedNItems.
@@ -7645,7 +7657,7 @@ abstract class AppLocalizations {
   /// No description provided for @clearFavoritesBody.
   ///
   /// In zh, this message translates to:
-  /// **'将移除全部 {n} 条收藏,不可恢复。法典词条本身不受影响。'**
+  /// **'将清空全部 {n} 条收藏，无法恢复。法典词条本身不受影响。'**
   String clearFavoritesBody(int n);
 
   /// No description provided for @noFavoritesYet.
@@ -7822,22 +7834,40 @@ abstract class AppLocalizations {
   /// **'已有同名类别'**
   String get categoryExists;
 
+  /// No description provided for @deleteCategory.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除类别'**
+  String get deleteCategory;
+
   /// No description provided for @categoryEmpty.
   ///
   /// In zh, this message translates to:
-  /// **'这个类别还没有条目。'**
+  /// **'该类别暂无条目。'**
   String get categoryEmpty;
+
+  /// No description provided for @categoryDeleteEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'将删除类别「{name}」，该类别暂无条目。'**
+  String categoryDeleteEmpty(String name);
 
   /// No description provided for @categoryDeleteN.
   ///
   /// In zh, this message translates to:
-  /// **'类别里的 {n} 个条目会一起删除,不可恢复。'**
+  /// **'该类别下的 {n} 个条目将一并删除，无法恢复。'**
   String categoryDeleteN(int n);
+
+  /// No description provided for @categoryDeleteNamedN.
+  ///
+  /// In zh, this message translates to:
+  /// **'将删除类别「{name}」及其中的 {n} 个条目，无法恢复。'**
+  String categoryDeleteNamedN(String name, int n);
 
   /// No description provided for @categoryReAdd.
   ///
   /// In zh, this message translates to:
-  /// **'之后新建一个叫「{name}」的类别,可以把它加回来。'**
+  /// **'之后新建同名类别「{name}」可恢复。'**
   String categoryReAdd(String name);
 
   /// No description provided for @editCategory.
@@ -8005,14 +8035,20 @@ abstract class AppLocalizations {
   /// No description provided for @deleteTagQ.
   ///
   /// In zh, this message translates to:
-  /// **'删除标签「{tag}」?'**
+  /// **'删除标签「{tag}」？'**
   String deleteTagQ(String tag);
 
   /// No description provided for @deleteTagEntriesBody.
   ///
   /// In zh, this message translates to:
-  /// **'{n} 个条目会摘掉该标签,条目本身保留。'**
+  /// **'将从 {n} 个条目中移除该标签，条目本身会保留。'**
   String deleteTagEntriesBody(int n);
+
+  /// No description provided for @deleteTagNamedBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'将从 {n} 个条目中移除标签「{tag}」，条目本身会保留。'**
+  String deleteTagNamedBody(String tag, int n);
 
   /// No description provided for @addTag.
   ///

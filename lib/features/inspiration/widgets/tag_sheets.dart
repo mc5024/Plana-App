@@ -33,6 +33,146 @@ Widget _sheetTitle(BuildContext context, IconData icon, String title) {
   );
 }
 
+/// 删除条目的确认弹窗(灵感页单删/批量删与编辑页共用)。
+Future<bool> confirmDeleteTagEntries(
+  BuildContext context,
+  List<TagEntry> entries,
+) {
+  if (entries.isEmpty) return Future.value(false);
+  final published = [
+    for (final e in entries)
+      if (e.origin == TagOrigin.created && e.publicId != null) e,
+  ];
+  final favorited = [
+    for (final e in entries)
+      if (e.origin == TagOrigin.favorited) e,
+  ];
+  final localOnly = entries.length - published.length - favorited.length;
+
+  final l10n = context.l10n;
+  final one = entries.length == 1 ? entries.first : null;
+  final kinds =
+      (published.isNotEmpty ? 1 : 0) +
+      (favorited.isNotEmpty ? 1 : 0) +
+      (localOnly > 0 ? 1 : 0);
+
+  if (one != null) {
+    final String title, message;
+    if (published.isNotEmpty) {
+      title = l10n.deleteEntry;
+      message = '将同时删除「${one.name}」的公共库条目与本地副本，无法恢复。';
+    } else if (favorited.isNotEmpty) {
+      title = '删除收藏';
+      message = '将从「我的」移除「${one.name}」，公共库中仍会保留。';
+    } else {
+      title = l10n.deleteEntry;
+      message = l10n.deleteEntryLocalBody(one.name);
+    }
+    return confirmDialog(
+      context,
+      title: title,
+      message: message,
+      confirmLabel: l10n.delete,
+    );
+  }
+
+  final title = l10n.deleteNItemsQ(entries.length);
+  if (kinds == 1) {
+    final String message;
+    if (published.isNotEmpty) {
+      message = '将同时删除公共库中的条目与本地副本，无法恢复。';
+    } else if (favorited.isNotEmpty) {
+      message = '仅从「我的」移除，公共库中仍会保留。';
+    } else {
+      message = l10n.cantUndo;
+    }
+    return confirmDialog(
+      context,
+      title: title,
+      message: message,
+      confirmLabel: l10n.delete,
+    );
+  }
+
+  return confirmDialog(
+    context,
+    title: title,
+    body: _DeleteBreakdown(
+      published: published.length,
+      favorited: favorited.length,
+      localOnly: localOnly,
+    ),
+    confirmLabel: l10n.delete,
+  );
+}
+
+class _DeleteBreakdown extends StatelessWidget {
+  const _DeleteBreakdown({
+    required this.published,
+    required this.favorited,
+    required this.localOnly,
+  });
+
+  final int published;
+  final int favorited;
+  final int localOnly;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    final texts = context.texts;
+    final rows = <(String title, String detail, Color dot)>[
+      if (published > 0)
+        ('已发布 · $published 项', '同时从公共库与本地删除，无法恢复', scheme.error),
+      if (localOnly > 0)
+        ('本地 · $localOnly 项', '删除后无法恢复', scheme.onSurfaceVariant),
+      if (favorited > 0)
+        ('收藏 · $favorited 项', '仅从「我的」移除，公共库中仍会保留', scheme.onSurfaceVariant),
+    ];
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < rows.length; i++) ...[
+          if (i > 0) const SizedBox(height: 10),
+          Row(
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: rows[i].$3,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  rows[i].$1,
+                  style: texts.bodyMedium!.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurface,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 14, top: 2),
+            child: Text(
+              rows[i].$2,
+              style: texts.bodySmall!.copyWith(
+                color: scheme.onSurfaceVariant,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 // ---- 详情 ----
 
 Future<void> showTagDetailSheet(BuildContext context, TagEntry e) =>
@@ -363,9 +503,9 @@ class _PoolSheetState extends ConsumerState<_PoolSheet> {
                                       n == 0 ||
                                       await confirmDialog(
                                         context,
-                                        title: context.l10n.deleteTagQ(t),
+                                        title: context.l10n.deleteTag,
                                         message: context.l10n
-                                            .deleteTagEntriesBody(n),
+                                            .deleteTagNamedBody(t, n),
                                         confirmLabel: context.l10n.delete,
                                       );
                                   if (ok) {
@@ -392,13 +532,15 @@ class _PoolSheetState extends ConsumerState<_PoolSheet> {
 Future<String?> pickTagSheet(
   BuildContext context,
   WidgetRef ref,
-  TagCategory cat,
-) => _sheet<String>(context, _TagPickSheet(cat));
+  TagCategory cat, {
+  String? title,
+}) => _sheet<String>(context, _TagPickSheet(cat, title: title));
 
 class _TagPickSheet extends ConsumerStatefulWidget {
-  const _TagPickSheet(this.cat);
+  const _TagPickSheet(this.cat, {this.title});
 
   final TagCategory cat;
+  final String? title;
 
   @override
   ConsumerState<_TagPickSheet> createState() => _TagPickSheetState();
@@ -421,73 +563,85 @@ class _TagPickSheetState extends ConsumerState<_TagPickSheet> {
         const <String>[];
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
-            child: _sheetTitle(
-              context,
-              Icons.sell_outlined,
-              context.l10n.addTag,
-            ),
+      child: SafeArea(
+        top: false,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.82,
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _input,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: context.l10n.newTagEllipsis,
-                      filled: true,
-                      fillColor: scheme.surfaceContainerHigh,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                    ),
-                    onSubmitted: (v) {
-                      final t = v.trim();
-                      if (t.isNotEmpty) Navigator.pop(context, t);
-                    },
-                  ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+                child: _sheetTitle(
+                  context,
+                  Icons.sell_outlined,
+                  widget.title ?? context.l10n.addTag,
                 ),
-                const SizedBox(width: 8),
-                FilledButton.tonal(
-                  onPressed: () {
-                    final t = _input.text.trim();
-                    if (t.isNotEmpty) Navigator.pop(context, t);
-                  },
-                  child: Text(context.l10n.use),
-                ),
-              ],
-            ),
-          ),
-          if (tags.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final t in tags)
-                    ActionChip(
-                      label: Text(t),
-                      shape: const StadiumBorder(),
-                      onPressed: () => Navigator.pop(context, t),
-                    ),
-                ],
               ),
-            ),
-        ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _input,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          hintText: context.l10n.newTagEllipsis,
+                          filled: true,
+                          fillColor: scheme.surfaceContainerHigh,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                        onSubmitted: (v) {
+                          final t = v.trim();
+                          if (t.isNotEmpty) Navigator.pop(context, t);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.tonal(
+                      onPressed: () {
+                        final t = _input.text.trim();
+                        if (t.isNotEmpty) Navigator.pop(context, t);
+                      },
+                      child: Text(context.l10n.use),
+                    ),
+                  ],
+                ),
+              ),
+              if (tags.isNotEmpty)
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final t in tags)
+                          ActionChip(
+                            label: Text(t),
+                            shape: const StadiumBorder(),
+                            onPressed: () => Navigator.pop(context, t),
+                          ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                const SizedBox(height: 8),
+            ],
+          ),
+        ),
       ),
     );
   }

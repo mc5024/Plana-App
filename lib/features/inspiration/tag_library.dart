@@ -393,6 +393,29 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
     return false;
   }
 
+  static int _idSeq = 0;
+
+  static String _favId() {
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final seq = (_idSeq++).toRadixString(36);
+    final r = Random().nextInt(36 * 36 * 36).toRadixString(36).padLeft(3, '0');
+    return 'fav_${ts}_${seq}_$r';
+  }
+
+  static int _findLocalIndex(List<TagEntry> list, TagEntry item) {
+    final byId = list.indexWhere((e) => e.id == item.id);
+    if (byId >= 0) return byId;
+    if (item.publicId != null) {
+      final byPub = list.indexWhere(
+        (e) => e.category == item.category && e.publicId == item.publicId,
+      );
+      if (byPub >= 0) return byPub;
+    }
+    return list.indexWhere(
+      (e) => e.category == item.category && e.name == item.name,
+    );
+  }
+
   /// 收藏公共条目为本地副本;重复收藏返回 false。
   /// 老数据(同名但没记 publicId)顺手补上归属信息——「按机会迁移」,
   /// 对齐 web,否则去重与「收藏副本只读」判定会漏。
@@ -416,7 +439,7 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
     }
     await upsert(
       TagEntry(
-        id: 'fav_${DateTime.now().millisecondsSinceEpoch}',
+        id: _favId(),
         category: publicEntry.category,
         name: publicEntry.name,
         positive: publicEntry.positive,
@@ -432,6 +455,88 @@ class TagLibrary extends AsyncNotifier<TagLibraryState> {
       ),
     );
     return true;
+  }
+
+  /// 批量收藏公共条目(或已存在的本地条目)并加入指定标签,一次落盘。
+  /// 已在本地的条目保留原数据并补上 [tag];未在本地的先收为副本再带上 [tag]。
+  /// 标签同步写入该分类标签池。返回 (新增到本地数, 本次新打上该标签数)。
+  Future<({int collected, int tagged})> collectWithTag(
+    TagCategory cat,
+    Iterable<TagEntry> entries,
+    String tag, {
+    String? myUserId,
+  }) async {
+    final t = tag.trim();
+    if (t.isEmpty) return (collected: 0, tagged: 0);
+
+    final list = [..._s.entries];
+    final nextPools = _s.knownTags(cat).contains(t)
+        ? _s.pools
+        : {
+            ..._s.pools,
+            cat: [..._s.poolOf(cat), t],
+          };
+
+    var collected = 0;
+    var tagged = 0;
+    var dirty = !identical(nextPools, _s.pools);
+
+    for (final item in entries) {
+      if (item.category != cat) continue;
+      final isMine =
+          myUserId != null &&
+          myUserId.isNotEmpty &&
+          item.createdBy == myUserId;
+      final idx = _findLocalIndex(list, item);
+      if (idx >= 0) {
+        var existing = list[idx];
+        var changed = false;
+        if (existing.publicId == null && item.publicId != null) {
+          existing = existing.copyWith(
+            publicId: item.publicId,
+            origin: isMine ? TagOrigin.created : TagOrigin.favorited,
+          );
+          changed = true;
+        }
+        if (!existing.tags.contains(t)) {
+          existing = existing.copyWith(tags: [...existing.tags, t]..sort());
+          changed = true;
+          tagged++;
+        }
+        if (changed) {
+          list[idx] = existing;
+          dirty = true;
+        }
+      } else {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        list.add(
+          TagEntry(
+            id: isMine ? newId(cat) : _favId(),
+            category: item.category,
+            name: item.name,
+            positive: item.positive,
+            negative: item.negative,
+            aliases: item.aliases,
+            tags: [t],
+            models: item.models,
+            recipe: item.recipe,
+            origin: isMine ? TagOrigin.created : TagOrigin.favorited,
+            publicId: item.publicId,
+            previews: item.previews,
+            createdAt: isMine && item.createdAt > 0 ? item.createdAt : now,
+            createdBy: item.createdBy,
+          ),
+        );
+        collected++;
+        tagged++;
+        dirty = true;
+      }
+    }
+
+    if (dirty) {
+      await _set(_s.copyWith(entries: list, pools: nextPools));
+    }
+    return (collected: collected, tagged: tagged);
   }
 
   // ---- 自定义类别 / 页签排列 ----
