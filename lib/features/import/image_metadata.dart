@@ -288,8 +288,8 @@ _PngTextChunks _extractPngTextChunks(Uint8List bytes) {
 
 // ============ NovelAI ============
 
-/// V5 Full 的两个权重指纹(取自 NAI 官方前端白名单)。
-const _v5FullHashes = ['657484a5', '0adf9ab7'];
+/// V5 Full 的权重指纹(取自 NAI 官方前端白名单)。
+const _v5FullHashes = ['81e2a1bd', '657484a5', '0adf9ab7'];
 
 /// 这串 Source 是不是 V5 Full。
 ///

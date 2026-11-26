@@ -385,7 +385,8 @@ void main() {
   // V5 的 Source 串里**不写 Full / Curated**,只有权重 hash。按字面找 curated
   // 永远不成立 —— 那样写会把每一张 V5 图都认成 Full(本仓 2026-08-24 前就是)。
   group('naiSourceIsV5Full:V5 认 hash 不认字面', () {
-    test('白名单里的两个 hash 是 Full', () {
+    test('白名单里的 hash 是 Full', () {
+      expect(naiSourceIsV5Full('NovelAI Diffusion V5 81E2A1BD'), isTrue);
       expect(naiSourceIsV5Full('NovelAI Diffusion V5 657484A5'), isTrue);
       expect(naiSourceIsV5Full('NovelAI Diffusion V5 0ADF9AB7'), isTrue);
     });
